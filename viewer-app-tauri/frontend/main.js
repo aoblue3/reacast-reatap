@@ -74,6 +74,8 @@ const confirmOverlay = document.getElementById('confirmOverlay');
 const confirmMessageEl = document.getElementById('confirmMessage');
 const confirmOkBtn = document.getElementById('confirmOkBtn');
 const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+const updateStatusOverlay = document.getElementById('updateStatusOverlay');
+const updateStatusMessageEl = document.getElementById('updateStatusMessage');
 
 /** window.confirm()の代わりに使う、自前のページ内モーダル。
  *
@@ -1337,6 +1339,13 @@ async function checkForUpdateOnStartup() {
   );
   if (!ok) return;
 
+  // OKを押してからアプリが一旦終了する(=ダウンロード完了)までの間、
+  // 画面が固まったように見えて不安になる、という指摘があったため、
+  // せめて「今ダウンロード中である」ことだけは分かるようにしておく。
+  updateStatusMessageEl.textContent =
+    '新しいバージョンをダウンロード中です。しばらくお待ちください…\n(数十秒〜数分かかることがあります。完了すると自動的にアプリが再起動します)';
+  updateStatusOverlay.classList.add('visible');
+
   try {
     await invoke('download_and_apply_update', {
       downloadUrl: info.download_url,
@@ -1345,6 +1354,7 @@ async function checkForUpdateOnStartup() {
     // 成功時は、この行に到達する前にアプリ自体が終了・再起動されるのが
     // 正常な流れ(Rust側でapp.exit(0)している)。
   } catch (err) {
+    updateStatusOverlay.classList.remove('visible');
     await showConfirmDialog(
       `更新に失敗しました: ${err.message || err}\n\nお手数ですがGitHubのReleasesページから手動でダウンロードしてください。`
     );

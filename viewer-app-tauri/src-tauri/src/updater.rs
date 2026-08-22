@@ -28,6 +28,7 @@
 use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 use sha2::{Digest, Sha256};
+use std::time::Duration;
 
 /// このバイナリがビルドされた時のGitHubタグ(例: "v1.0.0")。
 /// GitHub Actions側で `APP_VERSION: ${{ github.ref_name }}` として渡す想定
@@ -103,8 +104,14 @@ pub async fn check_for_update() -> Result<Option<UpdateInfo>, String> {
     }
 
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    // タイムアウトを指定していないと、通信が固まった場合に無期限に待ち続けて
+    // しまい(reqwestは既定でタイムアウト無し)、ユーザーからは「OKを押しても
+    // 何も起きない」ように見えてしまう不具合の原因になっていたため、明示的に
+    // タイムアウトを設定する。
     let client = reqwest::Client::builder()
         .user_agent("ReaTap-Updater")
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client
@@ -240,8 +247,13 @@ pub async fn download_and_apply_update(
     {
         use tauri::Manager;
 
+        // check_for_updateと同じ理由で、ダウンロード用クライアントにも明示的な
+        // タイムアウトを設定する(exe本体は数MB〜十数MBあるため、接続確立自体は
+        // 短めのタイムアウトにしつつ、転送全体には余裕を持たせてある)。
         let client = reqwest::Client::builder()
             .user_agent("ReaTap-Updater")
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(180))
             .build()
             .map_err(|e| e.to_string())?;
         let resp = client

@@ -40,6 +40,8 @@ const confirmOverlay = document.getElementById('confirmOverlay');
 const confirmMessageEl = document.getElementById('confirmMessage');
 const confirmOkBtn = document.getElementById('confirmOkBtn');
 const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+const updateStatusOverlay = document.getElementById('updateStatusOverlay');
+const updateStatusMessageEl = document.getElementById('updateStatusMessage');
 
 // window.confirm()は使わない(main.js参照と同じ理由)。自前のオーバーレイで
 // OK/キャンセルを待つPromiseベースの簡易ダイアログ。
@@ -96,12 +98,24 @@ async function checkForUpdateOnStartup() {
   );
   if (!ok) return;
 
+  // OKを押した後、ダウンロードが終わる(=アプリが一旦終了する)までの間、
+  // 画面が固まったように見えて不安になる、という指摘があったため、
+  // せめて「今ダウンロード中である」ことだけは分かるようにしておく
+  // (進捗%までは出せないが、無反応に見えるよりはよい)。
+  updateStatusMessageEl.textContent =
+    '新しいバージョンをダウンロード中です。しばらくお待ちください…\n(数十秒〜数分かかることがあります。完了すると自動的にアプリが再起動します)';
+  updateStatusOverlay.classList.add('visible');
+
   try {
     await invoke('download_and_apply_update', {
       downloadUrl: info.download_url,
       sha256: info.sha256 || null,
     });
+    // 成功時はRust側でapp.exit(0)が呼ばれてこのプロセスごと終了するため、
+    // 通常ここには到達しない(到達したらそれ自体が想定外なので、念のため
+    // オーバーレイは表示したままにしておく)。
   } catch (err) {
+    updateStatusOverlay.classList.remove('visible');
     await showConfirmDialog(
       `更新に失敗しました: ${err.message || err}\n\nお手数ですがGitHubのReleasesページから手動でダウンロードしてください。`
     );

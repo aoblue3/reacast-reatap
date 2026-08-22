@@ -214,6 +214,15 @@
        実装次第でネイティブダイアログが常時最前面のこのウィンドウの後ろに
        隠れて出てきたり、フォーカスの扱いで固まって見えたりする不具合報告が
        あったため使わない(main.js/control.js参照)。 -->
+  <!-- アップデートのダウンロード中であることを示すだけの、ボタン無しの簡易表示。
+       ダウンロードが固まっているのか進行中なのか見分けが付かないという指摘への
+       対応(control.js/checkForUpdateOnStartup参照)。 -->
+  <div id="updateStatusOverlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <div id="updateStatusMessage" class="confirm-message"></div>
+    </div>
+  </div>
+
   <div id="confirmOverlay" class="confirm-overlay">
     <div class="confirm-box">
       <div id="confirmMessage" class="confirm-message"></div>
