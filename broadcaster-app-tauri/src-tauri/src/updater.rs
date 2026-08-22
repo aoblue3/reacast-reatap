@@ -188,24 +188,51 @@ mod apply {
         current_exe_path: &std::path::Path,
     ) -> std::io::Result<()> {
         let script_path = std::env::temp_dir().join(format!("reacast-update-{current_pid}.ps1"));
+        // このヘルパーはアプリ自身が終了した後にバックグラウンドで動くため、
+        // 途中で失敗しても(旧実装のように$ErrorActionPreference =
+        // 'SilentlyContinue'で全部握りつぶすと)ユーザーにもこちらにも一切
+        // 分からない。「差し替え後、アプリが再起動されない」という報告の原因
+        // 切り分けができるよう、各ステップの結果を一時フォルダ内のログファイル
+        // に残すようにする(スクリプト自身は最後に自己削除するが、ログファイルは
+        // 残す)。
+        let log_path = std::env::temp_dir().join(format!("reacast-update-{current_pid}.log"));
         let script = format!(
             r#"
-$ErrorActionPreference = 'SilentlyContinue'
+$logPath = '{log}'
+function Log($msg) {{
+    try {{ Add-Content -Path $logPath -Value ("{{0}} {{1}}" -f (Get-Date -Format 'HH:mm:ss'), $msg) -ErrorAction SilentlyContinue }} catch {{}}
+}}
+Log 'helper started'
 while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
     Start-Sleep -Milliseconds 300
 }}
+Log 'old process exited, copying new exe'
+$copied = $false
 for ($i = 0; $i -lt 20; $i++) {{
     try {{
         Copy-Item -Path '{new_exe}' -Destination '{current_exe}' -Force -ErrorAction Stop
+        $copied = $true
+        Log "copy succeeded (attempt $i)"
         break
     }} catch {{
+        Log "copy attempt $i failed: $($_.Exception.Message)"
         Start-Sleep -Milliseconds 500
     }}
 }}
+if (-not $copied) {{
+    Log 'copy failed after all retries; will try to relaunch the existing exe as-is'
+}}
 Remove-Item -Path '{new_exe}' -Force -ErrorAction SilentlyContinue
-Start-Process -FilePath '{current_exe}'
+try {{
+    Start-Process -FilePath '{current_exe}' -ErrorAction Stop
+    Log 'Start-Process succeeded'
+}} catch {{
+    Log "Start-Process failed: $($_.Exception.Message)"
+}}
+Log 'helper finished'
 Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 "#,
+            log = log_path.display(),
             pid = current_pid,
             new_exe = new_exe_path.display(),
             current_exe = current_exe_path.display(),
