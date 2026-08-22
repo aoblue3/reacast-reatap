@@ -25,6 +25,77 @@ const glyphSizeRangeEl = document.getElementById('glyphSizeRange');
 const glyphSizeValueEl = document.getElementById('glyphSizeValue');
 const glyphSizeResetBtn = document.getElementById('glyphSizeResetBtn');
 const reactionToggleListEl = document.getElementById('reactionToggleList');
+const confirmOverlay = document.getElementById('confirmOverlay');
+const confirmMessageEl = document.getElementById('confirmMessage');
+const confirmOkBtn = document.getElementById('confirmOkBtn');
+const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+
+// window.confirm()は使わない(main.js参照と同じ理由)。自前のオーバーレイで
+// OK/キャンセルを待つPromiseベースの簡易ダイアログ。
+function showConfirmDialog(message) {
+  return new Promise((resolve) => {
+    confirmMessageEl.textContent = message;
+    confirmOverlay.classList.add('visible');
+    let settled = false;
+    const cleanup = () => {
+      confirmOverlay.classList.remove('visible');
+      confirmOkBtn.removeEventListener('click', onOk);
+      confirmCancelBtn.removeEventListener('click', onCancel);
+      confirmOverlay.removeEventListener('click', onOverlayClick);
+      document.removeEventListener('keydown', onKeydown, true);
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = () => finish(false);
+    const onOverlayClick = (e) => {
+      if (e.target === confirmOverlay) finish(false);
+    };
+    const onKeydown = (e) => {
+      if (e.code === 'Escape') finish(false);
+      if (e.code === 'Enter') finish(true);
+    };
+    confirmOkBtn.addEventListener('click', onOk);
+    confirmCancelBtn.addEventListener('click', onCancel);
+    confirmOverlay.addEventListener('click', onOverlayClick);
+    document.addEventListener('keydown', onKeydown, true);
+  });
+}
+
+// 単体exeのままの自動アップデート確認(updater.rs参照)。ビルド時に
+// APP_VERSION/UPDATE_CHECK_REPOが埋め込まれていない場合(ローカルビルド等)は
+// check_for_updateが常にnullを返すので、この関数は実質何もしない。
+async function checkForUpdateOnStartup() {
+  let info;
+  try {
+    info = await invoke('check_for_update');
+  } catch (err) {
+    console.error('アップデート確認に失敗しました', err);
+    return;
+  }
+  if (!info) return;
+
+  const notes = info.notes ? `\n\n更新内容:\n${info.notes}` : '';
+  const ok = await showConfirmDialog(
+    `新しいバージョン ${info.version} が利用可能です。今すぐ更新しますか?${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`
+  );
+  if (!ok) return;
+
+  try {
+    await invoke('download_and_apply_update', {
+      downloadUrl: info.download_url,
+      sha256: info.sha256 || null,
+    });
+  } catch (err) {
+    await showConfirmDialog(
+      `更新に失敗しました: ${err.message || err}\n\nお手数ですがGitHubのReleasesページから手動でダウンロードしてください。`
+    );
+  }
+}
 
 // 中継サーバーが要求する合言葉の形式(relay-server/server.jsのPASSPHRASE_REと
 // 必ず同じにしておくこと)。保存前にここで弾ければ、往復せずその場でエラーを示せる。
@@ -295,4 +366,5 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadMonitorSelect();
   await loadGlyphSize();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
+  checkForUpdateOnStartup();
 })();

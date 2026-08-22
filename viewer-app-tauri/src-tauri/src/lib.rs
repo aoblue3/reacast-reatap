@@ -1,5 +1,6 @@
 mod config_store;
 mod pcwmp;
+mod updater;
 
 use config_store::ConfigStore;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -716,6 +717,8 @@ pub fn run() {
             send_hotkey_reaction,
             start_manual_pick,
             cancel_manual_pick,
+            updater::check_for_update,
+            updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

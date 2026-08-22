@@ -1,10 +1,15 @@
-﻿name: Build & Release (Windows exe)
+name: Build & Release (Windows exe)
 
+# タグ("v1.0.0"のような名前)をpushすると自動的に発火し、Windowsランナー上で
+# ReaCast.exe / ReaTap.exeをビルドしてGitHub Releaseに添付する。
+# これにより、開発者(リポジトリの持ち主)は手元のPCでビルドしなくても、
+# タグを1つpushするだけで利用者向けの完成品exeを配布できる。
 on:
   push:
     tags:
       - "v*"
 
+# softprops/action-gh-releaseがReleaseを作成・ファイルを添付するために必要。
 permissions:
   contents: write
 
@@ -23,11 +28,22 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # 中継サーバーのアドレスはリポジトリの Settings > Secrets and variables
+      # > Actions > Variables に REACTION_RELAY_HOST / REACTION_RELAY_PORT と
+      # いう名前で登録しておくこと(このワークフローがビルド時にexeへ焼き込む)。
+      #
+      # APP_VERSION / UPDATE_CHECK_REPO は単体exeのままの自動アップデート機能
+      # (各アプリのsrc-tauri/src/updater.rs参照)のために焼き込む。どちらも
+      # GitHub Actionsが自動的に用意してくれる値なので、追加のVariables登録は
+      # 不要(github.ref_nameはpushされたタグ名、github.repositoryは
+      # "owner/repo"形式のこのリポジトリ自身の名前になる)。
       - name: Build ReaCast (broadcaster app)
         working-directory: broadcaster-app-tauri
         env:
           REACTION_RELAY_HOST: ${{ vars.REACTION_RELAY_HOST }}
           REACTION_RELAY_PORT: ${{ vars.REACTION_RELAY_PORT }}
+          APP_VERSION: ${{ github.ref_name }}
+          UPDATE_CHECK_REPO: ${{ github.repository }}
         run: |
           npm ci
           npm run build
@@ -37,14 +53,27 @@ jobs:
         env:
           REACTION_RELAY_HOST: ${{ vars.REACTION_RELAY_HOST }}
           REACTION_RELAY_PORT: ${{ vars.REACTION_RELAY_PORT }}
+          APP_VERSION: ${{ github.ref_name }}
+          UPDATE_CHECK_REPO: ${{ github.repository }}
         run: |
           npm ci
           npm run build
+
+      # 自動アップデート機能が差し替え前にファイルの整合性を検証できるよう、
+      # exeと同名+".sha256"のハッシュ値ファイルを作ってReleaseに一緒に添付する
+      # (中身はハッシュ値の16進数文字列のみ。updater.rsのパース処理と対応)。
+      - name: Compute SHA256 checksums
+        shell: pwsh
+        run: |
+          (Get-FileHash -Algorithm SHA256 -Path "broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe").Hash | Out-File -FilePath "broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe.sha256" -Encoding ascii -NoNewline
+          (Get-FileHash -Algorithm SHA256 -Path "viewer-app-tauri/src-tauri/target/release/ReaTap.exe").Hash | Out-File -FilePath "viewer-app-tauri/src-tauri/target/release/ReaTap.exe.sha256" -Encoding ascii -NoNewline
 
       - name: Create GitHub Release with exe attached
         uses: softprops/action-gh-release@v2
         with:
           files: |
             broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe
+            broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe.sha256
             viewer-app-tauri/src-tauri/target/release/ReaTap.exe
+            viewer-app-tauri/src-tauri/target/release/ReaTap.exe.sha256
           generate_release_notes: true

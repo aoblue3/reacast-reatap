@@ -68,7 +68,31 @@
   button:hover { background: #2f5ad0; }
   button.secondary { background: #333; }
   button.secondary:hover { background: #444; }
+  button.danger { background: #b23a3a; }
+  button.danger:hover { background: #c94444; }
   .muted { color: #999; font-size: 12px; }
+
+  .confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-overlay.visible { display: flex; }
+  .confirm-box {
+    background: #1e1f25;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 18px;
+    width: 300px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; }
+  .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirm-buttons button { margin: 0; }
   .test-buttons button { font-size: 20px; padding: 6px 10px; }
   select {
     background: #24252b;
@@ -154,6 +178,20 @@
   <div class="row">
     <div class="muted">動作確認用テスト送信(オフにしたものも含め、実際に視聴者から送られたように見た目を確認できます):</div>
     <div class="test-buttons" id="testButtons"></div>
+  </div>
+
+  <!-- 更新確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
+       実装次第でネイティブダイアログが常時最前面のこのウィンドウの後ろに
+       隠れて出てきたり、フォーカスの扱いで固まって見えたりする不具合報告が
+       あったため使わない(main.js/control.js参照)。 -->
+  <div id="confirmOverlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <div id="confirmMessage" class="confirm-message"></div>
+      <div class="confirm-buttons">
+        <button id="confirmCancelBtn" class="secondary">キャンセル</button>
+        <button id="confirmOkBtn" class="danger">OK</button>
+      </div>
+    </div>
   </div>
 
   <script src="shared/emoji-set.js"></script>

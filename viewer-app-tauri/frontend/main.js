@@ -1281,6 +1281,46 @@ async function init() {
   }
   await applyAllHotkeys();
   startStatusPolling();
+
+  // アプリ本体の起動処理を待たせたくないので、awaitせず裏で確認する
+  // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
+  checkForUpdateOnStartup();
+}
+
+/* ------------------------- 自動アップデート確認 ------------------------- */
+
+/** 起動時に一度だけ、GitHub Releases上に新しいバージョンが無いか確認する。
+ * ビルド時にAPP_VERSION/UPDATE_CHECK_REPO(.github/workflows/build-release.yml
+ * 参照)が設定されていない開発ビルドでは、Rust側(updater.rs)が常に
+ * 「更新なし」を返すため、この関数は何もしない。 */
+async function checkForUpdateOnStartup() {
+  let info;
+  try {
+    info = await invoke('check_for_update');
+  } catch (err) {
+    console.error('アップデート確認に失敗しました', err);
+    return;
+  }
+  if (!info) return;
+
+  const notes = info.notes ? `\n\n更新内容:\n${info.notes}` : '';
+  const ok = await showConfirmDialog(
+    `新しいバージョン ${info.version} が利用可能です。今すぐ更新しますか?${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`
+  );
+  if (!ok) return;
+
+  try {
+    await invoke('download_and_apply_update', {
+      downloadUrl: info.download_url,
+      sha256: info.sha256 || null,
+    });
+    // 成功時は、この行に到達する前にアプリ自体が終了・再起動されるのが
+    // 正常な流れ(Rust側でapp.exit(0)している)。
+  } catch (err) {
+    await showConfirmDialog(
+      `更新に失敗しました: ${err.message || err}\n\nお手数ですがGitHubのReleasesページから手動でダウンロードしてください。`
+    );
+  }
 }
 
 init().catch((err) => {

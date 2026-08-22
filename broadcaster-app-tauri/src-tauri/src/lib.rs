@@ -1,6 +1,7 @@
 mod config_store;
 mod connect_code;
 mod obs_bridge;
+mod updater;
 
 use config_store::ConfigStore;
 use std::sync::Mutex;
@@ -490,6 +491,8 @@ pub fn run() {
             emit_overlay_reaction,
             list_monitors,
             set_overlay_monitor,
+            updater::check_for_update,
+            updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
