@@ -206,7 +206,11 @@ Log 'helper started'
 while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
     Start-Sleep -Milliseconds 300
 }}
-Log 'old process exited, copying new exe'
+Log 'old process exited'
+# 多重起動防止(single-instance)の仕組みが、旧プロセスの終了直後にはまだ
+# 完全に解放されていない可能性を考慮し、コピー前に少しだけ間を置く。
+Start-Sleep -Milliseconds 800
+Log 'copying new exe'
 $copied = $false
 for ($i = 0; $i -lt 20; $i++) {{
     try {{
@@ -223,11 +227,33 @@ if (-not $copied) {{
     Log 'copy failed after all retries; will try to relaunch the existing exe as-is'
 }}
 Remove-Item -Path '{new_exe}' -Force -ErrorAction SilentlyContinue
-try {{
-    Start-Process -FilePath '{current_exe}' -ErrorAction Stop
-    Log 'Start-Process succeeded'
-}} catch {{
-    Log "Start-Process failed: $($_.Exception.Message)"
+# Start-Processは呼び出しが成功しても、起動直後に(多重起動防止の判定が
+# まだ旧プロセスを「起動中」とみなしている等の理由で)新しいプロセスが
+# 即座に終了してしまうことがありうるため、起動後に本当にプロセスが
+# 生き残っているかを確認し、生き残っていなければ間隔を空けて再試行する。
+$launched = $false
+for ($j = 0; $j -lt 3; $j++) {{
+    try {{
+        Start-Process -FilePath '{current_exe}' -ErrorAction Stop
+        Log "Start-Process attempt $j: launch call succeeded, verifying it stayed running"
+    }} catch {{
+        Log "Start-Process attempt $j: launch call itself failed: $($_.Exception.Message)"
+        Start-Sleep -Milliseconds 1500
+        continue
+    }}
+    Start-Sleep -Milliseconds 1500
+    $running = Get-Process | Where-Object {{ $_.Path -eq '{current_exe}' }} | Select-Object -First 1
+    if ($running) {{
+        $launched = $true
+        Log "Start-Process attempt $j: verified running (pid $($running.Id))"
+        break
+    }} else {{
+        Log "Start-Process attempt $j: process not found after wait (likely exited immediately), retrying"
+        Start-Sleep -Milliseconds 1000
+    }}
+}}
+if (-not $launched) {{
+    Log 'all Start-Process attempts failed verification; giving up'
 }}
 Log 'helper finished'
 Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
