@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaTap</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    /* このウィンドウは常にオーバーレイ専用(アイコン列のみ)なので、setup panel
+       だった頃のような不透明背景は持たない。 */
+    background: transparent;
+    color: #eee;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  /* #reactionPanel/#reactionPanelInner/#barにはdata-tauri-drag-region属性を付けて
+     いる(下のbody内マークアップ参照)。この属性は付けた要素自身のmousedownだけを
+     ドラッグ扱いにし、中の.emoji-btnのようなクリック可能な子要素には影響しない
+     (Tauri公式の仕様。ボタン自身には付けていないのでクリックは今まで通り効く)。
+     ボタンの隙間・余白部分をつまんでウィンドウ全体をドラッグで好きな位置へ動かせる
+     ようにするための対応(対象ウィンドウが見つからない間、バーが動かせず邪魔だ
+     という報告があったため)。つまみやすいよう余白を若干広めに取ってある。 */
+  #reactionPanel { box-sizing: border-box; cursor: move; }
+  #reactionPanelInner {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 7px;
+    box-sizing: border-box;
+  }
+  #bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 6px;
+    box-sizing: border-box;
+  }
+  /* 「対象の右(縦並び)」モード: main.html/main.jsと同じCSS Gridベースの折り返し
+     方式(理由はmain.jsのapplyRightModeColumnLayoutのコメント参照)。 */
+  #reactionPanel.placement-right #bar {
+    display: grid;
+    grid-auto-flow: column;
+    justify-items: center;
+    align-items: center;
+  }
+  .emoji-btn {
+    position: relative;
+    font-size: 24px;
+    background: rgba(20,20,24,0.55);
+    border: none;
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .emoji-btn .hk-badge {
+    position: absolute;
+    left: 50%;
+    bottom: -3px;
+    transform: translate(-50%, 100%);
+    font-size: 9px;
+    font-family: monospace;
+    color: #9ff29f;
+    background: rgba(10,10,12,0.85);
+    border-radius: 4px;
+    padding: 1px 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .emoji-btn[data-emoji-id="kusa"] {
+    color: #5ad65a;
+    font-weight: 900;
+    text-shadow: 0 0 6px rgba(90, 214, 90, 0.7);
+  }
+  .emoji-btn:hover { background: rgba(40,40,46,0.7); }
+  .emoji-btn:active { transform: scale(0.85); }
+  .emoji-btn.muted {
+    opacity: 0.3;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+  #muteNotice {
+    text-align: center;
+    font-size: 11px;
+    color: #ffb3b3;
+    background: rgba(0,0,0,0.55);
+    padding: 3px 8px;
+    border-radius: 6px;
+    visibility: hidden;
+  }
+  #muteNotice.visible { visibility: visible; }
+</style>
+</head>
+<body>
+  <div id="reactionPanel" data-tauri-drag-region>
+    <div id="reactionPanelInner" data-tauri-drag-region>
+      <div id="bar" data-tauri-drag-region></div>
+      <div id="muteNotice"></div>
+    </div>
+  </div>
+
+  <script src="shared/relay-client.js"></script>
+  <script src="shared/emoji-set.js"></script>
+  <script src="bar.js"></script>
+</body>
+</html>

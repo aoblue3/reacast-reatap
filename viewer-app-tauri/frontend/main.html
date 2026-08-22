@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaTap</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    background: #17181c;
+    color: #eee;
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  h1 { font-size: 15px; margin: 0 0 12px; }
+  h2 { font-size: 13px; margin: 0 0 8px; color: #ccd; }
+  .app-brand { font-size: 11px; color: #7a8bd6; letter-spacing: 0.04em; margin-bottom: 4px; }
+  p { font-size: 12px; color: #aaa; line-height: 1.6; }
+  #setupPanel { padding: 20px; box-sizing: border-box; }
+  input[type="text"] {
+    background: #0d0e11;
+    color: #9ff29f;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 14px;
+    width: 220px;
+    box-sizing: border-box;
+  }
+  #advancedRelayDetails {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #aaa;
+  }
+  #advancedRelayDetails summary,
+  #defaultSettingsDetails summary { cursor: pointer; color: #8ac6ff; }
+  #defaultSettingsDetails { margin-top: 10px; font-size: 12px; color: #aaa; }
+  #advancedRelayDetails input[type="text"],
+  #advancedRelayDetails input[type="number"] {
+    background: #24252b;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    width: 140px;
+  }
+  button {
+    background: #3a6df0;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-top: 10px;
+    margin-right: 8px;
+  }
+  button.secondary { background: #333; }
+  button.danger { background: #6b2b2b; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #errorMsg { color: #ff8a8a; font-size: 12px; margin-top: 8px; min-height: 16px; }
+  #connStatus { font-size: 12px; margin-top: 8px; min-height: 16px; }
+  hr { border: none; border-top: 1px solid #2a2b30; margin: 20px 0; }
+
+  .field-row { margin-top: 8px; }
+  .field-row label { display: block; font-size: 12px; color: #ccc; margin-bottom: 3px; }
+  .field-hint { font-size: 11px; color: #888; margin: 2px 0 0; }
+
+  /* ---- 配信者一覧(プロファイルカード) ---- */
+  #profileListEl { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+  #emptyProfilesMsg { font-size: 12px; color: #888; }
+  .profile-card {
+    background: #1e1f25;
+    border: 1px solid #2a2b30;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .profile-card.connected { border-color: #3a6df0; }
+  .profile-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .profile-name { font-size: 14px; font-weight: 700; }
+  .profile-passphrase { font-family: monospace; font-size: 11px; color: #8ac6ff; }
+  .profile-broadcaster-badge {
+    font-size: 11px;
+    color: #9ff29f;
+    background: #0d0e11;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  .profile-broadcaster-badge.unset { color: #888; }
+  .profile-connected-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: #1f6b3a;
+    color: #d7ffe0;
+  }
+  .profile-status { font-size: 11px; color: #8ac6ff; margin-top: 4px; min-height: 14px; }
+  .profile-status.not-found { color: #ffcf8a; }
+  .profile-buttons { margin-top: 6px; }
+  .profile-buttons button { margin-top: 0; padding: 5px 10px; font-size: 12px; }
+
+  .profile-settings {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #333;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .profile-settings label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
+  .profile-settings select,
+  .profile-settings input[type="number"],
+  .profile-settings input[type="text"] {
+    background: #24252b;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .profile-settings input[type="number"] { width: 65px; }
+  .profile-settings input[type="text"] { width: 160px; }
+  /* 注意: 単に「.ps-marginrow { display:none }」だと、上の
+     ".profile-settings label { display: flex }"(クラス+要素セレクタで詳細度が
+     わずかに高い)に負けて常に表示されたままになってしまう(main.htmlの
+     旧#marginRowで一度発生した不具合と同種)。詳細度を確実に上回るよう、
+     こちらも".profile-settings"を前に付けて合わせてある。 */
+  .profile-settings .ps-marginrow { display: none; }
+  .profile-settings .ps-marginrow.visible { display: flex; }
+  .profile-settings .ps-rightrowsrow { display: none; }
+  .profile-settings .ps-rightrowsrow.visible { display: flex; }
+
+  .ps-window-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #24252b;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 5px 7px;
+    margin-top: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .ps-window-item:hover { background: #303138; }
+  .ps-window-item .path { color: #888; font-size: 10px; display: block; }
+  .ps-window-list { max-height: 130px; overflow-y: auto; margin-top: 4px; }
+  .ps-status-line { font-size: 11px; color: #8ac6ff; min-height: 14px; }
+
+  /* プロファイル毎のホットキー一覧(コンパクト) */
+  .ps-hotkey-list { display: flex; flex-direction: column; gap: 3px; }
+  .ps-hk-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #202127;
+    border: 1px solid #2a2b30;
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+  .ps-hk-row.ps-hk-hidden { opacity: 0.4; }
+  .ps-hk-row .ps-hk-emoji { font-size: 15px; width: 20px; text-align: center; }
+  .ps-hk-row .ps-hk-label { flex: 1 1 auto; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ps-hk-row button { margin: 0; padding: 2px 7px; font-size: 10px; }
+  .ps-hk-row .ps-hk-current {
+    min-width: 96px;
+    text-align: center;
+    background: #0d0e11;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 2px 5px;
+    color: #9ff29f;
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ps-hk-row .ps-hk-current.unset { color: #666; }
+  .ps-hk-row .ps-hk-current.capturing { color: #ffcf8a; }
+  .ps-hk-error { color: #ff8a8a; font-size: 11px; min-height: 14px; }
+
+  /* ---- 表示するリアクション・並び順(全プロファイル共通) ---- */
+  #reactionOrderList { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+  .ro-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #202127;
+    border: 1px solid #2a2b30;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .ro-row.ro-hidden { opacity: 0.5; }
+  .ro-row .ro-emoji { font-size: 17px; width: 22px; text-align: center; }
+  .ro-row .ro-label { flex: 1 1 auto; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ro-row button { margin: 0; padding: 3px 8px; font-size: 11px; }
+  .ro-row .ro-updown { padding: 2px 6px; background: #333; }
+
+  .confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-overlay.visible { display: flex; }
+  .confirm-box {
+    background: #1e1f25;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 18px;
+    width: 300px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; }
+  .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirm-buttons button { margin: 0; }
+</style>
+</head>
+<body>
+  <div id="setupPanel">
+    <div class="app-brand">ReaTap(視聴者アプリ)</div>
+
+    <h1>配信者を追加</h1>
+    <p style="margin: 0 0 6px;">配信者から教えてもらった合言葉を入力してください。「配信者名」は、PeerCastで多重に配信を開いている場合にリアクションバーが違う配信者のプレイヤーへ移ってしまうのを防ぐための任意項目です(空欄でも接続できます)。</p>
+    <form id="addProfileForm">
+      <div class="field-row">
+        <label for="passphraseInput">合言葉</label>
+        <input type="text" id="passphraseInput" placeholder="例: ao3" maxlength="32" spellcheck="false" />
+      </div>
+      <div class="field-row">
+        <label for="broadcasterNameInput">配信者名(任意・PeerCast/PCRPlayerの表示名)</label>
+        <input type="text" id="broadcasterNameInput" placeholder="例: あお" maxlength="64" spellcheck="false" />
+        <p class="field-hint">入力すると、PCRPlayerのタイトルにこの文字が含まれるウィンドウにだけ追従します(多重配信対策)。空欄なら従来通り絞り込みなしで検出します。</p>
+      </div>
+      <div class="field-row">
+        <label for="displayLabelInput">一覧での表示名(任意)</label>
+        <input type="text" id="displayLabelInput" placeholder="未入力なら配信者名か合言葉を使用" maxlength="64" spellcheck="false" />
+      </div>
+      <button id="submitBtn" type="submit">接続を確認して追加</button>
+    </form>
+    <div id="errorMsg"></div>
+    <div id="connStatus"></div>
+
+    <details id="advancedRelayDetails">
+      <summary>詳細設定(通常は変更不要): 中継サーバーのアドレス</summary>
+      <p style="margin: 6px 0;">既定では、このアプリをビルドした時に指定されたアドレスに繋ぎに行きます。配信者から別のアドレスを指定された場合のみ、ここで上書きしてください(すべての配信者プロファイルに共通の設定です)。</p>
+      <label>ホスト: <input type="text" id="relayHostInput" placeholder="(既定を使用)" spellcheck="false" /></label>
+      <label style="margin-left: 8px;">ポート: <input type="number" id="relayPortInput" min="1" max="65535" placeholder="(既定を使用)" /></label>
+    </details>
+
+    <details id="defaultSettingsDetails">
+      <summary>新規追加時の詳細設定ひな形(デフォルト値)を編集</summary>
+      <p style="margin: 6px 0;">ここで設定した内容(表示位置・行数・追従/最前面・ホットキー)は、この後「配信者を追加」した時の詳細設定の初期値として自動的にコピーされます。既に追加済みの配信者の設定には影響しません。</p>
+      <div id="defaultSettingsPanelEl"></div>
+    </details>
+
+    <hr />
+
+    <h1>接続中・登録済みの配信者</h1>
+    <p style="margin: 0 0 4px;">複数の配信者に同時接続できます。それぞれ「接続する」を押すと、その配信者専用のリアクションバーが独立したウィンドウで表示されます。「詳細設定」から表示位置やホットキーを配信者ごとに設定できます。</p>
+    <div id="emptyProfilesMsg">まだ配信者が登録されていません。上の欄から追加してください。</div>
+    <div id="profileListEl"></div>
+
+    <hr />
+
+    <h1>表示するリアクション・並び順</h1>
+    <p style="margin: 0 0 4px;">ここでの表示/非表示・並び順はすべての配信者で共通です(ホットキーは配信者ごとに「詳細設定」から設定します)。</p>
+    <div id="reactionOrderList"></div>
+  </div>
+
+  <!-- 削除確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
+       実装次第でネイティブダイアログが常時最前面のこのウィンドウの後ろに
+       隠れて出てきたり、フォーカスの扱いで固まって見えたりする不具合報告が
+       あったため使わない(main.js参照)。 -->
+  <div id="confirmOverlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <div id="confirmMessage" class="confirm-message"></div>
+      <div class="confirm-buttons">
+        <button id="confirmCancelBtn" class="secondary">キャンセル</button>
+        <button id="confirmOkBtn" class="danger">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="shared/relay-client.js"></script>
+  <script src="shared/emoji-set.js"></script>
+  <script src="shared/tauri-plugin-global-shortcut.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

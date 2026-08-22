@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaCast</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    background: #17181c;
+    color: #eee;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+    /* 項目が増えてウィンドウの高さを超えても、下の項目(テスト送信ボタン等)が
+       見切れて操作不能にならないよう、必要な時だけスクロールできるようにする。 */
+    overflow-y: auto;
+  }
+  h1 { font-size: 16px; margin: 0 0 16px; }
+  .row { margin-bottom: 16px; }
+  .status {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    margin-left: 8px;
+  }
+  .status.ok { background: #1f6b3a; color: #d7ffe0; }
+  .status.ng { background: #6b1f1f; color: #ffd7d7; }
+  textarea {
+    width: 100%;
+    height: 90px;
+    box-sizing: border-box;
+    background: #0d0e11;
+    color: #9ff29f;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 13px;
+    resize: none;
+  }
+  input[type="text"] {
+    background: #0d0e11;
+    color: #9ff29f;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    width: 260px;
+  }
+  input[type="text"].invalid { border-color: #b33; }
+  #passphraseMsg { font-size: 12px; margin-top: 6px; min-height: 16px; }
+  #passphraseMsg.ok { color: #8effa0; }
+  #passphraseMsg.ng { color: #ff8a8a; }
+  button {
+    background: #3a6df0;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-top: 8px;
+    margin-right: 8px;
+  }
+  button:hover { background: #2f5ad0; }
+  button.secondary { background: #333; }
+  button.secondary:hover { background: #444; }
+  .muted { color: #999; font-size: 12px; }
+  .test-buttons button { font-size: 20px; padding: 6px 10px; }
+  select {
+    background: #24252b;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 13px;
+  }
+  input[type="range"] {
+    vertical-align: middle;
+    width: 220px;
+  }
+  #glyphSizeValue {
+    display: inline-block;
+    min-width: 42px;
+    margin: 0 8px;
+  }
+
+  /* 受け付けるリアクションのON/OFF一覧。数が多いのでコンパクトなチップ状に
+     並べる(視聴者アプリの表示/非表示チェックリストと違い、並び替えは不要
+     なため定義順のグリッド表示のみでよい)。 */
+  #reactionToggleList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .rt-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #202127;
+    border: 1px solid #2a2b30;
+    border-radius: 999px;
+    padding: 4px 10px 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .rt-chip.rt-off {
+    opacity: 0.45;
+    border-color: #6b1f1f;
+  }
+  .rt-chip input { margin: 0; }
+  .rt-chip .rt-emoji { font-size: 16px; }
+</style>
+</head>
+<body>
+  <h1>ReaCast(配信者アプリ) <span id="connStatus" class="status ng">未接続</span></h1>
+
+  <div class="row">
+    <div class="muted">視聴者数: <span id="viewerCount">0</span></div>
+    <div class="muted">中継サーバー: <span id="relayAddr">-</span></div>
+  </div>
+
+  <div class="row">
+    <div>合言葉(視聴者アプリにこの文字列を伝えてください):</div>
+    <input type="text" id="passphraseInput" maxlength="32" spellcheck="false" />
+    <button id="copyBtn">コピー</button>
+    <button id="savePassphraseBtn" class="secondary">この合言葉にする</button>
+    <div id="passphraseMsg"></div>
+    <div class="muted">英数字で始まる3〜32文字(ハイフン・アンダースコア可)。大文字小文字は区別しません。いつでも好きな文字列に変更できます。</div>
+  </div>
+
+  <div class="row">
+    <div class="muted">アニメーションを表示するモニター(既定: メインモニターのみ):</div>
+    <select id="monitorSelect"></select>
+  </div>
+
+  <div class="row">
+    <div class="muted">絵文字の大きさ(既定: 100%。大きすぎる/小さすぎると感じたらここで調整してください):</div>
+    <input type="range" id="glyphSizeRange" min="30" max="250" step="5" value="100" />
+    <span id="glyphSizeValue" class="muted">100%</span>
+    <button id="glyphSizeResetBtn" class="secondary">既定に戻す</button>
+  </div>
+
+  <div class="row">
+    <div class="muted">受け付けるリアクション(オフにしたものは、視聴者が送っても配信画面には表示されません。視聴者側のボタンはそのまま押せますが反応しなくなります):</div>
+    <div id="reactionToggleList"></div>
+  </div>
+
+  <div class="row">
+    <div class="muted">動作確認用テスト送信(オフにしたものも含め、実際に視聴者から送られたように見た目を確認できます):</div>
+    <div class="test-buttons" id="testButtons"></div>
+  </div>
+
+  <script src="shared/emoji-set.js"></script>
+  <script src="shared/relay-client.js"></script>
+  <script src="control.js"></script>
+</body>
+</html>

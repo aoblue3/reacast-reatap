@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>reaction overlay</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  /* 外側(.reaction-item): 全体の浮遊・ドリフト・フェードをJS側でtransition指定
+     して動かす担当。内側(.reaction-glyph): リアクションごとの「らしさ」を
+     出すアニメーションをCSS @keyframesで担当。役割を分けることで、
+     transform同士がぶつからずに同時に効かせられる。 */
+  .reaction-item {
+    position: absolute;
+    will-change: transform, opacity;
+    user-select: none;
+  }
+  .reaction-glyph {
+    display: inline-block;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
+    transform-origin: 50% 50%;
+    /* 絵文字用フォントを明示指定しておく。異体字セレクタ(U+FE0F)を付けていても、
+       エンジンによって「色付き絵文字用フォント」と「普通の文字用フォント」の
+       どちらにフォールバックするか判断が割れることがあり(配信者アプリの画面
+       (WebView2)では色付きで表示されるのに、OBSの「ブラウザ」ソース(Chromium系
+       エンジン)経由だと黒い文字として描画されてしまう不具合の原因になっていた)、
+       フォントを明示することで両方の環境で安定して色付き絵文字として描画される
+       ようにする。「草」等の文字系リアクションはこの並びのどのフォントにも
+       無ければ最後のsans-serifへ普通にフォールバックする。 */
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+  }
+  .particle {
+    position: absolute;
+    pointer-events: none;
+    will-change: transform, opacity;
+    user-select: none;
+    /* パーティクルにも絵文字文字(💭💧💤等)を使うものがあるため、.reaction-glyph
+       と同じ理由で絵文字用フォントを明示しておく(図形パーティクルには文字が
+       無いので影響しない)。 */
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+  }
+
+  @keyframes anim-laugh {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    15% { transform: rotate(-13deg) scale(1.06); }
+    30% { transform: rotate(11deg) scale(0.96); }
+    45% { transform: rotate(-9deg) scale(1.05); }
+    60% { transform: rotate(7deg) scale(0.98); }
+    80% { transform: rotate(-3deg) scale(1.02); }
+  }
+  @keyframes anim-clap {
+    0%, 100% { transform: scale(1,1); }
+    10% { transform: scale(0.72,1.18); }
+    20% { transform: scale(1.12,0.92); }
+    30% { transform: scale(0.78,1.14); }
+    40% { transform: scale(1.1,0.95); }
+    50% { transform: scale(0.95,1.05); }
+    60% { transform: scale(1,1); }
+  }
+  @keyframes anim-heartbeat {
+    0%, 100% { transform: scale(1); }
+    8% { transform: scale(1.3); }
+    16% { transform: scale(0.96); }
+    26% { transform: scale(1.22); }
+    36% { transform: scale(1); }
+  }
+  @keyframes anim-pop {
+    0% { transform: scale(0.3); }
+    40% { transform: scale(1.4); }
+    60% { transform: scale(0.88); }
+    80% { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+  @keyframes anim-flicker {
+    0%, 100% { transform: scale(1) rotate(0deg); filter: brightness(1) drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+    20% { transform: scale(1.1) rotate(-4deg); filter: brightness(1.35) drop-shadow(0 0 10px rgba(255,140,0,0.7)); }
+    40% { transform: scale(0.94) rotate(3deg); filter: brightness(0.9) drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+    60% { transform: scale(1.07) rotate(-2deg); filter: brightness(1.25) drop-shadow(0 0 10px rgba(255,140,0,0.7)); }
+    80% { transform: scale(0.97) rotate(3deg); filter: brightness(1) drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+  }
+  @keyframes anim-sob {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-5px) rotate(-7deg); }
+    40% { transform: translateX(5px) rotate(7deg); }
+    60% { transform: translateX(-4px) rotate(-5deg); }
+    80% { transform: translateX(4px) rotate(5deg); }
+  }
+  @keyframes anim-confetti {
+    0% { transform: scale(0.4) rotate(-16deg); }
+    50% { transform: scale(1.22) rotate(9deg); }
+    72% { transform: scale(0.94) rotate(-4deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  @keyframes anim-faint {
+    0% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-16deg) scale(1.06); }
+    55% { transform: rotate(85deg) scale(0.96); }
+    100% { transform: rotate(105deg) scale(0.82); }
+  }
+  @keyframes anim-plead {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+    50% { transform: scale(1.14); filter: drop-shadow(0 0 12px rgba(255,214,230,0.95)); }
+  }
+  @keyframes anim-grass {
+    0% { transform: scale(0.35) rotate(0deg); }
+    30% { transform: scale(1.15) rotate(-9deg); }
+    55% { transform: scale(1) rotate(9deg); }
+    78% { transform: scale(1.06) rotate(-5deg); }
+    100% { transform: scale(1) rotate(3deg); }
+  }
+  @keyframes anim-thumbsup {
+    0% { transform: scale(0.5) translateY(12px); }
+    50% { transform: scale(1.32) translateY(-7px); }
+    72% { transform: scale(0.9) translateY(2px); }
+    100% { transform: scale(1) translateY(0); }
+  }
+  @keyframes anim-jumpscare {
+    0% { transform: translate(0,0) scale(1); }
+    10% { transform: translate(-7px,3px) scale(1.12); }
+    20% { transform: translate(7px,-3px) scale(0.94); }
+    30% { transform: translate(-6px,4px) scale(1.1); }
+    40% { transform: translate(6px,-4px) scale(0.96); }
+    50% { transform: translate(-4px,2px) scale(1.04); }
+    62%, 100% { transform: translate(0,0) scale(1); }
+  }
+  @keyframes anim-flex {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-11deg) scale(1.16); }
+    50% { transform: rotate(0deg) scale(1); }
+    75% { transform: rotate(11deg) scale(1.16); }
+  }
+  @keyframes anim-doze {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(7px) rotate(9deg); }
+  }
+  @keyframes anim-bullseye {
+    0% { transform: scale(0.5) rotate(-22deg); }
+    55% { transform: scale(1.28) rotate(6deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* ---- ここから追加分(新しいリアクション用) ---- */
+  @keyframes anim-zany {
+    0%, 100% { transform: rotate(0deg) skewX(0deg) scale(1); }
+    20% { transform: rotate(-18deg) skewX(8deg) scale(1.08); }
+    40% { transform: rotate(14deg) skewX(-10deg) scale(0.94); }
+    60% { transform: rotate(-10deg) skewX(6deg) scale(1.05); }
+    80% { transform: rotate(6deg) skewX(-4deg) scale(0.98); }
+  }
+  @keyframes anim-think {
+    0%, 100% { transform: rotate(-4deg) translateY(0); }
+    50% { transform: rotate(6deg) translateY(-4px); }
+  }
+  /* 🆗: ハンコを押すように大きく出てから、跳ねながら1回だけ落ち着く */
+  @keyframes anim-stamp {
+    0% { transform: scale(0.3) rotate(-8deg); }
+    45% { transform: scale(1.35) rotate(4deg); }
+    65% { transform: scale(0.88) rotate(-2deg); }
+    85% { transform: scale(1.08) rotate(1deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  /* 🍌: くるくる回転 */
+  @keyframes anim-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  /* 🐸: 跳ねるたびに縮んで(着地)伸びる(ジャンプ)、を繰り返す */
+  @keyframes anim-hop {
+    0%, 100% { transform: scale(1, 1) translateY(0); }
+    15% { transform: scale(1.22, 0.78) translateY(4px); }
+    35% { transform: scale(0.85, 1.22) translateY(-6px); }
+    60% { transform: scale(1.05, 0.95) translateY(1px); }
+  }
+  /* 🥭🍑: 軽く弾むバウンド */
+  @keyframes anim-bounce {
+    0%, 100% { transform: scale(1) translateY(0); }
+    30% { transform: scale(1.1, 0.92) translateY(3px); }
+    55% { transform: scale(0.94, 1.08) translateY(-5px); }
+    80% { transform: scale(1.03, 0.98) translateY(1px); }
+  }
+  /* 🍻: グラスをカチンとぶつける揺れ */
+  @keyframes anim-cheers {
+    0% { transform: rotate(0deg) translateX(0); }
+    10% { transform: rotate(-14deg) translateX(-6px); }
+    20% { transform: rotate(10deg) translateX(5px); }
+    30% { transform: rotate(-6deg) translateX(-2px); }
+    40%, 100% { transform: rotate(0deg) translateX(0); }
+  }
+  /* ⏱🕔: 針が行ったり来たりするような小さな振れ */
+  @keyframes anim-tick {
+    0%, 100% { transform: rotate(-8deg); }
+    50% { transform: rotate(8deg); }
+  }
+  /* ⬆⬇➡⬅: 飛び出す瞬間に進行方向へ一瞬伸びる「ダッシュ」演出(共通) */
+  @keyframes anim-dash {
+    0% { transform: scaleX(1.5) scaleY(0.8); }
+    40% { transform: scaleX(0.85) scaleY(1.05); }
+    100% { transform: scaleX(1) scaleY(1); }
+  }
+
+  /* パーティクル用の汎用アニメーション(発生位置からの相対移動+フェード) */
+  @keyframes particle-up {
+    0% { transform: translate(0,0) scale(0.6); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translate(var(--dx), calc(-1 * var(--rise))) scale(1); opacity: 0; }
+  }
+  @keyframes particle-down {
+    0% { transform: translate(0,0) scale(0.7); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translate(var(--dx), var(--rise)) scale(0.9); opacity: 0; }
+  }
+  @keyframes particle-burst {
+    0% { transform: translate(0,0) rotate(0deg) scale(0.5); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--rise)) rotate(var(--rot)) scale(0.85); opacity: 0; }
+  }
+  @keyframes particle-twinkle {
+    0% { transform: translate(0,0) scale(0.3); opacity: 0; }
+    30% { transform: translate(calc(var(--dx) * 0.4), calc(-1 * var(--rise) * 0.4)) scale(1.1); opacity: 1; }
+    60% { transform: translate(calc(var(--dx) * 0.7), calc(-1 * var(--rise) * 0.7)) scale(0.7); opacity: 1; }
+    100% { transform: translate(var(--dx), calc(-1 * var(--rise))) scale(1); opacity: 0; }
+  }
+  @keyframes particle-ring {
+    0% { transform: scale(0.2); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script src="shared/emoji-set.js"></script>
+  <script src="overlay.js"></script>
+</body>
+</html>
