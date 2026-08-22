@@ -1,0 +1,50 @@
+﻿name: Build & Release (Windows exe)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ReaCast (broadcaster app)
+        working-directory: broadcaster-app-tauri
+        env:
+          REACTION_RELAY_HOST: ${{ vars.REACTION_RELAY_HOST }}
+          REACTION_RELAY_PORT: ${{ vars.REACTION_RELAY_PORT }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build ReaTap (viewer app)
+        working-directory: viewer-app-tauri
+        env:
+          REACTION_RELAY_HOST: ${{ vars.REACTION_RELAY_HOST }}
+          REACTION_RELAY_PORT: ${{ vars.REACTION_RELAY_PORT }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create GitHub Release with exe attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe
+            viewer-app-tauri/src-tauri/target/release/ReaTap.exe
+          generate_release_notes: true
