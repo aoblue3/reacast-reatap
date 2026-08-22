@@ -289,6 +289,10 @@ struct RelayAddress {
 struct OverlaySettings {
     #[serde(rename = "glyphScale")]
     glyph_scale: f64,
+    #[serde(rename = "glyphOpacity")]
+    glyph_opacity: f64,
+    #[serde(rename = "comboGrowthEnabled")]
+    combo_growth_enabled: bool,
 }
 
 /// ConfigStoreから「絵文字の大きさ」を読む。未設定(初回起動時など)は
@@ -300,6 +304,24 @@ fn read_glyph_scale(store: &ConfigStore) -> f64 {
         .and_then(|v| v.as_f64())
         .filter(|v| v.is_finite() && *v > 0.0)
         .unwrap_or(1.0)
+}
+
+/// ConfigStoreから「スタンプの透明度」を読む。未設定時は既定の1.0(=不透明)。
+fn read_glyph_opacity(store: &ConfigStore) -> f64 {
+    store
+        .get("glyphOpacity")
+        .and_then(|v| v.as_f64())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(1.0)
+}
+
+/// ConfigStoreから「連打で大きくなる」設定を読む。未設定時は既定でON
+/// (従来通りの挙動)。
+fn read_combo_growth_enabled(store: &ConfigStore) -> bool {
+    store
+        .get("comboGrowthEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
 }
 
 #[tauri::command]
@@ -328,6 +350,8 @@ fn get_relay_address() -> RelayAddress {
 fn get_overlay_settings(store: tauri::State<ConfigStore>) -> OverlaySettings {
     OverlaySettings {
         glyph_scale: read_glyph_scale(&store),
+        glyph_opacity: read_glyph_opacity(&store),
+        combo_growth_enabled: read_combo_growth_enabled(&store),
     }
 }
 
@@ -358,6 +382,58 @@ fn set_overlay_glyph_scale(
         .map_err(|e| e.to_string())?;
     }
     obs_bridge.set_glyph_scale(clamped);
+    Ok(())
+}
+
+/// 設定パネルの「スタンプの透明度」スライダーから呼ばれる。set_overlay_glyph_scale
+/// と同じ構造(保存→Tauriオーバーレイへemit→OBS側へも反映)。
+#[tauri::command]
+fn set_overlay_glyph_opacity(
+    app: tauri::AppHandle,
+    store: tauri::State<ConfigStore>,
+    obs_bridge: tauri::State<obs_bridge::ObsBridge>,
+    opacity: f64,
+) -> Result<(), String> {
+    if !opacity.is_finite() || opacity <= 0.0 {
+        return Err("opacityは正の数で指定してください".to_string());
+    }
+    // 0(完全に見えない)は事実上「表示しない」と同じで意味が無く、誤操作で
+    // そこまで下げてしまうと「リアクションが届いているのに何も見えない」と
+    // 誤解される恐れがあるため、下限を0.1(10%)に絞っておく。
+    let clamped = opacity.clamp(0.1, 1.0);
+    store
+        .set("glyphOpacity".to_string(), serde_json::json!(clamped))
+        .map_err(|e| e.to_string())?;
+    if let Some(win) = app.get_webview_window("overlay") {
+        win.emit(
+            "overlay:settings",
+            serde_json::json!({ "glyphOpacity": clamped }),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    obs_bridge.set_glyph_opacity(clamped);
+    Ok(())
+}
+
+/// 設定パネルの「連打すると大きくなる」チェックボックスから呼ばれる。
+#[tauri::command]
+fn set_overlay_combo_growth(
+    app: tauri::AppHandle,
+    store: tauri::State<ConfigStore>,
+    obs_bridge: tauri::State<obs_bridge::ObsBridge>,
+    enabled: bool,
+) -> Result<(), String> {
+    store
+        .set("comboGrowthEnabled".to_string(), serde_json::json!(enabled))
+        .map_err(|e| e.to_string())?;
+    if let Some(win) = app.get_webview_window("overlay") {
+        win.emit(
+            "overlay:settings",
+            serde_json::json!({ "comboGrowthEnabled": enabled }),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    obs_bridge.set_combo_growth_enabled(enabled);
     Ok(())
 }
 
@@ -469,8 +545,14 @@ pub fn run() {
             }
 
             let initial_glyph_scale = read_glyph_scale(&store);
+            let initial_glyph_opacity = read_glyph_opacity(&store);
+            let initial_combo_growth_enabled = read_combo_growth_enabled(&store);
             app.manage(store);
-            app.manage(obs_bridge::start(initial_glyph_scale));
+            app.manage(obs_bridge::start(
+                initial_glyph_scale,
+                initial_glyph_opacity,
+                initial_combo_growth_enabled,
+            ));
             // create_overlay_window内で立ち上げる最前面取り直しスレッドが参照する
             // ため、ウィンドウを作る前に必ず管理下に置いておく。
             app.manage(TopmostReasserter::new());
@@ -486,6 +568,8 @@ pub fn run() {
             get_relay_address,
             get_overlay_settings,
             set_overlay_glyph_scale,
+            set_overlay_glyph_opacity,
+            set_overlay_combo_growth,
             cfg_get,
             cfg_set,
             emit_overlay_reaction,

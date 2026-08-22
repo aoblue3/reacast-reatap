@@ -37,8 +37,13 @@ const WebSocket = require('ws');
 
 // ---- 設定値 ----
 const RATE_LIMIT_WINDOW_MS = 10_000; // 直近何ミリ秒を見るか
-const RATE_LIMIT_MAX_EVENTS = 20; // その間に許容する最大リアクション数
+// その間に許容する最大リアクション数。クライアント側のdebounce(bar.js DEBOUNCE_MS=500ms)
+// による理論上の最速値はちょうど20回/10秒なので、タイマーのずれ等で正規の
+// 最速連打が誤ってミュートされないよう、あえてぴったりにはせず1回分の余裕を持たせる。
+const RATE_LIMIT_MAX_EVENTS = 19;
 const MUTE_DURATION_MS = 5 * 60_000; // 超過時のミュート時間 (5分)
+const RATE_STATE_CLEANUP_INTERVAL_MS = 60_000; // IP別レート状態の掃除間隔
+const RATE_STATE_MAX_IDLE_MS = 10 * 60_000; // このぶん操作が無いIP別レート状態は掃除してよい
 const MAX_MESSAGE_BYTES = 2048; // 1メッセージの最大サイズ(不正・過大なデータを弾く)
 const ALLOWED_EMOJI_ID_RE = /^[a-zA-Z0-9_-]{1,32}$/; // 絵文字IDの形式チェック
 const ROOM_ID_RE = /^[0-9a-f]{10}$/; // 5byte hex
@@ -68,19 +73,34 @@ class RelayServer {
     this.logger = logger;
     this.rooms = new Map(); // roomId -> room
     this.passphrases = new Map(); // 小文字化した合言葉 -> roomId
-    this.rateState = new WeakMap(); // ws -> {timestamps:[], mutedUntil:0}
+    // 連打防止のレート状態は、以前は接続(ws)ごとのWeakMapで管理していたが、
+    // それだと「ミュートされたら一旦切断してすぐ繋ぎ直す」だけで簡単に
+    // リセットできてしまう不具合があった(接続し直すたびに新しいwsオブジェクトが
+    // 作られ、WeakMapのキーも新品になるため)。そこで「部屋ID+接続元IP」を
+    // キーにした通常のMapで管理し、繋ぎ直してもレート状態が引き継がれるようにする。
+    this.rateByRoomIp = new Map(); // "roomId:ip" -> {timestamps:[], mutedUntil:0, lastSeenAt}
     this.wss = null;
+    this._rateCleanupTimer = null;
   }
 
   start() {
     this.wss = new WebSocket.Server({ port: this.port, maxPayload: MAX_MESSAGE_BYTES });
-    this.wss.on('connection', (ws) => this._handleConnection(ws));
+    this.wss.on('connection', (ws, req) => this._handleConnection(ws, req));
     this.logger.log(`[relay] listening on ws://0.0.0.0:${this.port}`);
+
+    // 使われなくなったIP別レート状態が溜まり続けないよう定期的に掃除する。
+    this._rateCleanupTimer = setInterval(() => this._cleanupRateState(), RATE_STATE_CLEANUP_INTERVAL_MS);
+    if (typeof this._rateCleanupTimer.unref === 'function') this._rateCleanupTimer.unref();
+
     return this;
   }
 
   stop() {
     return new Promise((resolve) => {
+      if (this._rateCleanupTimer) {
+        clearInterval(this._rateCleanupTimer);
+        this._rateCleanupTimer = null;
+      }
       if (!this.wss) return resolve();
       // ws の Server#close() は「新規接続の受付を止める」だけで、既存の接続が
       // 自然にcloseするまで待ち続けてしまう。サーバーを止める操作としては
@@ -92,11 +112,29 @@ class RelayServer {
     });
   }
 
-  _handleConnection(ws) {
+  // 接続元のIPアドレスを取り出す("::ffff:1.2.3.4"のようなIPv4-mapped IPv6
+  // 表記は素のIPv4に正規化する)。取得できない場合は全員まとめて1つの
+  // 仮想IP扱いになる(レート制限が多少厳しめになるだけで、安全側に倒れる)。
+  _extractIp(req) {
+    let ip = (req && req.socket && req.socket.remoteAddress) || 'unknown';
+    if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+    return ip;
+  }
+
+  _cleanupRateState() {
+    const now = Date.now();
+    for (const [key, rate] of this.rateByRoomIp) {
+      if (now - rate.lastSeenAt > RATE_STATE_MAX_IDLE_MS && rate.mutedUntil <= now) {
+        this.rateByRoomIp.delete(key);
+      }
+    }
+  }
+
+  _handleConnection(ws, req) {
     ws._role = null; // 'broadcaster' | 'viewer'
     ws._roomId = null;
     ws._viewerId = null;
-    this.rateState.set(ws, { timestamps: [], mutedUntil: 0 });
+    ws._ip = this._extractIp(req);
 
     ws.on('message', (raw) => this._handleMessage(ws, raw));
     ws.on('close', () => this._handleClose(ws));
@@ -278,8 +316,14 @@ class RelayServer {
       return this._send(ws, { type: 'error', code: 'not_joined', message: '先にjoinしてください' });
     }
 
-    const rate = this.rateState.get(ws);
+    const rateKey = `${ws._roomId}:${ws._ip}`;
+    let rate = this.rateByRoomIp.get(rateKey);
+    if (!rate) {
+      rate = { timestamps: [], mutedUntil: 0, lastSeenAt: 0 };
+      this.rateByRoomIp.set(rateKey, rate);
+    }
     const now = Date.now();
+    rate.lastSeenAt = now;
 
     if (rate.mutedUntil > now) {
       return this._send(ws, { type: 'muted', untilMs: rate.mutedUntil });

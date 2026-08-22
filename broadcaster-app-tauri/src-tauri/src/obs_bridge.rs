@@ -42,14 +42,35 @@ const OVERLAY_HTML: &str = include_str!("../../frontend/overlay.html");
 const OVERLAY_JS: &str = include_str!("../../frontend/overlay.js");
 const EMOJI_SET_JS: &str = include_str!("../../frontend/shared/emoji-set.js");
 
+/// 設定パネルの「表示関連」設定のうち、Taur本体のオーバーレイとOBS側の両方に
+/// 反映する必要があるもの一式(絵文字の大きさ・透明度・連打で大きくなる仕様の
+/// ON/OFF)。まとめて1つの"settings"メッセージとして配信する。
+#[derive(Clone, Copy)]
+struct BridgeSettings {
+    glyph_scale: f64,
+    glyph_opacity: f64,
+    combo_growth_enabled: bool,
+}
+
+impl BridgeSettings {
+    fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "settings",
+            "glyphScale": self.glyph_scale,
+            "glyphOpacity": self.glyph_opacity,
+            "comboGrowthEnabled": self.combo_growth_enabled,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct ObsBridge {
     tx: broadcast::Sender<String>,
-    // 「絵文字の大きさ」設定の現在値を保持しておく。broadcast channelは後から
-    // 繋いできたクライアントに過去のメッセージを配ってくれないため、OBS側で
-    // ブラウザソースを開き直した時などに、繋いだ直後の1回だけこの値を直接
-    // 読んで送るために使う(handle_ws_connection参照)。
-    glyph_scale: Arc<Mutex<f64>>,
+    // 現在値を保持しておく。broadcast channelは後から繋いできたクライアントに
+    // 過去のメッセージを配ってくれないため、OBS側でブラウザソースを開き直した
+    // 時などに、繋いだ直後の1回だけこの値を直接読んで送るために使う
+    // (handle_ws_connection参照)。
+    settings: Arc<Mutex<BridgeSettings>>,
 }
 
 impl ObsBridge {
@@ -63,14 +84,27 @@ impl ObsBridge {
         let _ = self.tx.send(payload);
     }
 
-    /// 設定パネルで「絵文字の大きさ」が変更された時に呼ぶ。今繋がっている
-    /// OBS側クライアントに即座に反映されるほか、値そのものも保持しておき、
-    /// 後から新しく繋いできたクライアントにも接続直後に最新値を送れるようにする。
+    /// 設定パネルで「絵文字の大きさ」が変更された時に呼ぶ。
     pub fn set_glyph_scale(&self, scale: f64) {
-        if let Ok(mut g) = self.glyph_scale.lock() {
-            *g = scale;
-        }
-        let payload = serde_json::json!({ "type": "settings", "glyphScale": scale }).to_string();
+        self.update_and_broadcast(|s| s.glyph_scale = scale);
+    }
+
+    /// 設定パネルで「スタンプの透明度」が変更された時に呼ぶ。
+    pub fn set_glyph_opacity(&self, opacity: f64) {
+        self.update_and_broadcast(|s| s.glyph_opacity = opacity);
+    }
+
+    /// 設定パネルで「連打で大きくなる」のON/OFFが変更された時に呼ぶ。
+    pub fn set_combo_growth_enabled(&self, enabled: bool) {
+        self.update_and_broadcast(|s| s.combo_growth_enabled = enabled);
+    }
+
+    fn update_and_broadcast(&self, apply: impl FnOnce(&mut BridgeSettings)) {
+        let payload = {
+            let mut s = self.settings.lock().unwrap();
+            apply(&mut s);
+            s.to_json().to_string()
+        };
         let _ = self.tx.send(payload);
     }
 }
@@ -79,19 +113,23 @@ impl ObsBridge {
 /// 既に使われている等の理由で起動に失敗しても、ログを出すだけでアプリ本体は
 /// 問題なく動き続ける(OBS連携が使えなくなるだけで、通常のTauriオーバーレイ
 /// 表示には一切影響しない)。
-/// initial_glyph_scale: 起動時点でConfigStoreに保存されている「絵文字の大きさ」
-/// (未設定なら1.0=100%)。OBS側が最初に繋いだ時点からこの値を反映できるように
-/// 呼び出し側(lib.rsのsetup())から渡してもらう。
-pub fn start(initial_glyph_scale: f64) -> ObsBridge {
+/// initial_*: 起動時点でConfigStoreに保存されている値(未設定なら既定値)。
+/// OBS側が最初に繋いだ時点からこれらの値を反映できるように、呼び出し側
+/// (lib.rsのsetup())から渡してもらう。
+pub fn start(initial_glyph_scale: f64, initial_glyph_opacity: f64, initial_combo_growth_enabled: bool) -> ObsBridge {
     let (tx, _rx) = broadcast::channel::<String>(64);
-    let glyph_scale = Arc::new(Mutex::new(initial_glyph_scale));
+    let settings = Arc::new(Mutex::new(BridgeSettings {
+        glyph_scale: initial_glyph_scale,
+        glyph_opacity: initial_glyph_opacity,
+        combo_growth_enabled: initial_combo_growth_enabled,
+    }));
     let bridge = ObsBridge {
         tx: tx.clone(),
-        glyph_scale: glyph_scale.clone(),
+        settings: settings.clone(),
     };
 
     tauri::async_runtime::spawn(run_http_server());
-    tauri::async_runtime::spawn(run_ws_server(tx, glyph_scale));
+    tauri::async_runtime::spawn(run_ws_server(tx, settings));
 
     bridge
 }
@@ -148,7 +186,7 @@ async fn handle_http_connection(mut socket: TcpStream) {
     let _ = socket.shutdown().await;
 }
 
-async fn run_ws_server(tx: broadcast::Sender<String>, glyph_scale: Arc<Mutex<f64>>) {
+async fn run_ws_server(tx: broadcast::Sender<String>, settings: Arc<Mutex<BridgeSettings>>) {
     let listener = match TcpListener::bind(("127.0.0.1", OBS_WS_PORT)).await {
         Ok(l) => l,
         Err(e) => {
@@ -163,15 +201,19 @@ async fn run_ws_server(tx: broadcast::Sender<String>, glyph_scale: Arc<Mutex<f64
             continue;
         };
         let rx = tx.subscribe();
-        let initial_scale = glyph_scale.lock().map(|g| *g).unwrap_or(1.0);
-        tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_scale));
+        let initial_settings = settings.lock().map(|s| *s).unwrap_or(BridgeSettings {
+            glyph_scale: 1.0,
+            glyph_opacity: 1.0,
+            combo_growth_enabled: true,
+        });
+        tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_settings));
     }
 }
 
 async fn handle_ws_connection(
     socket: TcpStream,
     mut rx: broadcast::Receiver<String>,
-    initial_glyph_scale: f64,
+    initial_settings: BridgeSettings,
 ) {
     let ws_stream = match tokio_tungstenite::accept_async(socket).await {
         Ok(s) => s,
@@ -179,11 +221,10 @@ async fn handle_ws_connection(
     };
     use futures_util::SinkExt;
     let (mut write, _read) = futures_util::StreamExt::split(ws_stream);
-    // 繋いだ直後に、今の「絵文字の大きさ」設定を1回送っておく。broadcast channelは
-    // 過去のメッセージを新規クライアントに配ってくれないため、これが無いとOBS側で
-    // ブラウザソースを開き直すたびに既定サイズ(100%)に戻って見えてしまう。
-    let initial_payload =
-        serde_json::json!({ "type": "settings", "glyphScale": initial_glyph_scale }).to_string();
+    // 繋いだ直後に、今の設定を1回送っておく。broadcast channelは過去の
+    // メッセージを新規クライアントに配ってくれないため、これが無いとOBS側で
+    // ブラウザソースを開き直すたびに既定値に戻って見えてしまう。
+    let initial_payload = initial_settings.to_json().to_string();
     if write
         .send(tokio_tungstenite::tungstenite::Message::Text(
             initial_payload,

@@ -62,6 +62,12 @@
     transition: transform 0.08s ease, background 0.15s ease;
     line-height: 1;
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    /* 🆗のような一部の絵文字は、bodyのフォント指定に含まれる"Segoe UI"側にも
+       (色付きではない)白黒のグリフが存在するため、そちらが先にマッチしてしまい
+       真っ黒な記号として表示されてしまうことがある(配信者アプリのオーバーレイ
+       側では絵文字専用フォントを先頭にしていたため発生しなかった不具合)。
+       絵文字を描画するボタンだけは色付き絵文字フォントを最優先にする。 */
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
   }
   .emoji-btn .hk-badge {
     position: absolute;

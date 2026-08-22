@@ -29,6 +29,11 @@ const settings = {
   comboSizeStepPx: BASE_COMBO_STEP_PX,
   comboMaxSteps: 6,
   animationDurationMs: 2600,
+  // スタンプの透明度(既定1=不透明)。表示中(最大不透明)の状態にだけ効く
+  // (フェードイン/アウトの0はそのまま)。
+  glyphOpacity: 1,
+  // 連打すると絵文字が段階的に大きくなる仕様のON/OFF(既定ON=従来通り)。
+  comboGrowthEnabled: true,
 };
 
 // 設定パネルの「絵文字の大きさ」で選んだ倍率(既定1=100%)を反映する。
@@ -39,6 +44,17 @@ function applyGlyphScale(scale) {
   const s = Number.isFinite(scale) && scale > 0 ? Math.min(3, Math.max(0.3, scale)) : 1;
   settings.baseSizePx = BASE_SIZE_PX * s;
   settings.comboSizeStepPx = BASE_COMBO_STEP_PX * s;
+}
+
+// 設定パネルの「スタンプの透明度」を反映する(glyphScaleと同じ考え方)。
+function applyGlyphOpacity(opacity) {
+  settings.glyphOpacity =
+    Number.isFinite(opacity) && opacity > 0 ? Math.min(1, Math.max(0.1, opacity)) : 1;
+}
+
+// 設定パネルの「連打すると大きくなる」チェックボックスを反映する。
+function applyComboGrowth(enabled) {
+  settings.comboGrowthEnabled = enabled !== false;
 }
 
 /**
@@ -202,6 +218,108 @@ const ANIM_PRESETS = {
     durationFactor: 0.8,
     glyphAnim: 'dash',
   },
+
+  // ---- ここから追加分(ネガティブ・ポジティブ新規リアクション) ----
+
+  // 💩: 上から落ちてきて、最後に着地でバウンドする(fallBounceモーション。
+  // computeMotionPath参照)
+  poop: {
+    motion: 'fallBounce',
+    riseFactor: 1,
+    durationFactor: 1.15,
+    noOuterRotate: true,
+  },
+  // 👺: 左から右へ勢いよく進む。到着した瞬間に、鼻の先あたりから右方向へ
+  // レーザー光線のようなビームを1本出す(particleOffsetX/Yで発生位置を
+  // 絵文字の中心から「鼻先」寄りにずらしている)。
+  tengu: {
+    motion: 'sideIn',
+    forceFromLeft: true,
+    riseFactor: 1,
+    durationFactor: 0.85,
+    glyphAnim: 'dash',
+    particleOffsetX: 0.4,
+    particleOffsetY: -0.1,
+    particles: { shape: 'laser', life: 420, thickness: 5, color: 'rgba(255,60,60,0.95)' },
+  },
+  // 😡: プルプルと震えながら怒りの湯気(パーティクル)を上げる
+  angry: {
+    motion: 'rise',
+    riseFactor: 0.85,
+    durationFactor: 0.95,
+    glyphAnim: 'angry',
+    particles: { shape: 'dot', color: '#ff5252', count: 4, spread: 20, life: 550, drift: 'up' },
+  },
+  // 👎: ブーイングしながら首を振るように下へ落ちていく
+  boo: {
+    motion: 'fall',
+    riseFactor: 0.8,
+    durationFactor: 1.0,
+    glyphAnim: 'boo',
+  },
+  // 🖕: 下から挑発的に上がってくる(💪と同じ「決めポーズ」感の自己アニメーションを流用)
+  provoke: {
+    motion: 'rise',
+    riseFactor: 1.1,
+    durationFactor: 0.9,
+    glyphAnim: 'flex',
+  },
+  // 💣: 落下して着地したあと、2〜3秒待ってからランダムなタイミングで爆発する。
+  // 待ち時間・爆発演出はspawnReaction側の専用処理(preset.explodeDelayRangeMs)で扱う。
+  bomb: {
+    motion: 'quickFall',
+    riseFactor: 1.6,
+    durationFactor: 2.6,
+    noOuterRotate: true,
+    explodeDelayRangeMs: [2000, 3000],
+    particles: { shape: 'ring', life: 500 },
+  },
+  // 🧨: 爆竹らしく、画面下の方から左右どちらかランダムな斜め上方向へ跳ねる
+  // ように急上昇する(popUpモーション。computeMotionPath参照)。跳ね上がった
+  // 先(頂点)で火花(パーティクル)を散らす。
+  firecracker: {
+    motion: 'popUp',
+    riseFactor: 1,
+    durationFactor: 1.05,
+    noOuterRotate: true,
+    glyphAnim: 'firecracker',
+    particles: { shape: 'dot', color: '#ffb347', count: 8, spread: 32, life: 500, drift: 'burst' },
+  },
+  // 🍜: ふわふわ左右に揺れながら上がっていく。湯気に見立てた薄い粒を添える
+  ramen: {
+    motion: 'rise',
+    riseFactor: 0.9,
+    driftFactor: 1.7,
+    durationFactor: 1.35,
+    glyphAnim: 'sway',
+    particles: { shape: 'dot', color: 'rgba(255,255,255,0.55)', count: 4, spread: 16, life: 1100, drift: 'up' },
+  },
+  // 🍣: 勢いよく登場してその場にどんと構える(🆗のスタンプ演出違いバージョン)。
+  // fullRangeY: 画面下部だけでなく、画面のどこにでも現れるようにする。
+  sushi: {
+    motion: 'collapse',
+    riseFactor: 0.3,
+    durationFactor: 0.95,
+    noOuterRotate: true,
+    fullRangeY: true,
+    glyphAnim: 'punch',
+  },
+  // 🎂: 紙吹雪と一緒に楽しげに弾みながら上がっていく、お祝いムード
+  cake: {
+    motion: 'rise',
+    riseFactor: 1.0,
+    durationFactor: 1.15,
+    glyphAnim: 'bounce',
+    particles: { shape: 'confetti', count: 14, life: 1000 },
+  },
+  // ⚽: 上下左右のどこかから飛んできて、画面内で数回跳ね返ってから止まる
+  // (ballBounceモーション。computeMotionPath参照)
+  soccer: {
+    motion: 'ballBounce',
+    riseFactor: 1,
+    durationFactor: 1.2,
+    glyphAnim: 'spin',
+  },
 };
 
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcfef', '#a06bff', '#6bff9e', '#ff9e6b'];
@@ -232,11 +350,18 @@ if (window.__TAURI__ && window.__TAURI__.event) {
   // 設定パネルの「絵文字の大きさ」を起動時に反映し、設定パネルで変更される
   // たびにも(このウィンドウを閉じ直さなくても)即座に反映されるようにする。
   window.__TAURI__.event.listen('overlay:settings', (event) => {
-    applyGlyphScale(event.payload.glyphScale);
+    const payload = event.payload || {};
+    if (typeof payload.glyphScale === 'number') applyGlyphScale(payload.glyphScale);
+    if (typeof payload.glyphOpacity === 'number') applyGlyphOpacity(payload.glyphOpacity);
+    if (typeof payload.comboGrowthEnabled === 'boolean') applyComboGrowth(payload.comboGrowthEnabled);
   });
   window.__TAURI__.core
     .invoke('get_overlay_settings')
-    .then((s) => applyGlyphScale(s.glyphScale))
+    .then((s) => {
+      applyGlyphScale(s.glyphScale);
+      applyGlyphOpacity(s.glyphOpacity);
+      applyComboGrowth(s.comboGrowthEnabled);
+    })
     .catch(() => {});
 } else {
   const OBS_BRIDGE_WS_PORT = 18771;
@@ -251,8 +376,10 @@ function connectObsBridge(port) {
       if (!data) return;
       // 配信者アプリ側で設定を変更した時にも同じ内容が届く(obs_bridge.rs参照)。
       // OBS側はTauriのinvokeが使えないので、この経路が唯一の反映手段になる。
-      if (data.type === 'settings' && typeof data.glyphScale === 'number') {
-        applyGlyphScale(data.glyphScale);
+      if (data.type === 'settings') {
+        if (typeof data.glyphScale === 'number') applyGlyphScale(data.glyphScale);
+        if (typeof data.glyphOpacity === 'number') applyGlyphOpacity(data.glyphOpacity);
+        if (typeof data.comboGrowthEnabled === 'boolean') applyComboGrowth(data.comboGrowthEnabled);
         return;
       }
       if (typeof data.emoji === 'string') spawnReaction(data.emoji);
@@ -458,9 +585,17 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
 
   if (motion === 'collapse') {
     // 力尽きてその場に少し崩れ落ちる(スカル向け。グリフ自身は anim-faint で
-    // 横に倒れる動きをするので、外側はあまり動かさず沈む距離だけ小さく持たせる)
+    // 横に倒れる動きをするので、外側はあまり動かさず沈む距離だけ小さく持たせる)。
+    // preset.fullRangeY: 🍣寿司のように「画面下部だけでなくどこにでも現れて
+    // ほしい」場合は、開始Y座標を画面の縦方向ほぼ全域からランダムに選ぶ。
     const startX = Math.random() * (vw - size);
-    const startY = vh - size - Math.random() * (vh * 0.25);
+    let startY;
+    if (preset.fullRangeY) {
+      const marginY = vh * EDGE_MARGIN_RATIO;
+      startY = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+    } else {
+      startY = vh - size - Math.random() * (vh * 0.25);
+    }
     const sinkDistance = clampFallDistance(startY, 26 * riseFactor, vh, size);
     return {
       startX,
@@ -533,6 +668,219 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     };
   }
 
+  if (motion === 'fallBounce') {
+    // 💩: 上から落ちてきて、着地の瞬間に2回小さくバウンドしてから止まる。
+    //
+    // 元の実装では、最初のwaypoint(落下そのもの)がrAFで即座に適用される
+    // (下のspawnReaction側の仕様: waypoints[0]はatMsを無視して生成直後に
+    // 反映される)にもかかわらず、そのtransition時間には短いlegDuration
+    // 1区間分しか使っていなかったため、意図(atMs: legDuration*3という
+    // 記述)よりずっと速く落ちてしまっていた。「落ちるスピードが早すぎる」
+    // という指摘の原因だったので、落下区間だけ専用の長いtransition時間
+    // (fallLegMs)を持たせ、そのぶん後続のバウンド区間のatMsも後ろにずらす。
+    // バウンド自体のテンポ(legMs)は従来通り短いまま(そこは速くていい)。
+    const startX = Math.random() * (vw - size);
+    const startY = Math.random() * (vh * 0.15);
+    const groundY = clampFallDistance(startY, (vh * 0.62 + size) * riseFactor, vh, size);
+    // 落下区間・バウンド区間それぞれのtransition時間を、全体の表示時間(duration)
+    // に対する割合で直接指定する(bounce区間は従来通りテンポよく、落下区間
+    // だけ長めに取ることで「半分くらいのスピード」の体感にする)。
+    // 合計(fallLegMs + bounceLegMs*4)がフェードアウト開始(duration*0.75)より
+    // 十分前に収まるよう按分してある。
+    const fallLegMs = Math.round(duration * 0.38);
+    const bounceLegMs = Math.round(duration * 0.07);
+    const bounce1 = groundY * 0.22;
+    const bounce2 = groundY * 0.09;
+    const fallAt = fallLegMs;
+    const bounce1At = fallAt + bounceLegMs;
+    const bounce2At = bounce1At + bounceLegMs;
+    const bounce3At = bounce2At + bounceLegMs;
+    const settleAt = bounce3At + bounceLegMs;
+    const waypoints = [
+      { atMs: fallAt, legMs: fallLegMs, transform: `translate(0, ${groundY}px) rotate(${rotate * 0.3}deg) scale(1.12, 0.85)` },
+      { atMs: bounce1At, legMs: bounceLegMs, transform: `translate(0, ${groundY - bounce1}px) rotate(${rotate * 0.2}deg) scale(0.94, 1.06)` },
+      { atMs: bounce2At, legMs: bounceLegMs, transform: `translate(0, ${groundY}px) rotate(${rotate * 0.15}deg) scale(1.08, 0.92)` },
+      { atMs: bounce3At, legMs: bounceLegMs, transform: `translate(0, ${groundY - bounce2}px) rotate(${rotate * 0.05}deg) scale(0.97, 1.03)` },
+      { atMs: settleAt, legMs: bounceLegMs, transform: `translate(0, ${groundY}px) rotate(0deg) scale(1)` },
+    ];
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) rotate(0deg) scale(0.7)',
+      moveDuration: fallLegMs,
+      easing: 'cubic-bezier(.5,0,.85,1)',
+      waypoints,
+      endX: startX,
+      endY: startY + groundY,
+    };
+  }
+
+  if (motion === 'quickFall') {
+    // 💣: すばやく落下して着地する(その後、しばらく待ってから爆発する演出は
+    // spawnReaction側のpreset.explodeDelayRangeMs処理で行う)。
+    // 着地する高さは、常に画面下部固定ではなく、開始位置より下・画面内の
+    // 余白を除いた範囲からランダムに選ぶ(要望: 着地位置を全範囲ランダムに)。
+    const startX = Math.random() * (vw - size);
+    const startY = Math.random() * (vh * 0.15);
+    const drift = (Math.random() - 0.5) * 60 * driftFactor;
+    const marginY = vh * EDGE_MARGIN_RATIO;
+    const minLandY = Math.max(startY + size * 0.5, marginY);
+    const maxLandY = Math.max(minLandY, vh - marginY - size);
+    const landY = minLandY + Math.random() * Math.max(0, maxLandY - minLandY);
+    const fallDistance = Math.max(0, landY - startY);
+    // 落下距離が短い(高い位置に着地する)場合は短く、長い(画面下の方まで
+    // 落ちる)場合は長く、距離に応じてtransition時間を按分する。
+    const baselineFall = vh * 0.85;
+    const moveDuration = Math.round(
+      duration * Math.min(0.34, Math.max(0.12, 0.3 * (fallDistance / baselineFall)))
+    );
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) rotate(0deg) scale(0.7)',
+      finalTransform: `translate(${drift}px, ${fallDistance}px) rotate(${rotate * 0.4}deg) scale(1)`,
+      moveDuration,
+      easing: 'cubic-bezier(.4,0,.7,1)',
+      endX: startX + drift,
+      endY: startY + fallDistance,
+    };
+  }
+
+  if (motion === 'popUp') {
+    // 🧨 爆竹: 画面下の方に現れて、左右どちらかランダムな斜め上方向へ、
+    // 跳ねるように2段階で急上昇する(爆竹が弾ける勢いのイメージ)。
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    const startX = Math.min(Math.max(size, Math.random() * (vw - size)), vw - size);
+    const startY = vh - size - Math.random() * (vh * 0.12);
+    const jumpX = vw * (0.07 + Math.random() * 0.08) * dir;
+    const jumpY = clampRiseDistance(startY, (vh * 0.3 + size) * riseFactor, vh);
+    const legDuration = Math.round(duration * 0.22);
+    const waypoints = [
+      {
+        atMs: legDuration,
+        legMs: legDuration,
+        transform: `translate(${jumpX * 0.55}px, -${jumpY * 0.6}px) rotate(${dir * -18}deg) scale(1.08, 0.9)`,
+      },
+      {
+        atMs: legDuration * 2,
+        legMs: legDuration,
+        transform: `translate(${jumpX}px, -${jumpY}px) rotate(${dir * -8}deg) scale(1)`,
+      },
+    ];
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) rotate(0deg) scale(0.6)',
+      moveDuration: legDuration,
+      easing: 'cubic-bezier(.3,1.4,.4,1)',
+      waypoints,
+      endX: startX + jumpX,
+      endY: startY - jumpY,
+    };
+  }
+
+  if (motion === 'ballBounce') {
+    // ⚽: 実際に重力・反発を刻み時間でシミュレートし、画面の上下左右いずれかの
+    // 端から飛んできて、床・天井・左右の壁に当たるたびにバウンドしながら
+    // 徐々に勢いが弱まって止まる(「もっと物理エンジンが乗っかってるみたいに」
+    // という要望への対応。厳密な物理単位ではなく見た目重視の簡易シミュレーション)。
+    const marginX = vw * EDGE_MARGIN_RATIO;
+    const marginY = vh * EDGE_MARGIN_RATIO;
+    const floorY = vh - marginY - size;
+    const ceilY = marginY;
+    const leftX = marginX;
+    const rightX = Math.max(leftX, vw - marginX - size);
+
+    const edge = ['top', 'bottom', 'left', 'right'][Math.floor(Math.random() * 4)];
+    const speed = (vw + vh) * (0.32 + Math.random() * 0.22) * riseFactor;
+    let x, y, vx, vy;
+    if (edge === 'top') {
+      x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
+      y = ceilY;
+      vx = (Math.random() - 0.5) * speed * 0.7;
+      vy = speed * 0.3;
+    } else if (edge === 'bottom') {
+      x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
+      y = floorY;
+      vx = (Math.random() - 0.5) * speed * 0.7;
+      vy = -speed * 0.85;
+    } else if (edge === 'left') {
+      x = leftX;
+      y = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+      vx = speed * 0.8;
+      vy = -speed * 0.3;
+    } else {
+      x = rightX;
+      y = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+      vx = -speed * 0.8;
+      vy = -speed * 0.3;
+    }
+    const startX = x;
+    const startY = y;
+
+    const gravity = speed * 1.6;
+    const restitution = 0.56 + Math.random() * 0.12;
+    const dtMs = 45;
+    const dt = dtMs / 1000;
+    const simBudgetMs = Math.round(duration * 0.6);
+
+    const waypoints = [];
+    let t = 0;
+    let rotateAcc = 0;
+    let bounces = 0;
+    let settled = false;
+    while (t < simBudgetMs && bounces < 10 && !settled) {
+      vy += gravity * dt;
+      x += vx * dt;
+      y += vy * dt;
+
+      if (x < leftX) {
+        x = leftX;
+        vx = -vx * restitution;
+        bounces++;
+      } else if (x > rightX) {
+        x = rightX;
+        vx = -vx * restitution;
+        bounces++;
+      }
+      if (y < ceilY) {
+        y = ceilY;
+        vy = -vy * restitution;
+        bounces++;
+      } else if (y > floorY) {
+        y = floorY;
+        vy = -vy * restitution;
+        bounces++;
+        if (Math.abs(vy) < speed * 0.05) vy = 0;
+      }
+
+      rotateAcc += vx * dt * 0.6;
+      t += dtMs;
+      waypoints.push({
+        atMs: t,
+        legMs: dtMs,
+        transform: `translate(${x - startX}px, ${y - startY}px) rotate(${rotateAcc}deg) scale(1)`,
+      });
+
+      // 床の上でほぼ静止したら、以降の刻みは省略して打ち切る
+      if (y >= floorY - 1 && Math.abs(vx) < speed * 0.02 && vy === 0) settled = true;
+    }
+    if (waypoints.length === 0) {
+      waypoints.push({ atMs: dtMs, legMs: dtMs, transform: 'translate(0, 0) rotate(0deg) scale(1)' });
+    }
+
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) rotate(0deg) scale(0.85)',
+      moveDuration: dtMs,
+      easing: 'linear',
+      waypoints,
+      endX: x,
+      endY: y,
+    };
+  }
+
   // 'rise'(既定): 下から出てきて上に上がっていく
   const startX = Math.random() * (vw - size);
   const startY = vh - size - Math.random() * (vh * 0.3);
@@ -564,7 +912,12 @@ function spawnReaction(emojiId) {
   // 「ダッシュ」演出)を使い回したい場合はpreset.glyphAnimで上書きできる。
   const glyphAnimKey = preset.glyphAnim || kind;
   const comboLevel = getComboLevel(emojiId);
-  const size = settings.baseSizePx + settings.comboSizeStepPx * (comboLevel - 1);
+  // 「連打すると大きくなる」がOFFの場合は常にcomboLevel=1相当のサイズ固定にする
+  // (comboLevel自体の計測・コンボ判定はコンボ表示以外に副作用が無いため続けたまま
+  // でよく、サイズへの反映だけを止める)。
+  const size = settings.comboGrowthEnabled
+    ? settings.baseSizePx + settings.comboSizeStepPx * (comboLevel - 1)
+    : settings.baseSizePx;
   const duration =
     settings.animationDurationMs * (0.85 + Math.random() * 0.3) * (preset.durationFactor ?? 1);
 
@@ -631,13 +984,38 @@ function spawnReaction(emojiId) {
   // 演出)は登場し終えた「命中/出現」の瞬間に、到着位置で発生させる。それ以外は
   // 最初から画面内にいるので、従来通り開始位置ですぐに発生させる。
   if (preset.particles) {
-    const isOffscreenStart = motion === 'sideIn';
-    const particleDelay = isOffscreenStart ? path.moveDuration : 0;
-    const particleX = (isOffscreenStart ? path.endX : path.startX) + size / 2;
-    const particleY = (isOffscreenStart ? path.endY : path.startY) + size / 2;
+    // sideIn(画面端から登場)・quickFall(💣: 落下して着地)・popUp(🧨: 跳ねて
+    // 上がる)は、開始位置ではなく「到着した瞬間」の位置でパーティクルを
+    // 出したい動きなので、moveDurationだけ待ってから終了位置(endX/endY)を
+    // 使う。それ以外は従来通り開始位置ですぐに発生させる。
+    const particlesAtArrival = motion === 'sideIn' || motion === 'quickFall' || motion === 'popUp';
+    const particleDelay = particlesAtArrival ? path.moveDuration : 0;
+    // preset.particleOffsetX/Y: 絵文字の中心からずらしてパーティクルを出したい
+    // 場合の倍率(サイズ基準)。例: 👺のビームを「鼻の先」あたりから出すため。
+    const particleX =
+      (particlesAtArrival ? path.endX : path.startX) + size / 2 + size * (preset.particleOffsetX || 0);
+    const particleY =
+      (particlesAtArrival ? path.endY : path.startY) + size / 2 + size * (preset.particleOffsetY || 0);
     setTimeout(() => {
       spawnParticles(preset.particles, particleX, particleY, size);
     }, particleDelay);
+  }
+
+  // 💣 爆弾専用: 着地してからしばらく待ち、ランダムなタイミングで爆発する。
+  if (preset.explodeDelayRangeMs) {
+    const [minDelay, maxDelay] = preset.explodeDelayRangeMs;
+    const explodeDelay = path.moveDuration + minDelay + Math.random() * (maxDelay - minDelay);
+    const explodeX = path.endX + size / 2;
+    const explodeY = path.endY + size / 2;
+    setTimeout(() => {
+      if (!el.isConnected) return; // 爆発前に片付けられていたら何もしない(念のため)
+      spawnParticles({ shape: 'confetti', count: 22, life: 750 }, explodeX, explodeY, size);
+      spawnParticles({ shape: 'ring', life: 550 }, explodeX, explodeY, size * 1.3);
+      // 爆発の瞬間、絵文字自体も一瞬弾けて消えるようにする
+      el.style.transition = 'transform 260ms ease-out, opacity 260ms ease-out';
+      el.style.transform += ' scale(1.6)';
+      el.style.opacity = '0';
+    }, explodeDelay);
   }
 
   requestAnimationFrame(() => {
@@ -646,7 +1024,7 @@ function spawnReaction(emojiId) {
       // 残りはsetTimeoutで順に適用していく(最後の要素が最終的な着地姿勢)。
       // waypointsが無い場合は、従来通り単純に開始→終了の2点間で動かす。
       el.style.transform = path.waypoints ? path.waypoints[0].transform : path.finalTransform;
-      el.style.opacity = '1';
+      el.style.opacity = String(settings.glyphOpacity);
     });
   });
 
@@ -654,6 +1032,16 @@ function spawnReaction(emojiId) {
     for (let i = 1; i < path.waypoints.length; i++) {
       const wp = path.waypoints[i];
       setTimeout(() => {
+        // wp.legMs: この区間だけ、transitionにかける時間(transform分)を
+        // 差し替えたい場合に指定する(例: 💩は「落下」の区間だけ他の区間
+        // (着地バウンド)よりゆっくり動かしたい、⚽は物理シミュレーションの
+        // 刻み幅ごとに毎回差し替える、等)。transition自体は生成時に
+        // `transform ${moveDuration}ms ..., opacity ${duration}ms ...` の
+        // 2プロパティで設定してあるので、transitionDurationを同じ並び
+        // (transform用, opacity用)で上書きすればよい。
+        if (wp.legMs) {
+          el.style.transitionDuration = `${wp.legMs}ms, ${duration}ms`;
+        }
         el.style.transform = wp.transform;
       }, wp.atMs);
     }
@@ -684,10 +1072,35 @@ function spawnParticles(spec, cx, cy, baseSize) {
     spawnRing(cx, cy, baseSize, spec);
     return;
   }
+  if (spec.shape === 'laser') {
+    spawnLaserBeam(cx, cy, baseSize, spec);
+    return;
+  }
   const count = spec.count || 4;
   for (let i = 0; i < count; i++) {
     spawnOneParticle(spec, cx, cy, baseSize, i);
   }
+}
+
+// 👺天狗のビーム用: (cx, cy)を起点に右方向へ伸びるレーザー光線を1本出す
+// (@keyframes particle-laserで、左端を軸にscaleXが0→1に伸びて見せる)。
+function spawnLaserBeam(cx, cy, baseSize, spec) {
+  const el = document.createElement('div');
+  el.className = 'particle';
+  const length = spec.length || baseSize * 2.4;
+  const thickness = spec.thickness || 5;
+  el.style.left = `${cx}px`;
+  el.style.top = `${cy - thickness / 2}px`;
+  el.style.width = `${length}px`;
+  el.style.height = `${thickness}px`;
+  el.style.borderRadius = `${thickness}px`;
+  el.style.background = spec.color || 'rgba(255,70,70,0.95)';
+  el.style.boxShadow = `0 0 ${thickness * 2.5}px ${spec.color || 'rgba(255,70,70,0.95)'}`;
+  el.style.transformOrigin = 'left center';
+  const life = spec.life || 420;
+  el.style.animation = `particle-laser ${life}ms ease-out forwards`;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), life + 60);
 }
 
 function spawnRing(cx, cy, baseSize, spec) {

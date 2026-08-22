@@ -699,6 +699,34 @@ async function buildProfileSettingsPanel(profile) {
     renderProfileList();
   });
   bnRow.appendChild(bnInput);
+
+  // 合言葉だけで接続した配信者は配信者名が空欄のままのことが多いが、後から
+  // 手入力するのは面倒という要望があったため、今検出できているpcwmp/
+  // PCRPlayerウィンドウのタイトルをそのまま入力欄にコピーするボタンを用意する。
+  // タイトルには配信者名以外の文字が含まれることもあるため、自動判定はせず
+  // そのままコピーするだけにとどめ、必要なら人間が編集して確定してもらう。
+  const bnFillBtn = document.createElement('button');
+  bnFillBtn.type = 'button';
+  bnFillBtn.className = 'secondary';
+  bnFillBtn.textContent = '検出中のウィンドウ名から入力';
+  bnFillBtn.title = '今検出できているpcwmp/PCRPlayerウィンドウのタイトルをそのまま入力欄にコピーします(必要に応じて編集してください)';
+  const bnFillDefaultText = bnFillBtn.textContent;
+  bnFillBtn.addEventListener('click', async () => {
+    const status = await invoke('cfg_get', { key: `profile:${id}:runtimeStatus` });
+    if (!status || !status.found || !status.title) {
+      bnFillBtn.textContent = '今は検出できていません';
+      setTimeout(() => {
+        bnFillBtn.textContent = bnFillDefaultText;
+      }, 1500);
+      return;
+    }
+    bnInput.value = status.title;
+    profile.broadcasterName = status.title;
+    await persistProfiles();
+    await notifyIfActive(id);
+    renderProfileList();
+  });
+  bnRow.appendChild(bnFillBtn);
   panel.appendChild(bnRow);
 
   // 表示名の編集

@@ -93,7 +93,14 @@
   .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .confirm-buttons button { margin: 0; }
-  .test-buttons button { font-size: 20px; padding: 6px 10px; }
+  /* 🆗のような一部の絵文字が、bodyのフォント指定に含まれる"Segoe UI"側の
+     白黒グリフとマッチして真っ黒に見えてしまう不具合対策。絵文字専用フォントを
+     最優先にする(bar.html/main.htmlの同様の対応も参照)。 */
+  .test-buttons button {
+    font-size: 20px;
+    padding: 6px 10px;
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+  }
   select {
     background: #24252b;
     color: #eee;
@@ -116,10 +123,19 @@
      並べる(視聴者アプリの表示/非表示チェックリストと違い、並び替えは不要
      なため定義順のグリッド表示のみでよい)。 */
   #reactionToggleList {
+    margin-top: 6px;
+  }
+  .rt-group {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 6px;
+  }
+  .rt-negative-heading {
+    margin: 10px 0 6px;
+    padding-top: 8px;
+    border-top: 1px solid #333;
+    font-size: 12px;
+    color: #d98a8a;
   }
   .rt-chip {
     display: flex;
@@ -138,7 +154,10 @@
     border-color: #6b1f1f;
   }
   .rt-chip input { margin: 0; }
-  .rt-chip .rt-emoji { font-size: 16px; }
+  .rt-chip .rt-emoji {
+    font-size: 16px;
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -168,6 +187,17 @@
     <input type="range" id="glyphSizeRange" min="30" max="250" step="5" value="100" />
     <span id="glyphSizeValue" class="muted">100%</span>
     <button id="glyphSizeResetBtn" class="secondary">既定に戻す</button>
+  </div>
+
+  <div class="row">
+    <div class="muted">スタンプの透明度(既定: 100%。配信画面の見た目に合わせて薄くしたい場合はここで調整してください):</div>
+    <input type="range" id="glyphOpacityRange" min="10" max="100" step="5" value="100" />
+    <span id="glyphOpacityValue" class="muted">100%</span>
+    <button id="glyphOpacityResetBtn" class="secondary">既定に戻す</button>
+  </div>
+
+  <div class="row">
+    <label class="muted"><input type="checkbox" id="comboGrowthCheckbox" checked /> 連打すると絵文字が大きくなる(オフにすると常に同じ大きさで表示します)</label>
   </div>
 
   <div class="row">

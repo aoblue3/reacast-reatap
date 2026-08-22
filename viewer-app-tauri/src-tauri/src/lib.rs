@@ -166,7 +166,16 @@ fn create_bar_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<()> {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .resizable(true)
+        // 以前はtrueにしていたが、この枠なし透明ウィンドウの余白部分には
+        // data-tauri-drag-region(ドラッグ移動用)を付けてあるため、resizable=true
+        // のままだとその領域をダブルクリックした時にOS側の「最大化」動作が
+        // 発動してしまい、「追従なしでバーを動かそうとダブルクリックしたら
+        // 判定領域が画面いっぱいに巨大化して左上に移動する」という不具合の
+        // 原因になっていた。サイズは常にresize_windowコマンド(bar.js)経由で
+        // プログラム側から決めており、ユーザーが手でリサイズする用途は元々
+        // 無いため、falseにしてリサイズ自体と最大化の両方を無効化する。
+        .resizable(false)
+        .maximizable(false)
         .shadow(false)
         // 起動直後は対象ウィンドウの検出がまだ済んでいないため、いきなり
         // 200x200の未配置状態で一瞬表示されてしまうのを避けるためfalseで作る。
@@ -317,6 +326,25 @@ fn detect_target_window(
     }
 
     result
+}
+
+/// リアクションバーのボタンをクリックした直後に呼ばれる。バー自身は
+/// `focused(false)`で作っていても、ボタンのクリックそのものでOSがバー側に
+/// キーボードフォーカスを渡してしまい、pcwmp/PCRPlayerのコメント入力欄から
+/// フォーカスが外れてしまう、というテスター報告への対応。呼び出し元
+/// (bar.js)が持っているraw_handle(detect_target_windowが返したもの)を
+/// そのまま渡してもらい、Win32のSetForegroundWindowでそちらへフォーカスを
+/// 戻す。対象が見つかっていない(raw_handle=0や既に閉じられた等)場合は
+/// 何もしない。
+#[tauri::command(async)]
+fn focus_target_window(raw_handle: isize) {
+    if raw_handle == 0 {
+        return;
+    }
+    // pcwmp::set_foreground_window自体がWindows以外では何もしないスタブに
+    // なっているため、ここでcfg分岐する必要は無い(set_window_ownerと同じ
+    // パターン)。
+    pcwmp::set_foreground_window(raw_handle);
 }
 
 /// 「候補一覧から選ぶ」機能用。クラス名・パスの自動判定に頼らず、今動いている
@@ -703,6 +731,7 @@ pub fn run() {
             is_windows,
             is_auto_detect_available,
             detect_target_window,
+            focus_target_window,
             list_candidate_windows,
             get_relay_address,
             cfg_get,

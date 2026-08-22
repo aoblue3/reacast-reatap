@@ -59,6 +59,22 @@ const EMOJI_SET = [
   { id: 'arrowdown', char: '⬇️', label: '↓', anim: 'arrowDown' },
   { id: 'arrowright', char: '➡️', label: '→', anim: 'arrowRight' },
   { id: 'arrowleft', char: '⬅️', label: '←', anim: 'arrowLeft' },
+
+  // ---- ここからネガティブリアクション(ReaCast側の「受け付けるリアクション」
+  // 設定で既定OFFにしてある。DEFAULT_DISABLED_REACTION_IDS(control.js)参照) ----
+  { id: 'poop', char: '💩', label: 'うんち', anim: 'poop' },
+  { id: 'tengu', char: '👺', label: '天狗', anim: 'tengu' },
+  { id: 'angry', char: '😡', label: '怒り', anim: 'angry' },
+  { id: 'boo', char: '👎', label: 'ブーイング', anim: 'boo' },
+  { id: 'provoke', char: '🖕', label: '挑発', anim: 'provoke' },
+
+  // ---- ここから新規ポジティブリアクション(既定ON) ----
+  { id: 'bomb', char: '💣', label: '爆弾', anim: 'bomb' },
+  { id: 'firecracker', char: '🧨', label: '爆竹', anim: 'firecracker' },
+  { id: 'ramen', char: '🍜', label: 'ラーメン', anim: 'ramen' },
+  { id: 'sushi', char: '🍣', label: '寿司', anim: 'sushi' },
+  { id: 'cake', char: '🎂', label: 'おめでとう', anim: 'cake' },
+  { id: 'soccer', char: '⚽', label: 'サッカー', anim: 'soccer' },
 ];
 
 const EMOJI_BY_ID = new Map(EMOJI_SET.map((e) => [e.id, e]));

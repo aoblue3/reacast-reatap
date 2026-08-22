@@ -105,12 +105,26 @@ function formatHotkeyLabel(shortcut) {
     .join('+');
 }
 
+// 直近の検出で見つかった対象(pcwmp/PCRPlayer)のHWND。ボタンクリック後に
+// フォーカスを戻すために使う(onClickEmoji参照)。0は「対象なし」。
+let lastTargetRawHandle = 0;
+
 function onClickEmoji(emojiId) {
   const now = Date.now();
   if (now < mutedUntil) return;
   if (now - lastSentAt < DEBOUNCE_MS) return;
   lastSentAt = now;
   if (relayClient) relayClient.send({ type: 'reaction', emoji: emojiId });
+  // ボタンをクリックすると、このバー自身はfocused(false)で作っていても
+  // クリックそのものでOSからキーボードフォーカスを奪ってしまい、pcwmp/
+  // PCRPlayerのコメント入力欄からフォーカスが外れてしまう、というテスター
+  // 報告への対応。直近に検出できていた対象があれば、クリック直後にそちらへ
+  // フォーカスを戻す(対象が無い/まだ検出前の場合は何もしない)。
+  if (lastTargetRawHandle) {
+    invoke('focus_target_window', { rawHandle: lastTargetRawHandle }).catch(() => {
+      // 無視(フォーカスの戻し忘れ程度で、リアクション自体は既に送信済み)
+    });
+  }
 }
 
 function renderButtons() {
@@ -345,6 +359,19 @@ async function setBarVisible(visible) {
   }
 }
 
+// 配信者名を指定せずに接続している場合、対象ウィンドウの絞り込みが緩い
+// (系内のpcwmp/PCRPlayerクラスの窓を無条件に対象にする)ぶん、Windows側の
+// 描画タイミング(DWMの再合成中など)によって、ある1回のポーリング(250ms)
+// だけ一時的に検出に失敗することがある、というテスター報告があった
+// (「ボタン表示」で常時表示に切り替えると症状が止まる=hide()が呼ばれなく
+// なるだけで直る、という報告から、検出のチラつき自体が原因と判断した)。
+// 単発の検出漏れのたびにウィンドウをhide()/show()し直すとバーがチカチカ
+// 点滅して見えてしまうため、「見つかった」は即座に反映する一方、「見つから
+// なくなった」は既定では数回連続で検出に失敗した場合だけ実際に隠すように
+// し、単発のブレでは直前の表示状態を維持する(ヒステリシス)。
+const HIDE_AFTER_CONSECUTIVE_MISSES = 3; // 250ms x 3 = 750ms連続で検出できない場合のみ隠す
+let consecutiveMisses = 0;
+
 async function detectAndFollowOnce() {
   const target = await invoke('detect_target_window', {
     overridePath: manualOverridePath,
@@ -352,12 +379,21 @@ async function detectAndFollowOnce() {
     windowLabel: myLabel,
   });
   if (target && target.width > 0) {
+    consecutiveMisses = 0;
+    lastTargetRawHandle = target.raw_handle || 0;
     await reportStatus(true, target.title);
     if (followTarget) {
       await positionOverWindow(target);
     }
     await setBarVisible(true);
   } else {
+    consecutiveMisses += 1;
+    if (consecutiveMisses >= HIDE_AFTER_CONSECUTIVE_MISSES) {
+      // 対象を見失って久しい場合はraw_handleも捨てる。HWNDはOSに再利用される
+      // ことがあるため、古い値を持ち続けると閉じた後に別の(無関係な)
+      // ウィンドウへフォーカスを戻してしまう恐れがある(onClickEmoji参照)。
+      lastTargetRawHandle = 0;
+    }
     await reportStatus(false, '');
     // 対象がまだ見つかっていない間、以前は常にアイコンサイズへ縮めて表示し
     // 続けていたが、「対象が無い状態で画面のどこかにぽつんと表示され続けて
@@ -368,7 +404,7 @@ async function detectAndFollowOnce() {
     if (manualShow) {
       await shrinkToIconSize();
       await setBarVisible(true);
-    } else {
+    } else if (consecutiveMisses >= HIDE_AFTER_CONSECUTIVE_MISSES) {
       await setBarVisible(false);
     }
   }

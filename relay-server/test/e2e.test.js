@@ -129,6 +129,20 @@ async function run() {
     assert.strictEqual(stillMuted.type, 'muted');
     console.log('OK: ミュート中は再度muted通知が返り、配信者には転送されない');
 
+    // --- 8b. 接続を切ってすぐ繋ぎ直しても、ミュートはリセットされない
+    //     (以前は接続ごとにレート状態を持っていたため、切断→再接続するだけで
+    //     連打防止を無効化できてしまっていた不具合の再発防止テスト) ---
+    viewer.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const viewerReconnected = await connect();
+    send(viewerReconnected, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+    await nextMessage(viewerReconnected); // joined
+    await nextMessage(broadcaster); // viewerCount通知
+    send(viewerReconnected, { type: 'reaction', emoji: 'wwww' });
+    const stillMutedAfterReconnect = await nextMessage(viewerReconnected);
+    assert.strictEqual(stillMutedAfterReconnect.type, 'muted');
+    console.log('OK: 切断して繋ぎ直しても連打防止のミュートは引き継がれる(同一IP・同一部屋)');
+
     // --- 9. 他人の部屋に、broadcasterTokenが不一致な状態で登録し直そうとすると拒否される ---
     const impostor = await connect();
     send(impostor, {
@@ -186,7 +200,7 @@ async function run() {
     reclaimBroadcaster.close();
     console.log('OK: 配信者接続が切れている(放置された)部屋が持つ合言葉は、別の部屋が横取りできる');
 
-    viewer.close();
+    viewerReconnected.close();
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');
     clearTimeout(watchdog);

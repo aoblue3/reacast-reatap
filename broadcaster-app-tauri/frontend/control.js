@@ -24,7 +24,18 @@ const monitorSelectEl = document.getElementById('monitorSelect');
 const glyphSizeRangeEl = document.getElementById('glyphSizeRange');
 const glyphSizeValueEl = document.getElementById('glyphSizeValue');
 const glyphSizeResetBtn = document.getElementById('glyphSizeResetBtn');
+const glyphOpacityRangeEl = document.getElementById('glyphOpacityRange');
+const glyphOpacityValueEl = document.getElementById('glyphOpacityValue');
+const glyphOpacityResetBtn = document.getElementById('glyphOpacityResetBtn');
+const comboGrowthCheckboxEl = document.getElementById('comboGrowthCheckbox');
 const reactionToggleListEl = document.getElementById('reactionToggleList');
+
+// ネガティブなリアクション(荒らし対策で見たくない配信者もいるため)は、
+// 初回は「受け付けるリアクション」から既定でOFFにしておく。一度でも
+// disabledReactionIdsが保存されていれば(cfg_getが配列を返せば)そちらを
+// 常に優先するので、ここで既定OFFにしても、あとでユーザーがONに変更すれば
+// 次回以降もその選択が尊重される(下のIIFE内のロード処理を参照)。
+const DEFAULT_DISABLED_REACTION_IDS = ['poop', 'tengu', 'angry', 'boo', 'provoke'];
 const confirmOverlay = document.getElementById('confirmOverlay');
 const confirmMessageEl = document.getElementById('confirmMessage');
 const confirmOkBtn = document.getElementById('confirmOkBtn');
@@ -153,38 +164,66 @@ async function persistDisabledReactionIds() {
   await invoke('cfg_set', { key: 'disabledReactionIds', value: disabledReactionIds });
 }
 
-/** 「受け付けるリアクション」のチップ一覧を描画する。クリック(チップ全体、
- * またはチェックボックス単体)でON/OFFを切り替える。 */
+/** 1個分のリアクションチップ要素を作る(クリックでON/OFF切り替え)。 */
+function buildReactionChip(emoji) {
+  const enabled = isReactionEnabled(emoji.id);
+  const chip = document.createElement('label');
+  chip.className = 'rt-chip' + (enabled ? '' : ' rt-off');
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = enabled;
+  checkbox.addEventListener('change', async () => {
+    if (checkbox.checked) {
+      disabledReactionIds = disabledReactionIds.filter((id) => id !== emoji.id);
+    } else if (!disabledReactionIds.includes(emoji.id)) {
+      disabledReactionIds.push(emoji.id);
+    }
+    await persistDisabledReactionIds();
+    chip.classList.toggle('rt-off', !checkbox.checked);
+  });
+  chip.appendChild(checkbox);
+
+  const emojiSpan = document.createElement('span');
+  emojiSpan.className = 'rt-emoji';
+  emojiSpan.textContent = emoji.char;
+  chip.appendChild(emojiSpan);
+
+  chip.appendChild(document.createTextNode(emoji.label));
+
+  return chip;
+}
+
+/** 「受け付けるリアクション」のチップ一覧を描画する。通常リアクションを先に、
+ * マイナスリアクション(既定でOFFにしているもの、DEFAULT_DISABLED_REACTION_IDS)
+ * はその下に見出し付きでまとめて表示し、見分けやすくする。 */
 function renderReactionToggleList() {
   const emojiSet = window.EmojiSet.EMOJI_SET;
+  const negativeIds = new Set(DEFAULT_DISABLED_REACTION_IDS);
+  const normalEmojis = emojiSet.filter((emoji) => !negativeIds.has(emoji.id));
+  const negativeEmojis = emojiSet.filter((emoji) => negativeIds.has(emoji.id));
+
   reactionToggleListEl.innerHTML = '';
-  for (const emoji of emojiSet) {
-    const enabled = isReactionEnabled(emoji.id);
-    const chip = document.createElement('label');
-    chip.className = 'rt-chip' + (enabled ? '' : ' rt-off');
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = enabled;
-    checkbox.addEventListener('change', async () => {
-      if (checkbox.checked) {
-        disabledReactionIds = disabledReactionIds.filter((id) => id !== emoji.id);
-      } else if (!disabledReactionIds.includes(emoji.id)) {
-        disabledReactionIds.push(emoji.id);
-      }
-      await persistDisabledReactionIds();
-      chip.classList.toggle('rt-off', !checkbox.checked);
-    });
-    chip.appendChild(checkbox);
+  const normalGroup = document.createElement('div');
+  normalGroup.className = 'rt-group';
+  for (const emoji of normalEmojis) {
+    normalGroup.appendChild(buildReactionChip(emoji));
+  }
+  reactionToggleListEl.appendChild(normalGroup);
 
-    const emojiSpan = document.createElement('span');
-    emojiSpan.className = 'rt-emoji';
-    emojiSpan.textContent = emoji.char;
-    chip.appendChild(emojiSpan);
+  if (negativeEmojis.length > 0) {
+    const negativeHeading = document.createElement('div');
+    negativeHeading.className = 'rt-negative-heading';
+    negativeHeading.textContent = 'マイナスリアクション(既定では非表示):';
+    reactionToggleListEl.appendChild(negativeHeading);
 
-    chip.appendChild(document.createTextNode(emoji.label));
-
-    reactionToggleListEl.appendChild(chip);
+    const negativeGroup = document.createElement('div');
+    negativeGroup.className = 'rt-group';
+    for (const emoji of negativeEmojis) {
+      negativeGroup.appendChild(buildReactionChip(emoji));
+    }
+    reactionToggleListEl.appendChild(negativeGroup);
   }
 }
 
@@ -243,6 +282,41 @@ glyphSizeResetBtn.addEventListener('click', () => {
   glyphSizeRangeEl.value = '100';
   glyphSizeValueEl.textContent = '100%';
   invoke('set_overlay_glyph_scale', { scale: 1 });
+});
+
+/** 「スタンプの透明度」欄の初期値を、保存されている設定(無ければ既定100%)から
+ * 復元する。loadGlyphSizeと同じ構造。 */
+async function loadGlyphOpacity() {
+  const s = await invoke('get_overlay_settings');
+  const percent = Math.round((s.glyphOpacity ?? 1) * 100);
+  glyphOpacityRangeEl.value = String(percent);
+  glyphOpacityValueEl.textContent = `${percent}%`;
+}
+
+let glyphOpacityDebounceTimer = null;
+glyphOpacityRangeEl.addEventListener('input', () => {
+  const percent = Number(glyphOpacityRangeEl.value);
+  glyphOpacityValueEl.textContent = `${percent}%`;
+  clearTimeout(glyphOpacityDebounceTimer);
+  glyphOpacityDebounceTimer = setTimeout(() => {
+    invoke('set_overlay_glyph_opacity', { opacity: percent / 100 });
+  }, 120);
+});
+
+glyphOpacityResetBtn.addEventListener('click', () => {
+  glyphOpacityRangeEl.value = '100';
+  glyphOpacityValueEl.textContent = '100%';
+  invoke('set_overlay_glyph_opacity', { opacity: 1 });
+});
+
+/** 「連打すると大きくなる」チェックボックスの初期値を復元する。 */
+async function loadComboGrowth() {
+  const s = await invoke('get_overlay_settings');
+  comboGrowthCheckboxEl.checked = s.comboGrowthEnabled !== false;
+}
+
+comboGrowthCheckboxEl.addEventListener('change', () => {
+  invoke('set_overlay_combo_growth', { enabled: comboGrowthCheckboxEl.checked });
 });
 
 copyBtn.addEventListener('click', async () => {
@@ -346,15 +420,35 @@ async function connectRelay(creds, relayAddress, passphrase) {
 }
 
 (async () => {
-  const [creds, relayAddress, savedPassphrase, savedDisabled] = await Promise.all([
+  const [creds, relayAddress, savedPassphrase, savedDisabled, negativeDefaultsApplied] = await Promise.all([
     invoke('get_credentials'),
     invoke('get_relay_address'),
     invoke('cfg_get', { key: 'passphrase' }),
     invoke('cfg_get', { key: 'disabledReactionIds' }),
+    invoke('cfg_get', { key: 'negativeReactionsDefaultApplied' }),
   ]);
   credentials = creds;
   passphraseInputEl.value = typeof savedPassphrase === 'string' ? savedPassphrase : '';
   disabledReactionIds = Array.isArray(savedDisabled) ? savedDisabled : [];
+  // ネガティブリアクションの既定OFF化は「配列かどうか」では判定しない
+  // (以前はそう判定していたが、この機能が無かった旧バージョンで既に
+  // disabledReactionIdsが保存されていた場合に発動せず、ネガティブ項目が
+  // 既定でONのまま表示されてしまう不具合があった)。専用のフラグを1回だけ
+  // 見て、まだ適用していなければ、その時点でまだ触られていないネガティブ項目
+  // だけをOFF側に追加する(ユーザーが既に行った他の設定は壊さない)。
+  if (negativeDefaultsApplied !== true) {
+    let changed = false;
+    for (const id of DEFAULT_DISABLED_REACTION_IDS) {
+      if (!disabledReactionIds.includes(id)) {
+        disabledReactionIds.push(id);
+        changed = true;
+      }
+    }
+    await invoke('cfg_set', { key: 'negativeReactionsDefaultApplied', value: true });
+    if (changed) {
+      await persistDisabledReactionIds();
+    }
+  }
   renderStatus({
     relayConnected: false,
     viewerCount: 0,
@@ -365,6 +459,8 @@ async function connectRelay(creds, relayAddress, passphrase) {
   renderReactionToggleList();
   await loadMonitorSelect();
   await loadGlyphSize();
+  await loadGlyphOpacity();
+  await loadComboGrowth();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
   checkForUpdateOnStartup();
 })();

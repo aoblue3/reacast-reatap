@@ -153,8 +153,8 @@ mod win {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
-        IsWindowVisible, SendMessageTimeoutW, SetWindowLongPtrW, SMTO_ABORTIFHUNG,
-        GWLP_HWNDPARENT, WM_GETTEXT,
+        IsWindowVisible, SendMessageTimeoutW, SetForegroundWindow, SetWindowLongPtrW,
+        SMTO_ABORTIFHUNG, GWLP_HWNDPARENT, WM_GETTEXT,
     };
 
     /// ウィンドウのタイトルを安全に取得する。
@@ -318,6 +318,22 @@ mod win {
         }
     }
 
+    /// 指定ウィンドウを前面(フォアグラウンド)に戻す。リアクションバーの
+    /// ボタンをクリックすると(バー自身は`focused(false)`で作っていても)
+    /// クリックそのものでOSがバー側にキーボードフォーカスを渡してしまい、
+    /// pcwmp/PCRPlayerのコメント入力欄からフォーカスが外れてしまう、という
+    /// テスター報告への対応。呼び出し元(このアプリ)がクリックを受けて直前まで
+    /// フォアグラウンドだったプロセスであるため、Windowsのフォアグラウンド
+    /// 奪取制限(無関係なプロセスが勝手にSetForegroundWindowできない仕組み)には
+    /// 引っかからずに戻せる想定。失敗しても実害は無い(単に元の挙動に戻るだけ)
+    /// ため戻り値は無視する。
+    pub fn set_foreground_window(hwnd_raw: isize) {
+        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+        unsafe {
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+
     // MAX_PATHは将来の拡張(短いバッファへのフォールバック等)用に残しておく
     #[allow(dead_code)]
     const _MAX_PATH_HINT: u32 = MAX_PATH;
@@ -343,6 +359,11 @@ mod win {
     pub fn set_window_owner(_our_hwnd_raw: isize, _owner_hwnd_raw: isize) {
         // Windows以外では何もしない
     }
+
+    #[allow(dead_code)]
+    pub fn set_foreground_window(_hwnd_raw: isize) {
+        // Windows以外では何もしない
+    }
 }
 
 pub fn is_available() -> bool {
@@ -365,6 +386,12 @@ pub fn get_active_window() -> Option<WindowInfo> {
 #[allow(dead_code)]
 pub fn set_window_owner(our_hwnd_raw: isize, owner_hwnd_raw: isize) {
     win::set_window_owner(our_hwnd_raw, owner_hwnd_raw);
+}
+
+/// 指定ウィンドウ(pcwmp/PCRPlayer側)をフォアグラウンドに戻す。
+/// Windows以外では何もしない。
+pub fn set_foreground_window(hwnd_raw: isize) {
+    win::set_foreground_window(hwnd_raw);
 }
 
 pub fn detect_target_window(override_path: Option<&str>, name_filter: Option<&str>) -> Option<WindowInfo> {
