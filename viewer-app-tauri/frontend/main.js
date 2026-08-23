@@ -48,6 +48,10 @@ const emptyProfilesMsg = document.getElementById('emptyProfilesMsg');
 const defaultSettingsPanelEl = document.getElementById('defaultSettingsPanelEl');
 const defaultSettingsDetails = document.getElementById('defaultSettingsDetails');
 const reactionOrderListEl = document.getElementById('reactionOrderList');
+const barIconScaleInput = document.getElementById('barIconScaleInput');
+const barIconScaleValueEl = document.getElementById('barIconScaleValue');
+const barIconBgAlphaInput = document.getElementById('barIconBgAlphaInput');
+const barIconBgAlphaValueEl = document.getElementById('barIconBgAlphaValue');
 
 // デフォルト設定ひな形の<details>が開かれた瞬間に一度だけ中身を構築する
 // (renderProfileListImpl側は「開いている間だけ」再構築する省エネ仕様のため、
@@ -128,6 +132,10 @@ let reactionOrder = null;
 let hiddenReactionIds = [];
 let expandedProfileId = null;
 let statusPollTimer = null;
+// リアクションバーの見た目(アイコンの大きさ・背景の濃さ)。全配信者共通の設定
+// (reactionOrder/hiddenReactionIdsと同じ考え方。bar.js/bar.html参照)。
+let barIconScale = 1;
+let barIconBgAlpha = 0.55;
 
 // 「新規追加時の詳細設定ひな形(デフォルト値)」用の疑似プロファイルID。
 // getProfileSetting/setProfileSettingは`profile:${id}:${key}`というconfigキーに
@@ -167,6 +175,21 @@ async function persistReactionOrder() {
 }
 async function persistHiddenReactionIds() {
   await invoke('cfg_set', { key: 'hiddenReactionIds', value: hiddenReactionIds });
+}
+
+/** 現在「接続する」状態にあるすべての配信者のバーへ、設定変更を即座に
+ * 反映させる。notifyIfActive()を全プロファイル分まとめて呼ぶだけの
+ * ヘルパー(reactionOrder等、全プロファイル共通の設定を変更した直後に使う)。 */
+async function notifyAllActiveProfiles() {
+  for (const id of activeProfileIds) {
+    await notifyIfActive(id);
+  }
+}
+
+async function persistBarAppearance() {
+  await invoke('cfg_set', { key: 'barIconScale', value: barIconScale });
+  await invoke('cfg_set', { key: 'barIconBgAlpha', value: barIconBgAlpha });
+  await notifyAllActiveProfiles();
 }
 
 function renderReactionOrderList() {
@@ -235,6 +258,32 @@ function renderReactionOrderList() {
     row.appendChild(downBtn);
 
     reactionOrderListEl.appendChild(row);
+  });
+}
+
+/** 「リアクションバーの見た目」スライダー2つを、現在の値で表示し、
+ * 操作されたら保存・接続中の全バーへ即座に反映する。init()から一度だけ
+ * 呼ばれる(値自体はbarIconScale/barIconBgAlphaにグローバルに保持)。 */
+function initBarAppearanceControls() {
+  barIconScaleInput.value = String(barIconScale);
+  barIconScaleValueEl.textContent = `${Math.round(barIconScale * 100)}%`;
+  barIconBgAlphaInput.value = String(barIconBgAlpha);
+  barIconBgAlphaValueEl.textContent = `${Math.round(barIconBgAlpha * 100)}%`;
+
+  barIconScaleInput.addEventListener('input', () => {
+    barIconScaleValueEl.textContent = `${Math.round(Number(barIconScaleInput.value) * 100)}%`;
+  });
+  barIconScaleInput.addEventListener('change', async () => {
+    barIconScale = clamp(parseFloat(barIconScaleInput.value) || 1, 0.5, 2);
+    await persistBarAppearance();
+  });
+
+  barIconBgAlphaInput.addEventListener('input', () => {
+    barIconBgAlphaValueEl.textContent = `${Math.round(Number(barIconBgAlphaInput.value) * 100)}%`;
+  });
+  barIconBgAlphaInput.addEventListener('change', async () => {
+    barIconBgAlpha = clamp(parseFloat(barIconBgAlphaInput.value) || 0, 0, 1);
+    await persistBarAppearance();
   });
 }
 
@@ -1294,6 +1343,12 @@ async function init() {
   const savedHidden = await invoke('cfg_get', { key: 'hiddenReactionIds' });
   hiddenReactionIds = Array.isArray(savedHidden) ? savedHidden : [];
   renderReactionOrderList();
+
+  const savedIconScale = await invoke('cfg_get', { key: 'barIconScale' });
+  barIconScale = typeof savedIconScale === 'number' ? clamp(savedIconScale, 0.5, 2) : 1;
+  const savedIconBgAlpha = await invoke('cfg_get', { key: 'barIconBgAlpha' });
+  barIconBgAlpha = typeof savedIconBgAlpha === 'number' ? clamp(savedIconBgAlpha, 0, 1) : 0.55;
+  initBarAppearanceControls();
 
   const hostOverride = await invoke('cfg_get', { key: 'relayHostOverride' });
   relayHostInput.value = typeof hostOverride === 'string' ? hostOverride : '';

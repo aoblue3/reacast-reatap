@@ -122,11 +122,30 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // 残ってしまい、タスクマネージャーで強制終了しないと完全には終了できない
     // (ように見える)ことがある、という報告があったための対策。
     let app_handle = app.clone();
-    win.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { .. } = event {
+    // 最小化(OS標準の「_」ボタン、またはWin+Downなど)した瞬間を検知して、
+    // タスクバーに最小化アイコンとして残す代わりにウィンドウごと隠す
+    // (=タスクトレイのアイコンだけが残る状態にする)。「最小化した際に
+    // 右下のタスクバーに収まるようにしてほしい」という要望への対応。
+    //
+    // 重要: Tauriには「最小化された」を直接表す専用のWindowEventが無いため、
+    // Resizedイベント(最小化されると呼ばれる。OSが最小化時に極小サイズへの
+    // リサイズを行うため)をフックし、その時点でis_minimized()を確認して
+    // 実際に最小化状態になっていた場合だけhide()する、という回りくどい方法を
+    // 取る。hide()されたウィンドウはis_minimized()が意味を持たない状態になり、
+    // タスクバーからも消える(タスクトレイのアイコン左クリック/「配信者一覧を
+    // 開く」メニューで復元する。tray_builder参照)。
+    let win_for_minimize = win.clone();
+    win.on_window_event(move |event| match event {
+        tauri::WindowEvent::CloseRequested { .. } => {
             close_all_bar_windows(&app_handle);
             app_handle.exit(0);
         }
+        tauri::WindowEvent::Resized(_) => {
+            if win_for_minimize.is_minimized().unwrap_or(false) {
+                let _ = win_for_minimize.hide();
+            }
+        }
+        _ => {}
     });
 
     Ok(())
@@ -166,15 +185,24 @@ fn create_bar_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<()> {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        // 以前はtrueにしていたが、この枠なし透明ウィンドウの余白部分には
-        // data-tauri-drag-region(ドラッグ移動用)を付けてあるため、resizable=true
-        // のままだとその領域をダブルクリックした時にOS側の「最大化」動作が
-        // 発動してしまい、「追従なしでバーを動かそうとダブルクリックしたら
-        // 判定領域が画面いっぱいに巨大化して左上に移動する」という不具合の
-        // 原因になっていた。サイズは常にresize_windowコマンド(bar.js)経由で
+        // この枠なし透明ウィンドウの余白部分にはdata-tauri-drag-region
+        // (ドラッグ移動用)を付けてあり、そこをダブルクリックするとOS側の
+        // 「最大化」動作が発動してしまい、「追従なしでバーを動かそうと
+        // ダブルクリックしたら判定領域が画面いっぱいに巨大化して左上に移動する」
+        // という不具合があった。修正としてmaximizable(false)だけを指定する
+        // (最大化ボックスを持たないウィンドウはOSもダブルクリック最大化を
+        // 発動しない)。
+        //
+        // 重要: 以前はここに.resizable(false)も併せて指定していたが、これが
+        // 原因でこのウィンドウをdata-tauri-drag-regionでドラッグ移動すること
+        // 自体ができなくなる(=表示位置を変更できなくなる)不具合が実際に
+        // 発生した。サイズ自体は常にresize_windowコマンド(bar.js)経由で
         // プログラム側から決めており、ユーザーが手でリサイズする用途は元々
-        // 無いため、falseにしてリサイズ自体と最大化の両方を無効化する。
-        .resizable(false)
+        // 無いためresizableをfalseにしても実害は無いつもりだったが、Windows上の
+        // 挙動としてリサイズ不可のウィンドウはドラッグでの移動そのものも
+        // 一緒に効かなくなることがあるようだったため、resizableはtrueのまま
+        // (既定値)にして、最大化だけをmaximizable(false)でピンポイントに
+        // 抑止する形に改めた。
         .maximizable(false)
         .shadow(false)
         // 起動直後は対象ウィンドウの検出がまだ済んでいないため、いきなり

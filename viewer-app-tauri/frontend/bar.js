@@ -105,6 +105,34 @@ function formatHotkeyLabel(shortcut) {
     .join('+');
 }
 
+// data-tauri-drag-region属性(bar.html)によるウィンドウのドラッグ移動が、
+// 以前ここでresizable(false)を指定していた際にはWindows上で効かなくなる
+// (=表示位置を変更できなくなる)不具合が実際にあった(lib.rsのcreate_bar_window
+// 参照。今はresizable(false)自体を外して直してある)。念のための保険として、
+// data-tauri-drag-regionだけに頼らず、JS側からも明示的にウィンドウの移動を
+// 開始する(Tauriの公開APIであるstartDragging()は、data-tauri-drag-region自身も
+// 内部で使っている同じ仕組み)。ボタン(.emoji-btn)の上でのクリックは対象外にする
+// (リアクション送信の邪魔をしないため)。
+document.getElementById('reactionPanel').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest('.emoji-btn')) return;
+  getCurrentWindow()
+    .startDragging()
+    .catch(() => {
+      // 無視(data-tauri-drag-region側が既に処理できていれば問題ない)
+    });
+});
+
+// 「アイコンの大きさ」「アイコンの背景の濃さ」(main.jsの「リアクションバーの
+// 見た目」設定・全プロファイル共通)を、CSSカスタムプロパティ経由で反映する。
+// bar.html側の.emoji-btnがこれらの変数を参照している。
+function applyBarAppearance(scale, bgAlpha) {
+  const s = Number.isFinite(scale) && scale > 0 ? Math.min(2, Math.max(0.5, scale)) : 1;
+  const a = Number.isFinite(bgAlpha) ? Math.min(1, Math.max(0, bgAlpha)) : 0.55;
+  document.documentElement.style.setProperty('--icon-scale', String(s));
+  document.documentElement.style.setProperty('--icon-bg-alpha', String(a));
+}
+
 // 直近の検出で見つかった対象(pcwmp/PCRPlayer)のHWND。ボタンクリック後に
 // フォーカスを戻すために使う(onClickEmoji参照)。0は「対象なし」。
 let lastTargetRawHandle = 0;
@@ -432,6 +460,8 @@ async function reloadProfileSettings() {
     savedOrder,
     savedHidden,
     savedManualShow,
+    savedIconScale,
+    savedIconBgAlpha,
   ] = await Promise.all([
     invoke('cfg_get', { key: `profile:${profileId}:manualOverridePath` }),
     invoke('cfg_get', { key: `profile:${profileId}:followTarget` }),
@@ -443,6 +473,8 @@ async function reloadProfileSettings() {
     invoke('cfg_get', { key: 'reactionOrder' }),
     invoke('cfg_get', { key: 'hiddenReactionIds' }),
     invoke('cfg_get', { key: `profile:${profileId}:manualShow` }),
+    invoke('cfg_get', { key: 'barIconScale' }),
+    invoke('cfg_get', { key: 'barIconBgAlpha' }),
   ]);
 
   manualOverridePath = typeof savedManualOverride === 'string' ? savedManualOverride : null;
@@ -459,6 +491,10 @@ async function reloadProfileSettings() {
   reactionOrder = Array.isArray(savedOrder) ? savedOrder : null;
   hiddenReactionIds = Array.isArray(savedHidden) ? savedHidden : [];
   manualShow = savedManualShow === true;
+  applyBarAppearance(
+    typeof savedIconScale === 'number' ? savedIconScale : 1,
+    typeof savedIconBgAlpha === 'number' ? savedIconBgAlpha : 0.55
+  );
 
   // 配信者名・表示名がメインウィンドウ側で編集されている可能性があるため、
   // プロファイル本体の情報も読み直す(合言葉は接続済みの場合変更不可の扱いな

@@ -73,6 +73,13 @@ const ANIM_PRESETS = {
     motion: 'rise',
     riseFactor: 0.9,
     durationFactor: 0.9,
+    // 「もっとパチパチパチと拍手するように」という要望への対応。自己アニメーション
+    // (anim-clap。overlay.html参照)自体を細かい拍手を複数回連続で刻む内容に
+    // 描き直した上、既定(duration*0.42・3回ループ)より速いテンポで多めに
+    // ループさせることで「連打で手を叩いている」感を強める
+    // (glyphAnimDurationFactor/glyphAnimIterations。spawnReaction参照)。
+    glyphAnimDurationFactor: 0.3,
+    glyphAnimIterations: 5,
     particles: { shape: 'streak', count: 6, spread: 42, life: 550, color: 'rgba(255,248,214,0.9)' },
   },
   heartbeat: {
@@ -112,8 +119,16 @@ const ANIM_PRESETS = {
     randomFlip: true,
     particles: { shape: 'confetti', count: 16, life: 1100, drift: 'burst' },
   },
-  // 💀 死んだ: その場でくずおれるように少しだけ沈む(上がらない)
-  faint: { motion: 'collapse', riseFactor: 0.5, durationFactor: 1.1, noOuterRotate: true },
+  // 💀 死んだ: その場でくずおれるように少しだけ沈む(上がらない)。
+  // fullRangeY: 画面下部だけでなく、画面のどこにでも現れるようにする
+  // (要望: 「こちらも下部でしか表示されないのでどこでも表示するように」)。
+  faint: {
+    motion: 'collapse',
+    riseFactor: 0.5,
+    durationFactor: 1.1,
+    noOuterRotate: true,
+    fullRangeY: true,
+  },
   // 🥺 お願い: キラキラの粒は不要とのことなので削除(動き自体はそのまま)
   plead: {
     motion: 'rise',
@@ -162,12 +177,15 @@ const ANIM_PRESETS = {
     durationFactor: 1.5,
     particles: { shape: 'glyph', glyphs: ['💭'], count: 2, spread: 22, life: 1300, drift: 'up' },
   },
-  // 🆗 OK: その場にハンコを押すようにドンと出て、あまり動かず消える
+  // 🆗 OK: その場にハンコを押すようにドンと出て、あまり動かず消える。
+  // fullRangeY: 画面下部だけでなく、画面のどこにでも現れるようにする
+  // (要望: 「今下部にしか表示されないのでどこでも出るようにして」)。
   ok: {
     motion: 'collapse',
     riseFactor: 0.3,
     durationFactor: 0.85,
     noOuterRotate: true,
+    fullRangeY: true,
     glyphAnim: 'stamp',
     particles: { shape: 'ring', life: 380, small: true },
   },
@@ -229,18 +247,16 @@ const ANIM_PRESETS = {
     durationFactor: 1.15,
     noOuterRotate: true,
   },
-  // 👺: 左から右へ勢いよく進む。到着した瞬間に、鼻の先あたりから右方向へ
-  // レーザー光線のようなビームを1本出す(particleOffsetX/Yで発生位置を
-  // 絵文字の中心から「鼻先」寄りにずらしている)。
+  // 👺: 左から右へ勢いよく進み、そのまま少し留まったあと、消える間際に
+  // その場で弾けて爆発するように消滅する(explodeAtEnd。spawnReaction参照)。
+  // 以前はレーザービーム演出を到着直後に出していたが「ダサい」との要望で廃止。
   tengu: {
     motion: 'sideIn',
     forceFromLeft: true,
     riseFactor: 1,
     durationFactor: 0.85,
     glyphAnim: 'dash',
-    particleOffsetX: 0.4,
-    particleOffsetY: -0.1,
-    particles: { shape: 'laser', life: 420, thickness: 5, color: 'rgba(255,60,60,0.95)' },
+    explodeAtEnd: true,
   },
   // 😡: プルプルと震えながら怒りの湯気(パーティクル)を上げる
   angry: {
@@ -285,14 +301,17 @@ const ANIM_PRESETS = {
     glyphAnim: 'firecracker',
     particles: { shape: 'dot', color: '#ffb347', count: 8, spread: 32, life: 500, drift: 'burst' },
   },
-  // 🍜: ふわふわ左右に揺れながら上がっていく。湯気に見立てた薄い粒を添える
+  // 🍜: ふわふわ左右に揺れながら上がっていく。steam: 絵文字のすぐ上に、
+  // 表示されている間ずっと絵文字自身を追尾する湯気エフェクトを付ける
+  // (以前は開始位置に1回だけ薄い粒を飛ばすだけで、動く絵文字には
+  // 追従していなかった。spawnReaction参照)。
   ramen: {
     motion: 'rise',
     riseFactor: 0.9,
     driftFactor: 1.7,
     durationFactor: 1.35,
     glyphAnim: 'sway',
-    particles: { shape: 'dot', color: 'rgba(255,255,255,0.55)', count: 4, spread: 16, life: 1100, drift: 'up' },
+    steam: true,
   },
   // 🍣: 勢いよく登場してその場にどんと構える(🆗のスタンプ演出違いバージョン)。
   // fullRangeY: 画面下部だけでなく、画面のどこにでも現れるようにする。
@@ -669,46 +688,84 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
   }
 
   if (motion === 'fallBounce') {
-    // 💩: 上から落ちてきて、着地の瞬間に2回小さくバウンドしてから止まる。
+    // 💩: 上から落ちてきて、着地後に何度かバウンドしながら自然に静止する。
     //
-    // 元の実装では、最初のwaypoint(落下そのもの)がrAFで即座に適用される
-    // (下のspawnReaction側の仕様: waypoints[0]はatMsを無視して生成直後に
-    // 反映される)にもかかわらず、そのtransition時間には短いlegDuration
-    // 1区間分しか使っていなかったため、意図(atMs: legDuration*3という
-    // 記述)よりずっと速く落ちてしまっていた。「落ちるスピードが早すぎる」
-    // という指摘の原因だったので、落下区間だけ専用の長いtransition時間
-    // (fallLegMs)を持たせ、そのぶん後続のバウンド区間のatMsも後ろにずらす。
-    // バウンド自体のテンポ(legMs)は従来通り短いまま(そこは速くていい)。
+    // 以前はバウンドの高さ・タイミングを固定値で書いたスクリプト演出だった
+    // ため「物理エンジンが乗っているみたいに自然に」という要望に対しては
+    // いかにも作り物めいた動きに見えていた。⚽(ballBounce。下記参照)と
+    // 同じ考え方で、重力・反発係数による刻み時間シミュレーションに置き換える
+    // (縦方向のみの単純な1次元シミュレーション)。
     const startX = Math.random() * (vw - size);
     const startY = Math.random() * (vh * 0.15);
+    // groundYは開始位置からの相対的な落下距離(=床のY座標)。シミュレーションは
+    // この相対座標系(y=0が開始位置)で行う。
     const groundY = clampFallDistance(startY, (vh * 0.62 + size) * riseFactor, vh, size);
-    // 落下区間・バウンド区間それぞれのtransition時間を、全体の表示時間(duration)
-    // に対する割合で直接指定する(bounce区間は従来通りテンポよく、落下区間
-    // だけ長めに取ることで「半分くらいのスピード」の体感にする)。
-    // 合計(fallLegMs + bounceLegMs*4)がフェードアウト開始(duration*0.75)より
-    // 十分前に収まるよう按分してある。
-    const fallLegMs = Math.round(duration * 0.38);
-    const bounceLegMs = Math.round(duration * 0.07);
-    const bounce1 = groundY * 0.22;
-    const bounce2 = groundY * 0.09;
-    const fallAt = fallLegMs;
-    const bounce1At = fallAt + bounceLegMs;
-    const bounce2At = bounce1At + bounceLegMs;
-    const bounce3At = bounce2At + bounceLegMs;
-    const settleAt = bounce3At + bounceLegMs;
-    const waypoints = [
-      { atMs: fallAt, legMs: fallLegMs, transform: `translate(0, ${groundY}px) rotate(${rotate * 0.3}deg) scale(1.12, 0.85)` },
-      { atMs: bounce1At, legMs: bounceLegMs, transform: `translate(0, ${groundY - bounce1}px) rotate(${rotate * 0.2}deg) scale(0.94, 1.06)` },
-      { atMs: bounce2At, legMs: bounceLegMs, transform: `translate(0, ${groundY}px) rotate(${rotate * 0.15}deg) scale(1.08, 0.92)` },
-      { atMs: bounce3At, legMs: bounceLegMs, transform: `translate(0, ${groundY - bounce2}px) rotate(${rotate * 0.05}deg) scale(0.97, 1.03)` },
-      { atMs: settleAt, legMs: bounceLegMs, transform: `translate(0, ${groundY}px) rotate(0deg) scale(1)` },
-    ];
+
+    let y = 0;
+    let vy = 0;
+    // 重力は「どれだけ落ちるか(groundY)」に比例させ、距離が長いほど自然に
+    // 加速して見えるようにする(距離が短い場合でも最低限の落下感は出るよう
+    // 下限を設ける)。
+    const gravity = Math.max(2200, groundY * 11);
+    // 💩は⚽ほど勢いよく弾まないよう、反発係数はやや控えめにする。
+    const restitution = 0.38 + Math.random() * 0.14;
+    const dtMs = 45;
+    const dt = dtMs / 1000;
+    const simBudgetMs = Math.round(duration * 0.72);
+    const wobbleDir = Math.random() < 0.5 ? -1 : 1;
+
+    const waypoints = [];
+    let t = 0;
+    let bounces = 0;
+    let settled = false;
+    while (t < simBudgetMs && bounces < 6 && !settled) {
+      vy += gravity * dt;
+      y += vy * dt;
+      let squishX = 1;
+      let squishY = 1;
+      if (y >= groundY) {
+        y = groundY;
+        vy = -vy * restitution;
+        bounces++;
+        // 着地の瞬間だけ、潰れて見えるよう横に少し広がらせる(バウンドの
+        // 弾力感を出すための演出。物理量としては簡略化した近似)。
+        squishX = 1.16;
+        squishY = 0.82;
+        if (Math.abs(vy) < 55) {
+          vy = 0;
+          settled = true;
+        }
+      }
+      // 着地の反動が残っている間だけ、ごく小さく左右に揺れる(要望通り
+      // noOuterRotateのままなので、この揺れはpreset側の大きなランダム回転
+      // (rotate変数)とは別に、ここだけで完結する軽いぶれとして加える)。
+      const wobble = wobbleDir * Math.min(9, Math.abs(vy) * 0.012);
+      t += dtMs;
+      waypoints.push({
+        atMs: t,
+        legMs: dtMs,
+        transform: `translate(0, ${y}px) rotate(${wobble}deg) scale(${squishX}, ${squishY})`,
+      });
+    }
+    if (settled) {
+      // 最後に潰れ形状から通常の見た目へ戻す一手を足しておく(バウンド直後の
+      // 潰れたままのシルエットで静止させないため)。
+      waypoints.push({
+        atMs: t + dtMs,
+        legMs: dtMs,
+        transform: `translate(0, ${groundY}px) rotate(0deg) scale(1)`,
+      });
+    }
+    if (waypoints.length === 0) {
+      waypoints.push({ atMs: dtMs, legMs: dtMs, transform: 'translate(0, 0) rotate(0deg) scale(1)' });
+    }
+
     return {
       startX,
       startY,
       initialTransform: 'translate(0, 0) rotate(0deg) scale(0.7)',
-      moveDuration: fallLegMs,
-      easing: 'cubic-bezier(.5,0,.85,1)',
+      moveDuration: dtMs,
+      easing: 'linear',
       waypoints,
       endX: startX,
       endY: startY + groundY,
@@ -792,7 +849,10 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const rightX = Math.max(leftX, vw - marginX - size);
 
     const edge = ['top', 'bottom', 'left', 'right'][Math.floor(Math.random() * 4)];
-    const speed = (vw + vh) * (0.32 + Math.random() * 0.22) * riseFactor;
+    // 「ボールの勢いをもう少し早めで」という要望に対応し、速度レンジを底上げ
+    // する(重力(下記gravity)はspeedに比例させてあるので、速くしても
+    // 軌道の「見た目のバランス」自体は保たれる)。
+    const speed = (vw + vh) * (0.42 + Math.random() * 0.26) * riseFactor;
     let x, y, vx, vy;
     if (edge === 'top') {
       x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
@@ -803,7 +863,11 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
       x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
       y = floorY;
       vx = (Math.random() - 0.5) * speed * 0.7;
-      vy = -speed * 0.85;
+      // 「下から上に投げ込まれるのが無い」という指摘への対応: 以前は上向きの
+      // 初速がvy=-speed*0.85にとどまっており、直後の重力で早々に引き戻されて
+      // 目立たなかった。画面下端から明確に高く跳ね上がって見えるよう初速を
+      // 強める。
+      vy = -speed * 1.05;
     } else if (edge === 'left') {
       x = leftX;
       y = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
@@ -822,7 +886,13 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const restitution = 0.56 + Math.random() * 0.12;
     const dtMs = 45;
     const dt = dtMs / 1000;
-    const simBudgetMs = Math.round(duration * 0.6);
+    // 「終わる1秒前ぐらいに突然その場で止まる」という指摘への対応: 以前は
+    // duration*0.6でシミュレーションを打ち切っていたため、フェードアウト
+    // 開始(duration*0.75)より前に静止画のまま浮いた状態で数秒残っていた。
+    // フェードアウトが終わる直前まで物理シミュレーションを続行させることで、
+    // 「表示されている間ずっと動き続けている」ように見せる(自然に静止した
+    // 場合は従来通りsettledで打ち切られるので、無理に動かし続けるわけではない)。
+    const simBudgetMs = Math.round(duration * 0.92);
 
     const waypoints = [];
     let t = 0;
@@ -946,9 +1016,14 @@ function spawnReaction(emojiId) {
   // ため、拍手が弾む・炎がチラつく等の「絵文字ごとの自己アニメーション」が
   // 実際には一度も再生されていなかった(外側el側の移動だけが見えていた)。
   glyph.style.animationName = `anim-${glyphAnimKey}`;
-  glyph.style.animationDuration = `${Math.max(400, duration * 0.42)}ms`;
-  glyph.style.animationIterationCount =
-    glyphAnimKey === 'faint' || glyphAnimKey === 'stamp' ? '1' : '3';
+  // preset.glyphAnimDurationFactor/glyphAnimIterations: 個別のリアクションだけ
+  // 自己アニメーションのテンポ・ループ回数を既定値から変えたい場合に使う
+  // (例: 👏拍手は「もっとパチパチパチと」という要望に応え、既定より速いテンポで
+  // 多めにループさせている。clapプリセット参照)。
+  const glyphAnimDurationFactor = preset.glyphAnimDurationFactor ?? 0.42;
+  glyph.style.animationDuration = `${Math.max(300, duration * glyphAnimDurationFactor)}ms`;
+  const defaultIterations = glyphAnimKey === 'faint' || glyphAnimKey === 'stamp' ? 1 : 3;
+  glyph.style.animationIterationCount = String(preset.glyphAnimIterations ?? defaultIterations);
   glyph.style.animationTimingFunction = 'ease-in-out';
   glyph.style.animationFillMode = 'both';
 
@@ -966,6 +1041,28 @@ function spawnReaction(emojiId) {
     glyphHost = flipWrap;
   }
   el.appendChild(glyphHost);
+
+  // 🍜ラーメン向け: 湯気エフェクトを絵文字のすぐ上に追加する。.reaction-item(el)
+  // 自身の子要素として追加することで、el側のtransform(移動アニメーション)が
+  // そのままこの湯気にも(親子関係により自動的に)効き、「絵文字を追尾する」
+  // 動きを別途実装しなくても実現できる。湯気自体のふわふわ上昇・フェードは
+  // CSSの@keyframes steam-rise(overlay.html参照)でelとは独立にループさせる
+  // (表示されている間ずっと絵文字の上に居続ける)。
+  if (preset.steam) {
+    const puffCount = 3;
+    for (let i = 0; i < puffCount; i++) {
+      const puff = document.createElement('span');
+      puff.className = 'steam-puff';
+      const puffSize = Math.max(6, size * 0.22);
+      puff.style.width = `${puffSize}px`;
+      puff.style.height = `${puffSize}px`;
+      puff.style.marginLeft = `${-puffSize / 2}px`;
+      puff.style.setProperty('--puff-x', `${(i - 1) * (size * 0.16)}px`);
+      puff.style.animationDelay = `${i * 300}ms`;
+      puff.style.animationDuration = `${1100 + i * 150}ms`;
+      el.appendChild(puff);
+    }
+  }
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -1014,6 +1111,29 @@ function spawnReaction(emojiId) {
       // 爆発の瞬間、絵文字自体も一瞬弾けて消えるようにする
       el.style.transition = 'transform 260ms ease-out, opacity 260ms ease-out';
       el.style.transform += ' scale(1.6)';
+      el.style.opacity = '0';
+    }, explodeDelay);
+  }
+
+  // 👺天狗専用: レーザービームの代わりに、消える間際(フェードアウトが始まる
+  // 直前あたり)にその場で弾けて爆発するように消滅させる。sideInは登場後
+  // 位置が変わらないまま止まっているので、最終到達位置(path.endX/endY)を
+  // 使えばよい(bomb向けのexplodeDelayRangeMs処理と同じ考え方)。
+  if (preset.explodeAtEnd) {
+    const explodeDelay = Math.max(path.moveDuration + 50, duration * 0.72);
+    const explodeX = path.endX + size / 2;
+    const explodeY = path.endY + size / 2;
+    setTimeout(() => {
+      if (!el.isConnected) return;
+      spawnParticles({ shape: 'ring', life: 420 }, explodeX, explodeY, size * 1.2);
+      spawnParticles(
+        { shape: 'dot', color: '#ff5252', count: 10, spread: 34, life: 480, drift: 'burst' },
+        explodeX,
+        explodeY,
+        size
+      );
+      el.style.transition = 'transform 220ms ease-out, opacity 220ms ease-out';
+      el.style.transform += ' scale(1.5)';
       el.style.opacity = '0';
     }, explodeDelay);
   }

@@ -6,6 +6,8 @@ pub mod updater;
 use config_store::ConfigStore;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 /// オーバーレイの「最前面取り直し」を、リアクションが実際に飛んできた直後だけ
@@ -262,10 +264,23 @@ fn create_control_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // なのでアプリ全体が終了せず、タスクマネージャーで強制終了しないと落とせない
     // 状態になっていた。コントロールパネルを閉じたらアプリ全体を終了するようにする。
     let app_handle = app.clone();
-    win.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { .. } = event {
+    // 最小化した際は、タスクバーに最小化アイコンとして残す代わりにウィンドウ
+    // ごと隠す(=タスクトレイのアイコンだけが残る状態にする)。配信中は
+    // コントロールパネルを閉じずに(オーバーレイ・配信自体は継続したまま)
+    // 邪魔にならないよう隠しておきたい、という要望への対応。
+    // 詳しい理由はviewer-app-tauri/src-tauri/src/lib.rsのcreate_main_window
+    // 内の同種のコメントを参照(Resizedイベントを使う回りくどい理由も同じ)。
+    let win_for_minimize = win.clone();
+    win.on_window_event(move |event| match event {
+        tauri::WindowEvent::CloseRequested { .. } => {
             app_handle.exit(0);
         }
+        tauri::WindowEvent::Resized(_) => {
+            if win_for_minimize.is_minimized().unwrap_or(false) {
+                let _ = win_for_minimize.hide();
+            }
+        }
+        _ => {}
     });
 
     Ok(())
@@ -560,6 +575,77 @@ pub fn run() {
             let handle = app.handle().clone();
             create_overlay_window(&handle)?;
             create_control_window(&handle)?;
+
+            // タスクトレイに常駐アイコンを出す。コントロールパネルを最小化すると
+            // ウィンドウごと隠れる(create_control_window参照)ため、再度開く・
+            // 終了するための手段としてこのアイコンが唯一の入口になる
+            // (viewer-app-tauri/src-tauri/src/lib.rsの同種の実装を踏襲)。
+            let open_item =
+                MenuItem::with_id(&handle, "open", "コントロールパネルを開く", true, None::<&str>)?;
+            let minimize_item = MenuItem::with_id(
+                &handle,
+                "minimize",
+                "コントロールパネルを隠す",
+                true,
+                None::<&str>,
+            )?;
+            let quit_item = MenuItem::with_id(
+                &handle,
+                "quit",
+                "終了(配信の受信・オーバーレイ表示も終了します)",
+                true,
+                None::<&str>,
+            )?;
+
+            let tray_menu = Menu::with_items(&handle, &[&open_item, &minimize_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .tooltip("ReaCast(起動中)\n左クリックでコントロールパネルを表示します")
+                .on_menu_event(move |app, event| {
+                    let id = event.id.as_ref();
+                    match id {
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        "minimize" => {
+                            if let Some(w) = app.get_webview_window("control") {
+                                let _ = w.hide();
+                            }
+                        }
+                        "open" => {
+                            if let Some(w) = app.get_webview_window("control") {
+                                let _ = w.unminimize();
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("control") {
+                            let _ = w.unminimize();
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                });
+            if let Some(icon) = handle.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+            // トレイアイコンはあくまで補助機能なので、環境によって作成に失敗しても
+            // (例: デスクトップ環境にトレイが無い等)アプリ本体は起動を続ける。
+            if let Err(e) = tray_builder.build(&handle) {
+                log::warn!("tray icon creation failed (continuing without it): {e}");
+            }
 
             Ok(())
         })

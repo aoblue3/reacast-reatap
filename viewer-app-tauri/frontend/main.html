@@ -288,6 +288,19 @@
     <h1>表示するリアクション・並び順</h1>
     <p style="margin: 0 0 4px;">ここでの表示/非表示・並び順はすべての配信者で共通です(ホットキーは配信者ごとに「詳細設定」から設定します)。</p>
     <div id="reactionOrderList"></div>
+
+    <hr />
+
+    <h1>リアクションバーの見た目</h1>
+    <p style="margin: 0 0 4px;">ここでの設定もすべての配信者で共通です。表示位置は各配信者の「詳細設定」から個別に設定してください。</p>
+    <div class="field-row">
+      <label for="barIconScaleInput">アイコンの大きさ: <span id="barIconScaleValue"></span></label>
+      <input type="range" id="barIconScaleInput" min="0.5" max="2" step="0.05" style="width: 220px;" />
+    </div>
+    <div class="field-row">
+      <label for="barIconBgAlphaInput">アイコン背景の濃さ: <span id="barIconBgAlphaValue"></span></label>
+      <input type="range" id="barIconBgAlphaInput" min="0" max="1" step="0.05" style="width: 220px;" />
+    </div>
   </div>
 
   <!-- 削除確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの

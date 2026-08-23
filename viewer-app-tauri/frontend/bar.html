@@ -53,8 +53,12 @@
   }
   .emoji-btn {
     position: relative;
-    font-size: 24px;
-    background: rgba(20,20,24,0.55);
+    /* --icon-scale/--icon-bg-alphaはbar.jsのapplyBarAppearance()が、
+       main.jsの「リアクションバーの見た目」設定(全配信者共通)に応じて
+       :root(document.documentElement)へ設定するCSSカスタムプロパティ。
+       未設定時の既定値はそれぞれ1(等倍)・0.55(従来通りの濃さ)。 */
+    font-size: calc(24px * var(--icon-scale, 1));
+    background: rgba(20,20,24,var(--icon-bg-alpha, 0.55));
     border: none;
     border-radius: 8px;
     padding: 4px 8px;
