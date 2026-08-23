@@ -1,6 +1,6 @@
 mod config_store;
 mod pcwmp;
-mod updater;
+pub mod updater;
 
 use config_store::ConfigStore;
 use std::sync::atomic::{AtomicBool, Ordering};

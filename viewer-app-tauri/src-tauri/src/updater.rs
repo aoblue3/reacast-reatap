@@ -4,16 +4,27 @@
 //! 前提になっており、「ダブルクリックでそのまま起動できる単体exe」というこの
 //! アプリの配布方針とは相容れない(公式ドキュメント: インストーラ形式の
 //! アップデート成果物が無いと動かない)。そのため、ここでは昔ながらの
-//! 「新しいexeを一旦別名でダウンロード→自分自身が終了→ヘルパースクリプトが
+//! 「新しいexeを一旦別名でダウンロード→自分自身が終了→差し替え役が
 //! ファイルを差し替えて再起動」という手作りの方式で実現している。
 //!
 //! 全体の流れ:
 //! 1. `check_for_update` - GitHub Releasesの最新リリースAPIを叩き、
 //!    現在のバージョンより新しいものがあれば情報を返す。
 //! 2. `download_and_apply_update` - 新しいexeをダウンロードし(SHA256が
-//!    取得できていれば検証し)、PowerShellの小さなヘルパースクリプトを
-//!    起動してから自分自身は終了する。ヘルパースクリプトが、このプロセスの
-//!    終了を待ってからexeを差し替え、再起動する。
+//!    取得できていれば検証し)、**ダウンロードした新exe自身**を特別な
+//!    コマンドライン引数付きで起動してから自分自身は終了する。その新exeが
+//!    (`handle_apply_update_cli_if_present`)、このプロセスの終了を待って
+//!    からexeを差し替え、改めて自分自身(正しい場所にコピーされた後の版)を
+//!    起動する。
+//!
+//! 過去にはこのステップ2をPowerShellの小さなヘルパースクリプトを書き出して
+//! 実行する方式で実装していたが、テスターの環境でこのスクリプトが
+//! (ログの1行目すら書き込まれないまま)一切実行された形跡が無いまま
+//! アプリだけが終了する不具合が繰り返し発生した。「Tempに書き出した
+//! スクリプトをpowershell -ExecutionPolicy Bypassで実行する」という
+//! パターンはマルウェアの典型的な挙動とも重なるため、セキュリティソフトや
+//! 組織のポリシーによってPowerShellの実行自体がブロックされていた可能性が
+//! 高いと判断し、外部のスクリプトエンジンを一切使わない今の方式に変更した。
 //!
 //! 注意点(使い方ガイドにも記載):
 //! - Program Filesのような書き込み権限が無い場所に置いて実行していると、
@@ -24,6 +35,10 @@
 //! - ビルド時に`APP_VERSION`/`UPDATE_CHECK_REPO`環境変数が設定されていない
 //!   場合(ローカルでの開発ビルドなど)は、アップデート確認機能そのものを
 //!   無効化する(常に「更新なし」を返す)。
+//! - この新しい方式は、ダウンロードした新exe自身に差し替えロジックが
+//!   入っている前提のため、**この方式を含んだバージョンに一度手動で更新した
+//!   後の、次回以降の自動アップデートから**有効になる(今動いている旧い
+//!   バージョンには、この新しい差し替えロジック自体がまだ入っていないため)。
 
 use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
@@ -172,116 +187,201 @@ pub async fn check_for_update() -> Result<Option<UpdateInfo>, String> {
 
 #[cfg(target_os = "windows")]
 mod apply {
+    use std::io::Write;
     use std::os::windows::process::CommandExt;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::time::Duration;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-    /// 新exe(new_exe_path)を現在のexe(current_exe_path)へ差し替えて再起動する
-    /// ヘルパー(PowerShellスクリプト)を書き出し、デタッチした状態で起動する。
-    /// 呼び出し元は、この関数が成功を返した直後に自分自身を終了させること
-    /// (このプロセスが終了してファイルの占有が外れないと差し替えができない)。
-    pub fn spawn_swap_and_relaunch_helper(
-        current_pid: u32,
-        new_exe_path: &std::path::Path,
-        current_exe_path: &std::path::Path,
-    ) -> std::io::Result<()> {
-        let script_path = std::env::temp_dir().join(format!("reatap-update-{current_pid}.ps1"));
-        // このヘルパーはアプリ自身が終了した後にバックグラウンドで動くため、
-        // 途中で失敗しても(旧実装のように$ErrorActionPreference =
-        // 'SilentlyContinue'で全部握りつぶすと)ユーザーにもこちらにも一切
-        // 分からない。「差し替え後、アプリが再起動されない」という報告の原因
-        // 切り分けができるよう、各ステップの結果を一時フォルダ内のログファイル
-        // に残すようにする(スクリプト自身は最後に自己削除するが、ログファイルは
-        // 残す)。
-        let log_path = std::env::temp_dir().join(format!("reatap-update-{current_pid}.log"));
-        let script = format!(
-            r#"
-$logPath = '{log}'
-function Log($msg) {{
-    try {{ Add-Content -Path $logPath -Value ("{{0}} {{1}}" -f (Get-Date -Format 'HH:mm:ss'), $msg) -ErrorAction SilentlyContinue }} catch {{}}
-}}
-Log 'helper started'
-while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
-    Start-Sleep -Milliseconds 300
-}}
-Log 'old process exited'
-# 多重起動防止(single-instance)の仕組みが、旧プロセスの終了直後にはまだ
-# 完全に解放されていない可能性を考慮し、コピー前に少しだけ間を置く。
-Start-Sleep -Milliseconds 800
-Log 'copying new exe'
-$copied = $false
-for ($i = 0; $i -lt 20; $i++) {{
-    try {{
-        Copy-Item -Path '{new_exe}' -Destination '{current_exe}' -Force -ErrorAction Stop
-        $copied = $true
-        Log "copy succeeded (attempt $i)"
-        break
-    }} catch {{
-        Log "copy attempt $i failed: $($_.Exception.Message)"
-        Start-Sleep -Milliseconds 500
-    }}
-}}
-if (-not $copied) {{
-    Log 'copy failed after all retries; will try to relaunch the existing exe as-is'
-}}
-Remove-Item -Path '{new_exe}' -Force -ErrorAction SilentlyContinue
-# Start-Processは呼び出しが成功しても、起動直後に(多重起動防止の判定が
-# まだ旧プロセスを「起動中」とみなしている等の理由で)新しいプロセスが
-# 即座に終了してしまうことがありうるため、起動後に本当にプロセスが
-# 生き残っているかを確認し、生き残っていなければ間隔を空けて再試行する。
-$launched = $false
-for ($j = 0; $j -lt 3; $j++) {{
-    try {{
-        Start-Process -FilePath '{current_exe}' -ErrorAction Stop
-        Log "Start-Process attempt $j: launch call succeeded, verifying it stayed running"
-    }} catch {{
-        Log "Start-Process attempt $j: launch call itself failed: $($_.Exception.Message)"
-        Start-Sleep -Milliseconds 1500
-        continue
-    }}
-    Start-Sleep -Milliseconds 1500
-    $running = Get-Process | Where-Object {{ $_.Path -eq '{current_exe}' }} | Select-Object -First 1
-    if ($running) {{
-        $launched = $true
-        Log "Start-Process attempt $j: verified running (pid $($running.Id))"
-        break
-    }} else {{
-        Log "Start-Process attempt $j: process not found after wait (likely exited immediately), retrying"
-        Start-Sleep -Milliseconds 1000
-    }}
-}}
-if (-not $launched) {{
-    Log 'all Start-Process attempts failed verification; giving up'
-}}
-Log 'helper finished'
-Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
-"#,
-            log = log_path.display(),
-            pid = current_pid,
-            new_exe = new_exe_path.display(),
-            current_exe = current_exe_path.display(),
-        );
-        std::fs::write(&script_path, script)?;
+    /// このプロセスが「差し替え役」として起動された時に付ける特別な引数。
+    /// `download_and_apply_update`がダウンロード後に新exe自身をこの引数
+    /// 付きで起動し、main()側で`handle_apply_update_cli_if_present`を通して
+    /// 検知する(検知したら通常のTauriアプリとしては起動しない)。
+    pub const APPLY_UPDATE_FLAG: &str = "--reatap-apply-update";
 
-        Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-            ])
-            .arg(&script_path)
+    fn log_path_for(old_pid: u32) -> PathBuf {
+        std::env::temp_dir().join(format!("reatap-update-{old_pid}.log"))
+    }
+
+    /// 差し替え処理の各ステップをログファイルに追記する。ログ自体の書き込みに
+    /// 失敗しても(書き込み先の権限問題等)、差し替え処理そのものは継続する。
+    fn log(old_pid: u32, msg: &str) {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path_for(old_pid))
+        {
+            let _ = writeln!(f, "[{millis}] {msg}");
+        }
+    }
+
+    /// 現在のコマンドライン引数が「差し替え役」としての起動かどうかを調べる。
+    /// 該当する場合、この関数の呼び出し元(main.rs)は通常のTauriアプリ起動を
+    /// せず、代わりにこの関数が「待機→コピー→再起動」を全て行って
+    /// プロセスごと終了する(戻ってこない)。該当しなければ何もせず戻る。
+    pub fn handle_apply_update_cli_if_present() {
+        let args: Vec<String> = std::env::args().collect();
+        if args.len() < 4 || args[1] != APPLY_UPDATE_FLAG {
+            return;
+        }
+        let old_pid: u32 = match args[2].parse() {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let target_path = PathBuf::from(&args[3]);
+
+        run_apply_update(old_pid, &target_path);
+        std::process::exit(0);
+    }
+
+    fn run_apply_update(old_pid: u32, target_path: &Path) {
+        log(old_pid, "apply-update helper started (native, no script engine)");
+
+        wait_for_process_exit(old_pid, Duration::from_secs(30));
+        log(
+            old_pid,
+            "old process exited (or wait timed out); pausing briefly before copy",
+        );
+        // 多重起動防止(single-instance)の仕組みが、旧プロセスの終了直後には
+        // まだ完全に解放されていない可能性を考慮し、コピー前に少しだけ間を置く。
+        std::thread::sleep(Duration::from_millis(800));
+
+        let self_path = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(e) => {
+                log(old_pid, &format!("failed to determine own exe path: {e}"));
+                return;
+            }
+        };
+
+        log(old_pid, "copying new exe into place");
+        let mut copied = false;
+        for i in 0..20 {
+            match std::fs::copy(&self_path, target_path) {
+                Ok(_) => {
+                    copied = true;
+                    log(old_pid, &format!("copy succeeded (attempt {i})"));
+                    break;
+                }
+                Err(e) => {
+                    log(old_pid, &format!("copy attempt {i} failed: {e}"));
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+            }
+        }
+        if !copied {
+            log(
+                old_pid,
+                "copy failed after all retries; giving up (existing exe left untouched)",
+            );
+            return;
+        }
+
+        // 起動が成功しても、直後に(多重起動防止の判定がまだ旧プロセスを
+        // 「起動中」とみなしている等の理由で)新しいプロセスが即座に終了して
+        // しまうことがありうるため、起動後に本当に生き残っているかを確認し、
+        // 生き残っていなければ間隔を空けて再試行する。
+        let mut launched = false;
+        for j in 0..3 {
+            match Command::new(target_path)
+                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+                .spawn()
+            {
+                Ok(mut child) => {
+                    log(
+                        old_pid,
+                        &format!(
+                            "launch attempt {j}: spawn succeeded (pid {}), verifying it stayed running",
+                            child.id()
+                        ),
+                    );
+                    std::thread::sleep(Duration::from_millis(1500));
+                    match child.try_wait() {
+                        Ok(None) => {
+                            launched = true;
+                            log(old_pid, &format!("launch attempt {j}: verified still running"));
+                            break;
+                        }
+                        Ok(Some(status)) => {
+                            log(
+                                old_pid,
+                                &format!(
+                                    "launch attempt {j}: process exited immediately (status: {status}), retrying"
+                                ),
+                            );
+                            std::thread::sleep(Duration::from_millis(1000));
+                        }
+                        Err(e) => {
+                            log(old_pid, &format!("launch attempt {j}: failed to check status: {e}"));
+                        }
+                    }
+                }
+                Err(e) => {
+                    log(old_pid, &format!("launch attempt {j}: spawn itself failed: {e}"));
+                    std::thread::sleep(Duration::from_millis(1500));
+                }
+            }
+        }
+        if !launched {
+            log(old_pid, "all launch attempts failed verification; giving up");
+        }
+
+        // 自分自身(Temp内の一時コピー)の削除はベストエフォート(失敗しても
+        // 実害は無く、単にTempにファイルが残るだけ)。
+        let _ = std::fs::remove_file(&self_path);
+        log(old_pid, "helper finished");
+    }
+
+    /// 指定したPIDのプロセスが終了するまで待つ(最大max_wait)。
+    /// 既に終了している・ハンドルの取得自体に失敗した場合は、待つべき対象が
+    /// 無いとみなして即座に戻る。
+    fn wait_for_process_exit(pid: u32, max_wait: Duration) {
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) };
+        let Ok(handle) = handle else {
+            return;
+        };
+        let timeout_ms = u32::try_from(max_wait.as_millis()).unwrap_or(u32::MAX);
+        let _ = unsafe { WaitForSingleObject(handle, timeout_ms) };
+        let _ = unsafe { CloseHandle(handle) };
+    }
+
+    /// ダウンロードした新exe自身(new_exe_path)を、「現在のプロセス
+    /// (current_pid)の終了を待ってからcurrent_exe_pathへ差し替えて再起動する
+    /// 役」として、特別な引数付きでデタッチした状態で起動する。呼び出し元は、
+    /// この関数が成功を返した直後に自分自身を終了させること(このプロセスが
+    /// 終了してファイルの占有が外れないと差し替えができない)。
+    pub fn spawn_apply_update_helper(
+        current_pid: u32,
+        new_exe_path: &Path,
+        current_exe_path: &Path,
+    ) -> std::io::Result<()> {
+        Command::new(new_exe_path)
+            .arg(APPLY_UPDATE_FLAG)
+            .arg(current_pid.to_string())
+            .arg(current_exe_path)
             .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
             .spawn()?;
         Ok(())
     }
 }
 
-/// ダウンロード→(可能なら)検証→差し替えヘルパー起動→自分は終了、を行う。
+/// main.rs(バイナリのエントリポイント)から、通常のTauriアプリ起動を
+/// する前に一度だけ呼び出す。差し替え役としての起動でなければ何もしない。
+pub fn handle_apply_update_cli_if_present() {
+    #[cfg(target_os = "windows")]
+    apply::handle_apply_update_cli_if_present();
+}
+
+/// ダウンロード→(可能なら)検証→差し替え役起動→自分は終了、を行う。
 /// 呼び出し成功後、このプロセスは`app.exit(0)`されるためJS側へは
 /// 応答が返らない(正常な動作)。
 #[tauri::command]
@@ -340,10 +440,10 @@ pub async fn download_and_apply_update(
             .map_err(|e| format!("一時ファイルの書き込みに失敗しました: {e}"))?;
 
         let pid = std::process::id();
-        apply::spawn_swap_and_relaunch_helper(pid, &new_exe_path, &current_exe)
+        apply::spawn_apply_update_helper(pid, &new_exe_path, &current_exe)
             .map_err(|e| format!("更新用ヘルパーの起動に失敗しました: {e}"))?;
 
-        // ヘルパーが自分の終了を待っているので、ここで実際に終了する。
+        // 差し替え役(新exe自身)が自分の終了を待っているので、ここで実際に終了する。
         app.exit(0);
         Ok(())
     }
