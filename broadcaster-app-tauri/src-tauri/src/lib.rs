@@ -601,7 +601,16 @@ pub fn run() {
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
-                .tooltip("ReaCast(起動中)\n左クリックでコントロールパネルを表示します")
+                // 重要: tray-iconクレートは既定でmenu_on_left_click=trueになっており、
+                // 左クリックでもOS標準のメニューが自動的に開いてしまう。下記の
+                // on_tray_icon_eventで「左クリックでウィンドウを復元する」独自の
+                // 処理も別途行っているため、両方が同時に発火すると、メニューが
+                // 開いた直後にウィンドウがフォーカスを奪ってメニューを閉じてしまい、
+                // 「一瞬何か出てきてすぐ閉じる」ように見えるバグの原因になっていた
+                // (viewer-app-tauri側の同種の実装・コメントも参照)。左クリックでの
+                // メニュー表示自体を無効化する。
+                .show_menu_on_left_click(false)
+                .tooltip("ReaCast(起動中)\n左クリックでコントロールパネルを表示します\n右クリックでメニューを表示します")
                 .on_menu_event(move |app, event| {
                     let id = event.id.as_ref();
                     match id {

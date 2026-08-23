@@ -698,8 +698,17 @@ pub fn run() {
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
+                // 重要: tray-iconクレートは既定でmenu_on_left_click=trueになっており、
+                // 左クリックでもOS標準のメニューが自動的に開いてしまう。ここで
+                // on_tray_icon_event(下記)により「左クリックでウィンドウを復元する」
+                // 独自の処理も別途行っているため、両方が同時に発火すると、メニューが
+                // 開いた直後にウィンドウがフォーカスを奪ってメニューを閉じてしまい、
+                // 「一瞬何か出てきてすぐ閉じる」ように見えるバグの原因になっていた。
+                // 左クリックでのメニュー表示自体を無効化し、右クリックでのメニュー
+                // 表示・左クリックでの復元、それぞれ意図通り単独で動くようにする。
+                .show_menu_on_left_click(false)
                 .tooltip(
-                    "ReaTap(起動中)\n左クリックで配信者一覧を表示します",
+                    "ReaTap(起動中)\n左クリックで配信者一覧を表示します\n右クリックでメニューを表示します",
                 )
                 .on_menu_event(move |app, event| {
                     let id = event.id.as_ref();

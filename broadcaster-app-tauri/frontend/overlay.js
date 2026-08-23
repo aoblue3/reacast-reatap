@@ -886,54 +886,83 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const restitution = 0.56 + Math.random() * 0.12;
     const dtMs = 45;
     const dt = dtMs / 1000;
-    // 「終わる1秒前ぐらいに突然その場で止まる」という指摘への対応: 以前は
-    // duration*0.6でシミュレーションを打ち切っていたため、フェードアウト
-    // 開始(duration*0.75)より前に静止画のまま浮いた状態で数秒残っていた。
-    // フェードアウトが終わる直前まで物理シミュレーションを続行させることで、
-    // 「表示されている間ずっと動き続けている」ように見せる(自然に静止した
-    // 場合は従来通りsettledで打ち切られるので、無理に動かし続けるわけではない)。
-    const simBudgetMs = Math.round(duration * 0.92);
+    // 「消える瞬間まで動き続けるように」という指摘への対応。以前は
+    // duration*0.6→0.92と budget を伸ばして対応したつもりだったが、実際には
+    // 反発を繰り返すうちに(現実の物理と同様)速度が急速に失われて早々に
+    // 静止してしまい、simBudgetMsに到達する前に「止まった状態」のまま
+    // 表示され続けてしまっていた(=budgetを伸ばしても、静止自体が早い時点で
+    // 起きるので意味が無かった)。根本的に直すため、縦方向の弾みがほぼ収まった
+    // 後は完全に静止させるのではなく、床の上をゆっくり転がり続ける
+    // 「転がりフェーズ」に切り替える(壁に当たれば跳ね返って向きを変える)。
+    // これにより、bounces回数や静止判定によって早期にループを打ち切ることも
+    // なくなり、simBudgetMs(=表示時間のほぼ全域)いっぱいまで、必ず何かしら
+    // 動き続けるようになる。
+    const simBudgetMs = Math.round(duration * 0.94);
+    const rollSpeed = speed * (0.05 + Math.random() * 0.03);
 
     const waypoints = [];
     let t = 0;
     let rotateAcc = 0;
     let bounces = 0;
-    let settled = false;
-    while (t < simBudgetMs && bounces < 10 && !settled) {
-      vy += gravity * dt;
-      x += vx * dt;
-      y += vy * dt;
+    let rolling = false;
+    let rollDir = Math.random() < 0.5 ? -1 : 1;
+    while (t < simBudgetMs) {
+      if (!rolling) {
+        vy += gravity * dt;
+        x += vx * dt;
+        y += vy * dt;
 
-      if (x < leftX) {
-        x = leftX;
-        vx = -vx * restitution;
-        bounces++;
-      } else if (x > rightX) {
-        x = rightX;
-        vx = -vx * restitution;
-        bounces++;
-      }
-      if (y < ceilY) {
-        y = ceilY;
-        vy = -vy * restitution;
-        bounces++;
-      } else if (y > floorY) {
+        if (x < leftX) {
+          x = leftX;
+          vx = -vx * restitution;
+          bounces++;
+        } else if (x > rightX) {
+          x = rightX;
+          vx = -vx * restitution;
+          bounces++;
+        }
+        if (y < ceilY) {
+          y = ceilY;
+          vy = -vy * restitution;
+          bounces++;
+        } else if (y > floorY) {
+          y = floorY;
+          vy = -vy * restitution;
+          bounces++;
+          if (Math.abs(vy) < speed * 0.05) vy = 0;
+        }
+
+        rotateAcc += vx * dt * 0.6;
+
+        // 縦方向の弾みがほぼ収まった(床の上でvy=0)、またはバウンド回数が
+        // 多くなりすぎた場合は、完全静止させる代わりに転がりフェーズへ移行する。
+        if ((y >= floorY - 1 && vy === 0) || bounces >= 9) {
+          rolling = true;
+          y = floorY;
+          vy = 0;
+          vx = rollDir * rollSpeed;
+        }
+      } else {
+        // 転がりフェーズ: 床の上を一定のゆっくりした速さで転がり続け、
+        // 左右の壁に当たったら跳ね返って向きを変える(縦方向には動かさない)。
+        x += vx * dt;
+        if (x < leftX) {
+          x = leftX;
+          vx = rollSpeed;
+        } else if (x > rightX) {
+          x = rightX;
+          vx = -rollSpeed;
+        }
         y = floorY;
-        vy = -vy * restitution;
-        bounces++;
-        if (Math.abs(vy) < speed * 0.05) vy = 0;
+        rotateAcc += vx * dt * 0.6;
       }
 
-      rotateAcc += vx * dt * 0.6;
       t += dtMs;
       waypoints.push({
         atMs: t,
         legMs: dtMs,
         transform: `translate(${x - startX}px, ${y - startY}px) rotate(${rotateAcc}deg) scale(1)`,
       });
-
-      // 床の上でほぼ静止したら、以降の刻みは省略して打ち切る
-      if (y >= floorY - 1 && Math.abs(vx) < speed * 0.02 && vy === 0) settled = true;
     }
     if (waypoints.length === 0) {
       waypoints.push({ atMs: dtMs, legMs: dtMs, transform: 'translate(0, 0) rotate(0deg) scale(1)' });
