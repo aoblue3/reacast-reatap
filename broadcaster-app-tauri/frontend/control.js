@@ -29,6 +29,21 @@ const glyphOpacityValueEl = document.getElementById('glyphOpacityValue');
 const glyphOpacityResetBtn = document.getElementById('glyphOpacityResetBtn');
 const comboGrowthCheckboxEl = document.getElementById('comboGrowthCheckbox');
 const reactionToggleListEl = document.getElementById('reactionToggleList');
+const displayRateRangeEl = document.getElementById('displayRateRange');
+const displayRateValueEl = document.getElementById('displayRateValue');
+const displayRateResetBtn = document.getElementById('displayRateResetBtn');
+const hideLocalOverlayCheckboxEl = document.getElementById('hideLocalOverlayCheckbox');
+const regionEnabledCheckboxEl = document.getElementById('regionEnabledCheckbox');
+const regionFieldsEl = document.getElementById('regionFields');
+const regionXRangeEl = document.getElementById('regionXRange');
+const regionXValueEl = document.getElementById('regionXValue');
+const regionYRangeEl = document.getElementById('regionYRange');
+const regionYValueEl = document.getElementById('regionYValue');
+const regionWidthRangeEl = document.getElementById('regionWidthRange');
+const regionWidthValueEl = document.getElementById('regionWidthValue');
+const regionHeightRangeEl = document.getElementById('regionHeightRange');
+const regionHeightValueEl = document.getElementById('regionHeightValue');
+const regionResetBtn = document.getElementById('regionResetBtn');
 
 // ネガティブなリアクション(荒らし対策で見たくない配信者もいるため)は、
 // 初回は「受け付けるリアクション」から既定でOFFにしておく。一度でも
@@ -136,6 +151,14 @@ let credentials = null;
 // 配信者の間で設定を同期する仕組みが無いため、まずはこの一番シンプルな形で
 // 実装している)。
 let disabledReactionIds = [];
+
+// 表示率(既定100=間引きなし)。視聴者からのリアクションが多すぎて画面が
+// 賑やかすぎる、という要望への対応。実際に受信したリアクション1件ごとに
+// この確率で表示するかどうかを抽選する、単純な間引き(サンプリング)方式。
+// 100%なら従来通り全件表示、1%ならおおよそ100件に1件だけ表示される。
+// テスト送信ボタン(loadEmojiTestButtons)はこの間引きの対象外(動作確認は
+// 常に確実に表示したいため)。
+let displayRatePercent = 100;
 
 function renderStatus({ relayConnected, viewerCount, relayHost, relayPort }) {
   connStatusEl.textContent = relayConnected ? '接続中' : '未接続';
@@ -333,6 +356,120 @@ comboGrowthCheckboxEl.addEventListener('change', () => {
   invoke('set_overlay_combo_growth', { enabled: comboGrowthCheckboxEl.checked });
 });
 
+/** 「表示率」欄の初期値を、保存されている設定(無ければ既定100%)から復元する。
+ * glyphScale/glyphOpacityと違い、Tauriオーバーレイ・OBS側に反映する値ではなく
+ * このコントロールパネル自身(relayClient受信時の間引き判定)でしか使わない
+ * ため、専用のRustコマンドは持たず、汎用のcfg_get/cfg_setだけで完結させている。 */
+async function loadDisplayRate() {
+  const saved = await invoke('cfg_get', { key: 'overlayDisplayRate' });
+  const percent =
+    typeof saved === 'number' && Number.isFinite(saved) ? Math.min(100, Math.max(1, Math.round(saved))) : 100;
+  displayRatePercent = percent;
+  displayRateRangeEl.value = String(percent);
+  displayRateValueEl.textContent = `${percent}%`;
+}
+
+let displayRateDebounceTimer = null;
+displayRateRangeEl.addEventListener('input', () => {
+  const percent = Number(displayRateRangeEl.value);
+  displayRateValueEl.textContent = `${percent}%`;
+  displayRatePercent = percent;
+  clearTimeout(displayRateDebounceTimer);
+  displayRateDebounceTimer = setTimeout(() => {
+    invoke('cfg_set', { key: 'overlayDisplayRate', value: percent });
+  }, 120);
+});
+
+displayRateResetBtn.addEventListener('click', () => {
+  displayRatePercent = 100;
+  displayRateRangeEl.value = '100';
+  displayRateValueEl.textContent = '100%';
+  invoke('cfg_set', { key: 'overlayDisplayRate', value: 100 });
+});
+
+/** 「自分の画面には表示しない(OBS経由の配信画面にのみ表示)」チェックボックスの
+ * 初期値を復元する。emit_overlay_reaction(Rust側)がこの設定を見て、Tauri本体の
+ * オーバーレイウィンドウへの反映だけを省略する(OBSブリッジへの配信は常に行う)。 */
+async function loadHideLocalOverlay() {
+  const saved = await invoke('cfg_get', { key: 'hideLocalOverlay' });
+  hideLocalOverlayCheckboxEl.checked = saved === true;
+}
+
+hideLocalOverlayCheckboxEl.addEventListener('change', () => {
+  invoke('cfg_set', { key: 'hideLocalOverlay', value: hideLocalOverlayCheckboxEl.checked });
+});
+
+/** 「モニターの一部の範囲だけに表示する」欄の初期値を復元する。座標・サイズは
+ * 選んだモニターに対する割合(0〜100%)で保持している(解像度が変わっても
+ * 破綻しないようにするため)。 */
+async function loadRegionSettings() {
+  const [enabled, x, y, width, height] = await Promise.all([
+    invoke('cfg_get', { key: 'overlayRegionEnabled' }),
+    invoke('cfg_get', { key: 'overlayRegionX' }),
+    invoke('cfg_get', { key: 'overlayRegionY' }),
+    invoke('cfg_get', { key: 'overlayRegionWidth' }),
+    invoke('cfg_get', { key: 'overlayRegionHeight' }),
+  ]);
+  const xPercent = typeof x === 'number' ? Math.round(x * 100) : 0;
+  const yPercent = typeof y === 'number' ? Math.round(y * 100) : 0;
+  const widthPercent = typeof width === 'number' ? Math.round(width * 100) : 100;
+  const heightPercent = typeof height === 'number' ? Math.round(height * 100) : 100;
+
+  regionEnabledCheckboxEl.checked = enabled === true;
+  regionFieldsEl.classList.toggle('disabled', enabled !== true);
+  regionXRangeEl.value = String(xPercent);
+  regionXValueEl.textContent = `${xPercent}%`;
+  regionYRangeEl.value = String(yPercent);
+  regionYValueEl.textContent = `${yPercent}%`;
+  regionWidthRangeEl.value = String(widthPercent);
+  regionWidthValueEl.textContent = `${widthPercent}%`;
+  regionHeightRangeEl.value = String(heightPercent);
+  regionHeightValueEl.textContent = `${heightPercent}%`;
+}
+
+/** 今の4つのスライダーの値を、Rust側(set_overlay_region)へまとめて送る。
+ * Rust側で0〜95%(位置)・5〜100%(サイズ)へのクランプと、位置+サイズが
+ * モニターをはみ出さないよう調整も行うので、ここでは単純に値を渡すだけでよい。 */
+function applyRegionSettings() {
+  invoke('set_overlay_region', {
+    enabled: regionEnabledCheckboxEl.checked,
+    x: Number(regionXRangeEl.value) / 100,
+    y: Number(regionYRangeEl.value) / 100,
+    width: Number(regionWidthRangeEl.value) / 100,
+    height: Number(regionHeightRangeEl.value) / 100,
+  });
+}
+
+regionEnabledCheckboxEl.addEventListener('change', () => {
+  regionFieldsEl.classList.toggle('disabled', !regionEnabledCheckboxEl.checked);
+  applyRegionSettings();
+});
+
+let regionDebounceTimer = null;
+function onRegionRangeInput(valueEl, rangeEl, suffix) {
+  valueEl.textContent = `${rangeEl.value}${suffix}`;
+  clearTimeout(regionDebounceTimer);
+  regionDebounceTimer = setTimeout(applyRegionSettings, 150);
+}
+regionXRangeEl.addEventListener('input', () => onRegionRangeInput(regionXValueEl, regionXRangeEl, '%'));
+regionYRangeEl.addEventListener('input', () => onRegionRangeInput(regionYValueEl, regionYRangeEl, '%'));
+regionWidthRangeEl.addEventListener('input', () => onRegionRangeInput(regionWidthValueEl, regionWidthRangeEl, '%'));
+regionHeightRangeEl.addEventListener('input', () => onRegionRangeInput(regionHeightValueEl, regionHeightRangeEl, '%'));
+
+regionResetBtn.addEventListener('click', () => {
+  regionXRangeEl.value = '0';
+  regionXValueEl.textContent = '0%';
+  regionYRangeEl.value = '0';
+  regionYValueEl.textContent = '0%';
+  regionWidthRangeEl.value = '100';
+  regionWidthValueEl.textContent = '100%';
+  regionHeightRangeEl.value = '100';
+  regionHeightValueEl.textContent = '100%';
+  regionEnabledCheckboxEl.checked = false;
+  regionFieldsEl.classList.add('disabled');
+  applyRegionSettings();
+});
+
 copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(passphraseInputEl.value);
@@ -418,6 +555,11 @@ async function connectRelay(creds, relayAddress, passphrase) {
     // OFFにしたリアクションは配信画面に一切表示しない(視聴者には何も
     // 通知しない。視聴者アプリのボタンは押せるがサイレントに無視される)。
     if (!isReactionEnabled(m.emoji)) return;
+    // 表示率による間引き。100%未満の場合、受信したリアクション1件ごとに
+    // その確率でだけ実際に表示する(視聴者への通知や連打防止判定は中継
+    // サーバー側で完結しているので、ここで間引いても視聴者側には一切
+    // 影響しない。あくまで配信画面の見た目を賑やかにしすぎない目的の機能)。
+    if (displayRatePercent < 100 && Math.random() * 100 >= displayRatePercent) return;
     invoke('emit_overlay_reaction', { emoji: m.emoji, viewerId: m.viewerId });
   });
   relayClient.on('close', () => {
@@ -472,9 +614,12 @@ async function connectRelay(creds, relayAddress, passphrase) {
   loadEmojiTestButtons();
   renderReactionToggleList();
   await loadMonitorSelect();
+  await loadRegionSettings();
   await loadGlyphSize();
   await loadGlyphOpacity();
+  await loadDisplayRate();
   await loadComboGrowth();
+  await loadHideLocalOverlay();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
   checkForUpdateOnStartup();
 })();

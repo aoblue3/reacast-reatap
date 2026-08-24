@@ -118,6 +118,16 @@
     min-width: 42px;
     margin: 0 8px;
   }
+  .region-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .region-row label { width: 70px; font-size: 12px; color: #ccc; }
+  .region-row span { display: inline-block; min-width: 38px; }
+  #regionFields { margin-top: 4px; padding-left: 4px; border-left: 2px solid #2a2b30; }
+  #regionFields.disabled { opacity: 0.4; pointer-events: none; }
 
   /* 受け付けるリアクションのON/OFF一覧。数が多いのでコンパクトなチップ状に
      並べる(視聴者アプリの表示/非表示チェックリストと違い、並び替えは不要
@@ -180,6 +190,33 @@
   <div class="row">
     <div class="muted">アニメーションを表示するモニター(既定: メインモニターのみ):</div>
     <select id="monitorSelect"></select>
+    <div style="margin-top: 8px;">
+      <label class="muted"><input type="checkbox" id="regionEnabledCheckbox" /> モニターの一部の範囲だけに表示する</label>
+    </div>
+    <div id="regionFields" class="disabled">
+      <div class="region-row">
+        <label for="regionXRange">左端</label>
+        <input type="range" id="regionXRange" min="0" max="95" step="1" value="0" />
+        <span id="regionXValue" class="muted">0%</span>
+      </div>
+      <div class="region-row">
+        <label for="regionYRange">上端</label>
+        <input type="range" id="regionYRange" min="0" max="95" step="1" value="0" />
+        <span id="regionYValue" class="muted">0%</span>
+      </div>
+      <div class="region-row">
+        <label for="regionWidthRange">幅</label>
+        <input type="range" id="regionWidthRange" min="5" max="100" step="1" value="100" />
+        <span id="regionWidthValue" class="muted">100%</span>
+      </div>
+      <div class="region-row">
+        <label for="regionHeightRange">高さ</label>
+        <input type="range" id="regionHeightRange" min="5" max="100" step="1" value="100" />
+        <span id="regionHeightValue" class="muted">100%</span>
+      </div>
+      <div class="muted" style="margin-top: 4px;">選んだモニターの左上を基準にした割合です(左端0%・上端0%・幅100%・高さ100%で全画面)。</div>
+      <button id="regionResetBtn" class="secondary">全画面に戻す</button>
+    </div>
   </div>
 
   <div class="row">
@@ -197,7 +234,18 @@
   </div>
 
   <div class="row">
+    <div class="muted">表示率(既定: 100%。視聴者からのリアクションが多すぎて画面が賑やかすぎると感じる場合は下げてください。低くするほど、送られたリアクションのうち実際に表示される割合が減ります):</div>
+    <input type="range" id="displayRateRange" min="1" max="100" step="1" value="100" />
+    <span id="displayRateValue" class="muted">100%</span>
+    <button id="displayRateResetBtn" class="secondary">既定に戻す</button>
+  </div>
+
+  <div class="row">
     <label class="muted"><input type="checkbox" id="comboGrowthCheckbox" checked /> 連打すると絵文字が大きくなる(オフにすると常に同じ大きさで表示します)</label>
+  </div>
+
+  <div class="row">
+    <label class="muted"><input type="checkbox" id="hideLocalOverlayCheckbox" /> 自分の画面には表示しない(OBS経由の配信画面にのみ表示します。OBSの「ブラウザ」ソース連携を使っている場合のみ有効です)</label>
   </div>
 
   <div class="row">

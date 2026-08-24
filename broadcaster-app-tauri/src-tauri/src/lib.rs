@@ -105,6 +105,72 @@ fn resolve_overlay_monitor(
     }
 }
 
+/// 「モニターの一部の範囲だけに表示する」機能用。選んだモニターに対する
+/// 割合(0.0〜1.0)で範囲を持つ(解像度・モニター構成が変わっても壊れにくい
+/// ようにするため、絶対ピクセル値ではなく割合で保存している)。
+#[derive(Clone, Copy)]
+struct RegionSpec {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl RegionSpec {
+    /// 位置(0.0〜0.95)・サイズ(位置から見てモニターをはみ出さない範囲)に
+    /// クランプする。呼び出し元(read_overlay_region/set_overlay_region)の
+    /// どちらからも同じ規則で丸めるための共通処理。
+    fn clamped(x: f64, y: f64, width: f64, height: f64) -> Self {
+        let x = x.clamp(0.0, 0.95);
+        let y = y.clamp(0.0, 0.95);
+        let width = width.clamp(0.05, 1.0 - x);
+        let height = height.clamp(0.05, 1.0 - y);
+        Self { x, y, width, height }
+    }
+}
+
+/// ConfigStoreに保存されている「表示範囲」設定を読む。無効化されている
+/// (overlayRegionEnabledがtrueでない)場合はNoneを返し、呼び出し側は
+/// モニター全体を使う(=従来通りの挙動)。
+fn read_overlay_region(store: &ConfigStore) -> Option<RegionSpec> {
+    let enabled = store
+        .get("overlayRegionEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !enabled {
+        return None;
+    }
+    let x = store.get("overlayRegionX").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let y = store.get("overlayRegionY").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let width = store
+        .get("overlayRegionWidth")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+    let height = store
+        .get("overlayRegionHeight")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+    Some(RegionSpec::clamped(x, y, width, height))
+}
+
+/// モニター全体の位置・サイズに対して、表示範囲(region。Noneならモニター
+/// 全体をそのまま使う)を適用し、オーバーレイウィンドウに実際に設定すべき
+/// 位置・サイズを計算する。
+fn apply_overlay_region(
+    monitor_pos: PhysicalPosition<i32>,
+    monitor_size: PhysicalSize<u32>,
+    region: Option<RegionSpec>,
+) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
+    let Some(r) = region else {
+        return (monitor_pos, monitor_size);
+    };
+    let x = monitor_pos.x + (monitor_size.width as f64 * r.x).round() as i32;
+    let y = monitor_pos.y + (monitor_size.height as f64 * r.y).round() as i32;
+    let width = ((monitor_size.width as f64 * r.width).round() as u32).max(50);
+    let height = ((monitor_size.height as f64 * r.height).round() as u32).max(50);
+    (PhysicalPosition::new(x, y), PhysicalSize::new(width, height))
+}
+
 #[derive(serde::Serialize)]
 struct MonitorInfo {
     id: String,
@@ -167,7 +233,55 @@ fn set_overlay_monitor(
         }
     }
     if let Some(win) = app.get_webview_window("overlay") {
-        let (pos, size) = resolve_overlay_monitor(&app, monitor_id.as_deref());
+        let (monitor_pos, monitor_size) = resolve_overlay_monitor(&app, monitor_id.as_deref());
+        let region = read_overlay_region(&store);
+        let (pos, size) = apply_overlay_region(monitor_pos, monitor_size, region);
+        win.set_position(tauri::Position::Physical(pos))
+            .map_err(|e| e.to_string())?;
+        win.set_size(tauri::Size::Physical(size))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 「モニターの一部の範囲だけに表示する」設定を保存し、既に開いている
+/// オーバーレイウィンドウの位置・サイズもその場で更新する。x/y/width/height
+/// は選んだモニターに対する割合(0.0〜1.0)。enabledがfalseの場合は範囲設定
+/// 自体は保存しつつ(次にONにした時のために)、ウィンドウはモニター全体に戻す。
+#[tauri::command]
+fn set_overlay_region(
+    app: tauri::AppHandle,
+    store: tauri::State<ConfigStore>,
+    enabled: bool,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let spec = RegionSpec::clamped(x, y, width, height);
+    store
+        .set("overlayRegionEnabled".to_string(), serde_json::json!(enabled))
+        .map_err(|e| e.to_string())?;
+    store
+        .set("overlayRegionX".to_string(), serde_json::json!(spec.x))
+        .map_err(|e| e.to_string())?;
+    store
+        .set("overlayRegionY".to_string(), serde_json::json!(spec.y))
+        .map_err(|e| e.to_string())?;
+    store
+        .set("overlayRegionWidth".to_string(), serde_json::json!(spec.width))
+        .map_err(|e| e.to_string())?;
+    store
+        .set("overlayRegionHeight".to_string(), serde_json::json!(spec.height))
+        .map_err(|e| e.to_string())?;
+
+    if let Some(win) = app.get_webview_window("overlay") {
+        let saved_monitor_id = store
+            .get("overlayMonitorId")
+            .and_then(|v| v.as_str().map(String::from));
+        let (monitor_pos, monitor_size) = resolve_overlay_monitor(&app, saved_monitor_id.as_deref());
+        let region = if enabled { Some(spec) } else { None };
+        let (pos, size) = apply_overlay_region(monitor_pos, monitor_size, region);
         win.set_position(tauri::Position::Physical(pos))
             .map_err(|e| e.to_string())?;
         win.set_size(tauri::Size::Physical(size))
@@ -182,12 +296,15 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
 
     // 設定で選んだモニターに合わせる(未設定なら主モニターいっぱいに広げる。
-    // 取得できない場合は既定サイズにフォールバック)。
-    let saved_monitor_id = app
-        .state::<ConfigStore>()
+    // 取得できない場合は既定サイズにフォールバック)。「モニターの一部の範囲
+    // だけに表示する」設定(overlayRegion*)が有効なら、そこからさらに絞り込む。
+    let config_store = app.state::<ConfigStore>();
+    let saved_monitor_id = config_store
         .get("overlayMonitorId")
         .and_then(|v| v.as_str().map(String::from));
-    let (pos, size) = resolve_overlay_monitor(app, saved_monitor_id.as_deref());
+    let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, saved_monitor_id.as_deref());
+    let region = read_overlay_region(&config_store);
+    let (pos, size) = apply_overlay_region(monitor_pos, monitor_size, region);
 
     let win = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
         .title("ReaCast overlay")
@@ -478,26 +595,37 @@ fn cfg_set(
 #[tauri::command]
 fn emit_overlay_reaction(
     app: tauri::AppHandle,
+    store: tauri::State<ConfigStore>,
     emoji: String,
     viewer_id: Option<String>,
 ) -> Result<(), String> {
     let viewer_id = viewer_id.unwrap_or_default();
-    if let Some(win) = app.get_webview_window("overlay") {
-        // リアクションが実際に表示される瞬間に合わせて最前面を取り直しておく
-        // (2秒おきの定期的な取り直し(create_overlay_window参照)だけだと、
-        // ちょうど裏に回っている数秒の間にリアクションが飛んできて見逃されて
-        // しまう可能性があるため、表示のたびにも念のため取り直す)。
-        let _ = win.set_always_on_top(true);
-        // アニメーション自体は最長でも5秒程度で終わる(overlay.jsのanimationDurationMs
-        // 参照)。この間はTopmostReasserterのバーストモードに入り、150ms間隔で
-        // 最前面を取り直し続けることで、アニメーション再生中に「常に最前面」設定の
-        // ゲーム側へ裏返されてしまう確率を下げる。
-        app.state::<TopmostReasserter>().bump(Duration::from_millis(5000));
-        win.emit(
-            "overlay:reaction",
-            serde_json::json!({ "emoji": emoji, "viewerId": viewer_id }),
-        )
-        .map_err(|e| e.to_string())?;
+    // 「自分の画面には表示しない(OBS経由の配信画面にのみ表示)」設定。ONの間は
+    // Tauri本体のオーバーレイウィンドウへの反映(=配信者自身のモニターに映る分)
+    // だけを省略する。OBSの「ブラウザ」ソース向けの配信(下のobs_bridge呼び出し)は
+    // この設定に関わらず常に行うため、視聴者が見る配信画面には通常通り表示される。
+    let hide_local = store
+        .get("hideLocalOverlay")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !hide_local {
+        if let Some(win) = app.get_webview_window("overlay") {
+            // リアクションが実際に表示される瞬間に合わせて最前面を取り直しておく
+            // (2秒おきの定期的な取り直し(create_overlay_window参照)だけだと、
+            // ちょうど裏に回っている数秒の間にリアクションが飛んできて見逃されて
+            // しまう可能性があるため、表示のたびにも念のため取り直す)。
+            let _ = win.set_always_on_top(true);
+            // アニメーション自体は最長でも5秒程度で終わる(overlay.jsのanimationDurationMs
+            // 参照)。この間はTopmostReasserterのバーストモードに入り、150ms間隔で
+            // 最前面を取り直し続けることで、アニメーション再生中に「常に最前面」設定の
+            // ゲーム側へ裏返されてしまう確率を下げる。
+            app.state::<TopmostReasserter>().bump(Duration::from_millis(5000));
+            win.emit(
+                "overlay:reaction",
+                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id }),
+            )
+            .map_err(|e| e.to_string())?;
+        }
     }
     // OBSの「ブラウザ」ソースが繋がっていれば、そちらにも同じリアクションを配信する
     // (obs_bridge.rs参照。誰も繋いでいなくても問題なく無視される)。
@@ -670,6 +798,7 @@ pub fn run() {
             emit_overlay_reaction,
             list_monitors,
             set_overlay_monitor,
+            set_overlay_region,
             updater::check_for_update,
             updater::download_and_apply_update,
         ])
