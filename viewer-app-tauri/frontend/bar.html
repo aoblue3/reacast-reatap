@@ -17,6 +17,12 @@
     color: #eee;
     box-sizing: border-box;
     overflow: hidden;
+    /* 「moveカーソルになる場所なのに実際には動かせない場所がある」という
+       報告への対応。ドラッグの実処理をbar.js側でdocument全体のmousedownに
+       付け直した(bar.js参照)のに合わせ、カーソルの見た目もbody全体(=window
+       全体)を基準にしておく。.emoji-btn側は個別にcursor:pointerで上書き
+       されるので、ボタンの上ではポインタのままになる。 */
+    cursor: move;
   }
 
   /* #reactionPanel/#reactionPanelInner/#barにはdata-tauri-drag-region属性を付けて

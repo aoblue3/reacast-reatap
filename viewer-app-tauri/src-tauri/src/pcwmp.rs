@@ -362,6 +362,27 @@ mod win {
         }
     }
 
+    /// 指定ウィンドウが「今まさにフォアグラウンド(アクティブ)かどうか」を返す。
+    ///
+    /// 経緯: 「連打時のちらつきは直ったが、pcwmp/PCRPlayerのコメント欄に
+    /// フォーカスがある状態で絵文字を押すと、そのフォーカスが戻らなくなった」
+    /// という指摘への対応。以前はクリックのたびに無条件でset_foreground_window
+    /// を呼んで戻していたが、それ自体がちらつきの原因だったため撤去していた。
+    /// 今回は「クリック時点で対象が本当にフォアグラウンドだった場合」だけ
+    /// フォーカスを戻すことで、両立を図る。
+    ///
+    /// 判定のタイミングについて: このアプリのリアクションバー自身は
+    /// set_no_activate()によりWS_EX_NOACTIVATEが立っており、クリックされても
+    /// 自分自身はアクティブ化されない。そのため、クリックハンドラの実行時点
+    /// (=bar.js側からこのコマンドが呼ばれる時点)でも、GetForegroundWindow()は
+    /// クリック直前から変わらず「本当に手前にあったウィンドウ」を返し続ける
+    /// はずで、狙い通り「対象が元々フォーカスされていたか」を判定できる。
+    pub fn is_window_foreground(hwnd_raw: isize) -> bool {
+        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+        let fg = unsafe { GetForegroundWindow() };
+        !fg.0.is_null() && fg.0 == hwnd.0
+    }
+
     // MAX_PATHは将来の拡張(短いバッファへのフォールバック等)用に残しておく
     #[allow(dead_code)]
     const _MAX_PATH_HINT: u32 = MAX_PATH;
@@ -396,6 +417,13 @@ mod win {
     #[allow(dead_code)]
     pub fn set_no_activate(_hwnd_raw: isize) {
         // Windows以外では何もしない
+    }
+
+    #[allow(dead_code)]
+    pub fn is_window_foreground(_hwnd_raw: isize) -> bool {
+        // Windows以外では判定できないため、常にfalse(=フォーカスを戻す動作は
+        // 発生しない)を返す
+        false
     }
 }
 
@@ -436,6 +464,12 @@ pub fn set_foreground_window(hwnd_raw: isize) {
 #[allow(dead_code)]
 pub fn set_no_activate(hwnd_raw: isize) {
     win::set_no_activate(hwnd_raw);
+}
+
+/// 指定ウィンドウが今まさにフォアグラウンドかどうかを返す。Windows以外では
+/// 常にfalse。
+pub fn is_window_foreground(hwnd_raw: isize) -> bool {
+    win::is_window_foreground(hwnd_raw)
 }
 
 pub fn detect_target_window(override_path: Option<&str>, name_filter: Option<&str>) -> Option<WindowInfo> {

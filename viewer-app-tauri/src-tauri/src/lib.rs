@@ -388,6 +388,21 @@ fn focus_target_window(raw_handle: isize) {
     pcwmp::set_foreground_window(raw_handle);
 }
 
+/// bar.jsのonClickEmojiから、focus_target_windowを呼ぶ前に確認用として
+/// 呼ばれる。「クリックした時点で対象(pcwmp/PCRPlayer)が本当にフォアグラウンド
+/// だったか」をここで判定し、trueの場合のみ呼び出し側がfocus_target_window
+/// (=SetForegroundWindow)を呼ぶことで、「元々フォーカスが無かった場合にまで
+/// 無条件でフォーカスを奪い返しに行く」ことによる連打時のちらつきを避けつつ、
+/// 「コメント欄にフォーカスがある状態で押した時は戻ってほしい」という要望を
+/// 両立させる。
+#[tauri::command(async)]
+fn is_window_foreground(raw_handle: isize) -> bool {
+    if raw_handle == 0 {
+        return false;
+    }
+    pcwmp::is_window_foreground(raw_handle)
+}
+
 /// 「候補一覧から選ぶ」機能用。クラス名・パスの自動判定に頼らず、今動いている
 /// ウィンドウの一覧をそのままフロントエンドに渡し、人間が目で見て選べるようにする。
 ///
@@ -782,6 +797,7 @@ pub fn run() {
             is_auto_detect_available,
             detect_target_window,
             focus_target_window,
+            is_window_foreground,
             list_candidate_windows,
             get_relay_address,
             cfg_get,

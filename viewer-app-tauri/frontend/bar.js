@@ -113,7 +113,18 @@ function formatHotkeyLabel(shortcut) {
 // 開始する(Tauriの公開APIであるstartDragging()は、data-tauri-drag-region自身も
 // 内部で使っている同じ仕組み)。ボタン(.emoji-btn)の上でのクリックは対象外にする
 // (リアクション送信の邪魔をしないため)。
-document.getElementById('reactionPanel').addEventListener('mousedown', (e) => {
+//
+// 【修正】以前はこのリスナーを#reactionPanel要素だけに付けていたが、
+// 「move(移動)カーソルになる場所なのに、実際にはドラッグで動かせない場所が
+// ある」という報告があった。data-tauri-drag-region属性は、その属性を持つ
+// 要素自身がクリックされた場合(=イベントのtargetがその要素自身である場合)
+// にしかネイティブ側のドラッグを起動しない仕様のため、DOM構造の入れ子や
+// 将来の要素追加によっては、見た目上は同じ「move」カーソルの範囲内でも、
+// クリックしたピクセルの実際のtarget要素によって効いたり効かなかったりする
+// ムラが起きうる。document全体(bodyのcursor:moveが及ぶ範囲全体)にリスナーを
+// 付け直すことで、ボタン以外のどこをクリックしても確実にドラッグが始まる
+// ようにする(見た目のカーソルと実際の挙動を一致させる)。
+document.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (e.target.closest('.emoji-btn')) return;
   getCurrentWindow()
@@ -143,27 +154,31 @@ function onClickEmoji(emojiId) {
   if (now - lastSentAt < DEBOUNCE_MS) return;
   lastSentAt = now;
   if (relayClient) relayClient.send({ type: 'reaction', emoji: emojiId });
-  // 【廃止】以前はここでinvoke('focus_target_window', ...)を呼び、クリック毎に
-  // pcwmp/PCRPlayer側へ明示的にフォーカスを戻していた。しかし「連打すると
-  // ウィンドウ全体がちらつく(枠が黒白黒白と入れ替わる)」という report が
-  // WS_EX_NOACTIVATE対応(main.jsのcreate_bar_window、pcwmp::set_no_activate)
-  // 後もなお解消しないという再報告があった。
+  // 【経緯】以前はここで無条件にinvoke('focus_target_window', ...)を呼び、
+  // クリック毎にpcwmp/PCRPlayer側へ明示的にフォーカスを戻していたが、それが
+  // 連打時のちらつき(枠が黒白黒白と入れ替わる)の原因と判断し、一度撤去した。
+  // ちらつき自体は解消したが、今度は「pcwmp/PCRPlayerのコメント入力欄に
+  // フォーカスがある状態で絵文字を押すと、そのフォーカスが戻らなくなった」
+  // という新たな report があった。
   //
-  // 根本原因の再検討: NOACTIVATEにより、このバー自身のクリックではOSは
-  // そもそもこのウィンドウにフォーカスを渡さなくなっている(=対象側の
-  // フォーカスは最初から失われていないはず)。にもかかわらず、この
-  // focus_target_window呼び出し(=SetForegroundWindow相当)を連打のたびに
-  // 毎回呼び続けていたことで、Windows側のフォアグラウンド窃取防止
-  // ヒューリスティックが働き、要求を許可する代わりにタイトルバー/枠を
-  // 点滅させる「フラッシュ」動作にフォールバックしていたと考えられる
-  // (=このコード自身が、直そうとしていたちらつきの原因になっていた)。
-  // NOACTIVATE側で十分に目的を達成できているはずのため、この「念のため」の
-  // 呼び出しは撤去する。
-  //
-  // 注: 開発環境では実機Windows上での検証ができないため、この診断は
-  // コードレビューベースの推定であることに留意。もし撤去後もちらつきが
-  // 再発するようであれば、原因は別箇所(pcwmp側のイベントフック等)に
-  // ある可能性が高い。
+  // 対応: 「クリックした時点で対象が本当にフォアグラウンドだったか」を
+  // is_window_foregroundで確認し、trueの場合(=まさにpcwmp/PCRPlayer側を
+  // 使っていた最中にこのバーを押した場合)だけフォーカスを戻す。対象が
+  // 元々フォアグラウンドでなかった場合(=配信者が他の作業をしている最中に
+  // 押した場合)は何もしない。これにより、SetForegroundWindow自体の呼び出し
+  // 回数を「本当に必要な時」だけに絞り、ちらつきの再発を避けつつ、
+  // コメント欄のフォーカスも維持できるようにする。
+  if (lastTargetRawHandle) {
+    invoke('is_window_foreground', { rawHandle: lastTargetRawHandle })
+      .then((wasForeground) => {
+        if (wasForeground) {
+          return invoke('focus_target_window', { rawHandle: lastTargetRawHandle });
+        }
+      })
+      .catch(() => {
+        // 無視(フォーカスの戻し忘れ程度で、リアクション自体は既に送信済み)
+      });
+  }
 }
 
 function renderButtons() {
