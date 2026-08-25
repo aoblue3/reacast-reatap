@@ -34,6 +34,11 @@ const settings = {
   glyphOpacity: 1,
   // 連打すると絵文字が段階的に大きくなる仕様のON/OFF(既定ON=従来通り)。
   comboGrowthEnabled: true,
+  // 上のcomboGrowthEnabledとは別軸で、「全体はONのまま、このリアクションだけは
+  // 大きくしない」を個別指定できるリアクションIDのSet(既定は空=どのリアクション
+  // も除外しない=従来通り全て大きくなる)。控えめなIDの重複チェックのため
+  // Array/Setのどちらでも使えるよう、後述のapplyNoComboGrowthIdsがSetへ変換する。
+  noComboGrowthIds: new Set(),
 };
 
 // 設定パネルの「絵文字の大きさ」で選んだ倍率(既定1=100%)を反映する。
@@ -55,6 +60,13 @@ function applyGlyphOpacity(opacity) {
 // 設定パネルの「連打すると大きくなる」チェックボックスを反映する。
 function applyComboGrowth(enabled) {
   settings.comboGrowthEnabled = enabled !== false;
+}
+
+// 設定パネルの「個別リアクションごとの『大きくしない』チップ一覧」を反映する。
+// 受け取るのは常に「現在チェックが外れている(=大きくしない)ID全部」の配列
+// (set_overlay_no_combo_growth_ids/obs_bridge.rs参照。差分ではなく丸ごと置き換え)。
+function applyNoComboGrowthIds(ids) {
+  settings.noComboGrowthIds = new Set(Array.isArray(ids) ? ids : []);
 }
 
 /**
@@ -441,6 +453,7 @@ if (window.__TAURI__ && window.__TAURI__.event) {
     if (typeof payload.glyphScale === 'number') applyGlyphScale(payload.glyphScale);
     if (typeof payload.glyphOpacity === 'number') applyGlyphOpacity(payload.glyphOpacity);
     if (typeof payload.comboGrowthEnabled === 'boolean') applyComboGrowth(payload.comboGrowthEnabled);
+    if (Array.isArray(payload.noComboGrowthIds)) applyNoComboGrowthIds(payload.noComboGrowthIds);
   });
   window.__TAURI__.core
     .invoke('get_overlay_settings')
@@ -448,6 +461,7 @@ if (window.__TAURI__ && window.__TAURI__.event) {
       applyGlyphScale(s.glyphScale);
       applyGlyphOpacity(s.glyphOpacity);
       applyComboGrowth(s.comboGrowthEnabled);
+      applyNoComboGrowthIds(s.noComboGrowthIds);
     })
     .catch(() => {});
 } else {
@@ -467,6 +481,7 @@ function connectObsBridge(port) {
         if (typeof data.glyphScale === 'number') applyGlyphScale(data.glyphScale);
         if (typeof data.glyphOpacity === 'number') applyGlyphOpacity(data.glyphOpacity);
         if (typeof data.comboGrowthEnabled === 'boolean') applyComboGrowth(data.comboGrowthEnabled);
+        if (Array.isArray(data.noComboGrowthIds)) applyNoComboGrowthIds(data.noComboGrowthIds);
         return;
       }
       if (typeof data.emoji === 'string') spawnReaction(data.emoji);
@@ -965,7 +980,14 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // これにより、bounces回数や静止判定によって早期にループを打ち切ることも
     // なくなり、simBudgetMs(=表示時間のほぼ全域)いっぱいまで、必ず何かしら
     // 動き続けるようになる。
-    const simBudgetMs = Math.round(duration * 0.94);
+    //
+    // 追加修正(3度目の指摘): duration*0.94でもなお、消える約0.25〜0.35秒前
+    // ("duration*0.06 + 100ms"の完全な静止区間)でボールが止まって見える、
+    // という報告があった。要素の実際の除去はspawnReaction側で
+    // "duration + 100ms"後に行われる(下記参照)ため、simBudgetMsをdurationの
+    // ほぼ全域(duration-30ms、要素除去のわずかに直前)まで伸ばし、この静止
+    // ギャップをほぼ解消する。
+    const simBudgetMs = Math.max(dtMs * 2, Math.round(duration - 30));
     const rollSpeed = speed * (0.05 + Math.random() * 0.03);
 
     const waypoints = [];
@@ -1145,10 +1167,13 @@ function spawnReaction(emojiId) {
   // 「ダッシュ」演出)を使い回したい場合はpreset.glyphAnimで上書きできる。
   const glyphAnimKey = preset.glyphAnim || kind;
   const comboLevel = getComboLevel(emojiId);
-  // 「連打すると大きくなる」がOFFの場合は常にcomboLevel=1相当のサイズ固定にする
-  // (comboLevel自体の計測・コンボ判定はコンボ表示以外に副作用が無いため続けたまま
-  // でよく、サイズへの反映だけを止める)。
-  const size = settings.comboGrowthEnabled
+  // 「連打すると大きくなる」がOFFの場合、または、このリアクションが個別に
+  // 「大きくしない」に指定されている場合は、常にcomboLevel=1相当のサイズ固定に
+  // する(comboLevel自体の計測・コンボ判定はコンボ表示以外に副作用が無いため
+  // 続けたままでよく、サイズへの反映だけを止める)。
+  const comboGrowthAllowed =
+    settings.comboGrowthEnabled && !settings.noComboGrowthIds.has(emojiId);
+  const size = comboGrowthAllowed
     ? settings.baseSizePx + settings.comboSizeStepPx * (comboLevel - 1)
     : settings.baseSizePx;
   const duration =
@@ -1454,6 +1479,39 @@ function enforceMaxConcurrent() {
 
 /* ------------------------- パーティクル ------------------------- */
 
+// リアクション本体(.reaction-item)はenforceMaxConcurrentで同時表示数の上限を
+// 設けてあるが、パーティクル(効果線・紙吹雪・輝き粒等)側にはこれまで上限が
+// 無かった。🎆花火のように1回のリアクションで大量のパーティクル(閃光+紙吹雪+
+// 輝き粒+リングを3箇所ぶん、100個超)を発生させる演出を追加したことで、
+// 「連発してもCPU/GPU使用率自体は上がらないのに、表示のコマ落ちだけ目立つ」
+// という報告があった。原因は使用率グラフには出にくい種類の負荷(大量のDOM要素を
+// 短時間に生成・破棄し続けることによるメインスレッドのスタイル再計算・
+// レイアウト処理の積み重なり)と考えられるため、パーティクルの同時生存数
+// 自体にも上限を設け、上限を超えたら古いものから即座に片付けるようにする
+// (enforceMaxConcurrentと同じ考え方をパーティクル側にも広げたもの)。
+const activeParticles = [];
+const MAX_PARTICLES = 260;
+
+function enforceMaxParticles() {
+  while (activeParticles.length > MAX_PARTICLES) {
+    const oldest = activeParticles.shift();
+    if (oldest) oldest.remove();
+  }
+}
+
+/** パーティクル生成関数の末尾で共通して行っていた「stageへ追加→寿命後に
+ * 自分で消える」処理を1箇所にまとめ、あわせてactiveParticlesへの登録・
+ * 上限チェック・(寿命が来て消える際の)登録解除まで面倒を見る。 */
+function trackParticle(el, life) {
+  activeParticles.push(el);
+  enforceMaxParticles();
+  setTimeout(() => {
+    el.remove();
+    const idx = activeParticles.indexOf(el);
+    if (idx !== -1) activeParticles.splice(idx, 1);
+  }, life + 60);
+}
+
 function spawnParticles(spec, cx, cy, baseSize) {
   if (spec.shape === 'ring') {
     spawnRing(cx, cy, baseSize, spec);
@@ -1492,7 +1550,7 @@ function spawnLaserBeam(cx, cy, baseSize, spec) {
   const life = spec.life || 420;
   el.style.animation = `particle-laser ${life}ms ease-out forwards`;
   stage.appendChild(el);
-  setTimeout(() => el.remove(), life + 60);
+  trackParticle(el, life);
 }
 
 // spec.scale: 最終的な直径をbaseSizeの何倍にするか(既定はsmall:2〜3px枠の
@@ -1519,7 +1577,7 @@ function spawnRing(cx, cy, baseSize, spec) {
   ring.style.boxSizing = 'border-box';
   ring.style.animation = `particle-ring ${spec.life}ms ease-out forwards`;
   stage.appendChild(ring);
-  setTimeout(() => ring.remove(), spec.life + 50);
+  trackParticle(ring, spec.life);
 }
 
 // 💣爆発専用: 中心が一瞬明るく光ってから広がってフェードする閃光。
@@ -1539,17 +1597,24 @@ function spawnFlash(cx, cy, size) {
   const life = 380;
   el.style.animation = `particle-flash ${life}ms ease-out forwards`;
   stage.appendChild(el);
-  setTimeout(() => el.remove(), life + 60);
+  trackParticle(el, life);
 }
 
 // 🎆専用: 1箇所分の花火バースト(閃光+紙吹雪+色付きの輝き粒+衝撃波リング)を
 // まとめて出す。色はCONFETTI_COLORSからランダムに選び、毎回違う色合いの
 // 花火に見えるようにする。
+//
+// 1回のリアクションで3箇所ぶん(spawnReaction参照)呼ばれるため、1箇所あたりの
+// 個数は他のリアクションの演出より少し絞ってある(以前はconfetti22+dot16=38個
+// ×3箇所=114個と、他のリアクション(多くても20個程度)よりかなり多く、連発時に
+// 表示のコマ落ちの主な原因になっていたため。あわせてactiveParticlesの上限
+// (enforceMaxParticles)も新設したので、どちらの対策でも重くなりすぎないよう
+// 二重に効くようにしてある)。
 function spawnFireworkBurst(cx, cy, size) {
   const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
   spawnFlash(cx, cy, size * 1.9);
-  spawnParticles({ shape: 'confetti', count: 22, life: 950 }, cx, cy, size);
-  spawnParticles({ shape: 'dot', color, count: 16, spread: 62, life: 900, drift: 'twinkle' }, cx, cy, size);
+  spawnParticles({ shape: 'confetti', count: 14, life: 950 }, cx, cy, size);
+  spawnParticles({ shape: 'dot', color, count: 10, spread: 62, life: 900, drift: 'twinkle' }, cx, cy, size);
   spawnRing(cx, cy, size, { life: 520, thickness: 3, color: 'rgba(255,255,255,0.85)', glow: true, scale: 2.3 });
 }
 
@@ -1576,7 +1641,7 @@ function spawnRadialLines(cx, cy, baseSize, spec) {
     el.style.setProperty('--line-rot', `${(angle * 180) / Math.PI}deg`);
     el.style.animation = `particle-radial-line ${life}ms ease-out forwards`;
     stage.appendChild(el);
-    setTimeout(() => el.remove(), life + 60);
+    trackParticle(el, life);
   }
 }
 
@@ -1627,5 +1692,5 @@ function spawnOneParticle(spec, cx, cy, baseSize, i) {
   }
 
   stage.appendChild(el);
-  setTimeout(() => el.remove(), life + 60);
+  trackParticle(el, life);
 }

@@ -30,6 +30,10 @@ const glyphOpacityValueEl = document.getElementById('glyphOpacityValue');
 const glyphOpacityResetBtn = document.getElementById('glyphOpacityResetBtn');
 const comboGrowthCheckboxEl = document.getElementById('comboGrowthCheckbox');
 const reactionToggleListEl = document.getElementById('reactionToggleList');
+const noComboGrowthListEl = document.getElementById('noComboGrowthList');
+const cooldownRangeEl = document.getElementById('cooldownRange');
+const cooldownValueEl = document.getElementById('cooldownValue');
+const cooldownResetBtn = document.getElementById('cooldownResetBtn');
 const displayRateRangeEl = document.getElementById('displayRateRange');
 const displayRateValueEl = document.getElementById('displayRateValue');
 const displayRateResetBtn = document.getElementById('displayRateResetBtn');
@@ -154,6 +158,20 @@ let credentials = null;
 // 実装している)。
 let disabledReactionIds = [];
 
+// 「連打しても大きくしない」に個別指定されているリアクションIDの一覧
+// (既定は空配列=全リアクションが対象=従来通り全て大きくなる)。
+// comboGrowthCheckboxEl(全体ON/OFF)とは別軸の設定。
+let noComboGrowthIds = [];
+
+// クールタイム(秒。既定0.5秒=以前のReaTap側クリック間隔と同じ最低値、
+// 最大5.0秒)。同じリアクションが短い間隔で連続して届いた場合、この秒数
+// より短い間隔になる分は表示しない(間引く)。表示率(displayRatePercent、
+// 下記)が「割合で間引く」のに対し、こちらは「間隔で間引く」形の別の
+// 賑やかさ調整機能。テスト送信ボタン(loadEmojiTestButtons)はこちらも
+// 対象外(動作確認は常に確実に表示したいため)。
+let cooldownSec = 0.5;
+const lastShownAtByEmoji = new Map();
+
 // 表示率(既定100=間引きなし)。視聴者からのリアクションが多すぎて画面が
 // 賑やかすぎる、という要望への対応。実際に受信したリアクション1件ごとに
 // この確率で表示するかどうかを抽選する、単純な間引き(サンプリング)方式。
@@ -240,6 +258,59 @@ function buildReactionChip(emoji) {
   chip.appendChild(document.createTextNode(emoji.label));
 
   return chip;
+}
+
+function isComboGrowthAllowed(emojiId) {
+  return !noComboGrowthIds.includes(emojiId);
+}
+
+async function persistNoComboGrowthIds() {
+  await invoke('set_overlay_no_combo_growth_ids', { ids: noComboGrowthIds });
+}
+
+/** 1個分の「大きくしない」チップ要素を作る(チェック済み=大きくなる、が既定)。
+ * buildReactionChipとほぼ同じ構造だが、対象の配列・保存先コマンドが別。 */
+function buildNoComboGrowthChip(emoji) {
+  const allowed = isComboGrowthAllowed(emoji.id);
+  const chip = document.createElement('label');
+  chip.className = 'rt-chip' + (allowed ? '' : ' rt-off');
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = allowed;
+  checkbox.addEventListener('change', async () => {
+    if (checkbox.checked) {
+      noComboGrowthIds = noComboGrowthIds.filter((id) => id !== emoji.id);
+    } else if (!noComboGrowthIds.includes(emoji.id)) {
+      noComboGrowthIds.push(emoji.id);
+    }
+    await persistNoComboGrowthIds();
+    chip.classList.toggle('rt-off', !checkbox.checked);
+  });
+  chip.appendChild(checkbox);
+
+  const emojiSpan = document.createElement('span');
+  emojiSpan.className = 'rt-emoji';
+  emojiSpan.textContent = emoji.char;
+  chip.appendChild(emojiSpan);
+
+  chip.appendChild(document.createTextNode(emoji.label));
+
+  return chip;
+}
+
+/** 「連打で大きくするリアクション」のチップ一覧を描画する(既定は全てチェック
+ * 済み=全て大きくなる)。受け付けるリアクション一覧と違い、ネガティブ
+ * リアクション扱いでの区分けは不要なため、全件を1つのグループにまとめる。 */
+function renderNoComboGrowthList() {
+  const emojiSet = window.EmojiSet.EMOJI_SET;
+  noComboGrowthListEl.innerHTML = '';
+  const group = document.createElement('div');
+  group.className = 'rt-group';
+  for (const emoji of emojiSet) {
+    group.appendChild(buildNoComboGrowthChip(emoji));
+  }
+  noComboGrowthListEl.appendChild(group);
 }
 
 /** 「受け付けるリアクション」のチップ一覧を描画する。通常リアクションを先に、
@@ -365,6 +436,44 @@ async function loadComboGrowth() {
 
 comboGrowthCheckboxEl.addEventListener('change', () => {
   invoke('set_overlay_combo_growth', { enabled: comboGrowthCheckboxEl.checked });
+});
+
+/** 「連打で大きくするリアクション」チップ一覧の初期値を復元する。 */
+async function loadNoComboGrowth() {
+  const s = await invoke('get_overlay_settings');
+  noComboGrowthIds = Array.isArray(s.noComboGrowthIds) ? s.noComboGrowthIds : [];
+}
+
+/** 「クールタイム」欄の初期値を、保存されている設定(無ければ既定0.5秒)から
+ * 復元する。glyphScale/glyphOpacityと同じ構造(保存→Rustコマンド経由で
+ * Tauriオーバーレイ・OBS側の設定には影響しない。displayRatePercentと同じく
+ * このコントロールパネル自身の間引き判定にしか使わないため、専用の
+ * Rustコマンドは持たず、cfg_get/cfg_setだけで完結させている)。 */
+async function loadCooldown() {
+  const saved = await invoke('cfg_get', { key: 'overlayCooldownSec' });
+  const sec =
+    typeof saved === 'number' && Number.isFinite(saved) ? Math.min(5, Math.max(0.5, saved)) : 0.5;
+  cooldownSec = sec;
+  cooldownRangeEl.value = String(sec);
+  cooldownValueEl.textContent = `${sec.toFixed(1)}秒`;
+}
+
+let cooldownDebounceTimer = null;
+cooldownRangeEl.addEventListener('input', () => {
+  const sec = Number(cooldownRangeEl.value);
+  cooldownValueEl.textContent = `${sec.toFixed(1)}秒`;
+  cooldownSec = sec;
+  clearTimeout(cooldownDebounceTimer);
+  cooldownDebounceTimer = setTimeout(() => {
+    invoke('cfg_set', { key: 'overlayCooldownSec', value: sec });
+  }, 120);
+});
+
+cooldownResetBtn.addEventListener('click', () => {
+  cooldownSec = 0.5;
+  cooldownRangeEl.value = '0.5';
+  cooldownValueEl.textContent = '0.5秒';
+  invoke('cfg_set', { key: 'overlayCooldownSec', value: 0.5 });
 });
 
 /** 「表示率」欄の初期値を、保存されている設定(無ければ既定100%)から復元する。
@@ -605,6 +714,14 @@ async function connectRelay(creds, relayAddress, passphrase) {
     // サーバー側で完結しているので、ここで間引いても視聴者側には一切
     // 影響しない。あくまで配信画面の見た目を賑やかにしすぎない目的の機能)。
     if (displayRatePercent < 100 && Math.random() * 100 >= displayRatePercent) return;
+    // クールタイムによる間引き。表示率(確率)とは別軸で、「同じリアクションが
+    // これ以上短い間隔で連続表示されないようにする」形の間引き。テスト送信
+    // ボタン(loadEmojiTestButtons)経由のemit_overlay_reaction呼び出しはこの
+    // ハンドラを通らないため、既定通りクールタイムの対象外になる。
+    const now = Date.now();
+    const lastShownAt = lastShownAtByEmoji.get(m.emoji) || 0;
+    if (now - lastShownAt < cooldownSec * 1000) return;
+    lastShownAtByEmoji.set(m.emoji, now);
     invoke('emit_overlay_reaction', { emoji: m.emoji, viewerId: m.viewerId });
   });
   relayClient.on('close', () => {
@@ -664,6 +781,9 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadGlyphOpacity();
   await loadDisplayRate();
   await loadComboGrowth();
+  await loadNoComboGrowth();
+  renderNoComboGrowthList();
+  await loadCooldown();
   await loadHideLocalOverlay();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
   checkForUpdateOnStartup();

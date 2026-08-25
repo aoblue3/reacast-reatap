@@ -45,20 +45,25 @@ const EMOJI_SET_JS: &str = include_str!("../../frontend/shared/emoji-set.js");
 /// 設定パネルの「表示関連」設定のうち、Taur本体のオーバーレイとOBS側の両方に
 /// 反映する必要があるもの一式(絵文字の大きさ・透明度・連打で大きくなる仕様の
 /// ON/OFF)。まとめて1つの"settings"メッセージとして配信する。
-#[derive(Clone, Copy)]
+// noComboGrowthIds(Vec<String>)を持つため、以前の#[derive(Copy)]は
+// 外してある(呼び出し側は.clone()する。下記参照)。
+#[derive(Clone)]
 struct BridgeSettings {
     glyph_scale: f64,
     glyph_opacity: f64,
     combo_growth_enabled: bool,
+    // 「大きくしない」に個別指定されているリアクションIDの一覧。
+    no_combo_growth_ids: Vec<String>,
 }
 
 impl BridgeSettings {
-    fn to_json(self) -> serde_json::Value {
+    fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "settings",
             "glyphScale": self.glyph_scale,
             "glyphOpacity": self.glyph_opacity,
             "comboGrowthEnabled": self.combo_growth_enabled,
+            "noComboGrowthIds": self.no_combo_growth_ids,
         })
     }
 }
@@ -99,6 +104,12 @@ impl ObsBridge {
         self.update_and_broadcast(|s| s.combo_growth_enabled = enabled);
     }
 
+    /// 設定パネルで「大きくしない」個別リアクションのチェック状態が
+    /// 変更された時に呼ぶ(IDの配列を丸ごと置き換える)。
+    pub fn set_no_combo_growth_ids(&self, ids: Vec<String>) {
+        self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
+    }
+
     fn update_and_broadcast(&self, apply: impl FnOnce(&mut BridgeSettings)) {
         let payload = {
             let mut s = self.settings.lock().unwrap();
@@ -116,12 +127,18 @@ impl ObsBridge {
 /// initial_*: 起動時点でConfigStoreに保存されている値(未設定なら既定値)。
 /// OBS側が最初に繋いだ時点からこれらの値を反映できるように、呼び出し側
 /// (lib.rsのsetup())から渡してもらう。
-pub fn start(initial_glyph_scale: f64, initial_glyph_opacity: f64, initial_combo_growth_enabled: bool) -> ObsBridge {
+pub fn start(
+    initial_glyph_scale: f64,
+    initial_glyph_opacity: f64,
+    initial_combo_growth_enabled: bool,
+    initial_no_combo_growth_ids: Vec<String>,
+) -> ObsBridge {
     let (tx, _rx) = broadcast::channel::<String>(64);
     let settings = Arc::new(Mutex::new(BridgeSettings {
         glyph_scale: initial_glyph_scale,
         glyph_opacity: initial_glyph_opacity,
         combo_growth_enabled: initial_combo_growth_enabled,
+        no_combo_growth_ids: initial_no_combo_growth_ids,
     }));
     let bridge = ObsBridge {
         tx: tx.clone(),
@@ -201,10 +218,11 @@ async fn run_ws_server(tx: broadcast::Sender<String>, settings: Arc<Mutex<Bridge
             continue;
         };
         let rx = tx.subscribe();
-        let initial_settings = settings.lock().map(|s| *s).unwrap_or(BridgeSettings {
+        let initial_settings = settings.lock().map(|s| s.clone()).unwrap_or(BridgeSettings {
             glyph_scale: 1.0,
             glyph_opacity: 1.0,
             combo_growth_enabled: true,
+            no_combo_growth_ids: Vec::new(),
         });
         tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_settings));
     }

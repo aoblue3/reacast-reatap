@@ -262,6 +262,18 @@
   </div>
 
   <div class="row">
+    <div class="muted">連打で大きくするリアクション(チェックを外したものは、上の設定がONでも常に同じ大きさのまま表示します。既定は全てチェック済みです):</div>
+    <div id="noComboGrowthList"></div>
+  </div>
+
+  <div class="row">
+    <div class="muted">クールタイム(既定: 0.5秒。同じリアクションが短い間隔で連続して届いても、この秒数より短い間隔では表示を間引きます。0.5〜5.0秒の範囲で調整できます):</div>
+    <input type="range" id="cooldownRange" min="0.5" max="5" step="0.1" value="0.5" />
+    <span id="cooldownValue" class="muted">0.5秒</span>
+    <button id="cooldownResetBtn" class="secondary">既定に戻す</button>
+  </div>
+
+  <div class="row">
     <label class="muted"><input type="checkbox" id="hideLocalOverlayCheckbox" /> 自分の画面には表示しない(OBS経由の配信画面にのみ表示します。OBSの「ブラウザ」ソース連携を使っている場合のみ有効です)</label>
   </div>
 

@@ -300,7 +300,23 @@ fn set_overlay_region(
 /// 使え、ドラッグ座標から%への変換をfrontendだけで完結できるため)。
 ///
 /// 既に開いていた場合は前面に出すだけにする(多重に開かない)。
-#[tauri::command]
+///
+/// 重要: 致命的な不具合の修正。以前はこの関数が素の`fn`(非同期指定なし)
+/// だったため、Tauriの仕組み上メインスレッド(イベントループのスレッド)上で
+/// そのまま実行されていた。新しいウィンドウの作成(WebviewWindowBuilder::build())は
+/// WebView2の初期化を伴う比較的重い処理で、内部的にイベントループがメッセージを
+/// 処理し続けることを前提にしている可能性があり、メインスレッドをここで
+/// 塞いでしまうと、ウィンドウ作成そのものが完了できずに固まってしまう
+/// (実機で「ボタンを押しても選択画面が出てこない」「その後オーバーレイの
+/// 表示も止まる」「再起動しても『(応答なし)』のまま固まる」という報告が
+/// あった。タイトルバーに(応答なし)と出るのは、ウィンドウ自体はOSに
+/// 認識されているのにメッセージループが処理されていない=典型的なメイン
+/// スレッド固着の症状)。他のウィンドウ作成系コマンド
+/// (viewer-app-tauri側のopen_bar_window等)と同じく#[tauri::command(async)]を
+/// 付けて別スレッドで実行させることで解消する(ウィンドウの作成・操作自体は
+/// Tauriが内部で常にメインスレッドへ処理を回すため、別スレッドから呼んでも
+/// 安全)。
+#[tauri::command(async)]
 fn open_region_picker(app: tauri::AppHandle, store: tauri::State<ConfigStore>) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("regionPicker") {
         let _ = win.set_focus();
@@ -477,6 +493,12 @@ struct OverlaySettings {
     glyph_opacity: f64,
     #[serde(rename = "comboGrowthEnabled")]
     combo_growth_enabled: bool,
+    // 「このリアクションは連打しても大きくしない」を個別に指定できる
+    // リアクションIDの一覧(未設定=空配列=従来通り全リアクションが対象)。
+    // comboGrowthEnabled(全体ON/OFF)とは別軸で、こちらは「全体はONのまま、
+    // 特定のリアクションだけ除外したい」という要望への対応。
+    #[serde(rename = "noComboGrowthIds")]
+    no_combo_growth_ids: Vec<String>,
 }
 
 /// ConfigStoreから「絵文字の大きさ」を読む。未設定(初回起動時など)は
@@ -508,6 +530,21 @@ fn read_combo_growth_enabled(store: &ConfigStore) -> bool {
         .unwrap_or(true)
 }
 
+/// ConfigStoreから「大きくしない」に個別指定されているリアクションIDの一覧を
+/// 読む。未設定時・壊れた値の場合は空配列(=デフォルトで全リアクションが
+/// チェック済み=従来通り大きくなる、という要望どおりの既定挙動)。
+fn read_no_combo_growth_ids(store: &ConfigStore) -> Vec<String> {
+    store
+        .get("noComboGrowthIds")
+        .and_then(|v| v.as_array().cloned())
+        .map(|arr| {
+            arr.into_iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 fn get_credentials(store: tauri::State<ConfigStore>) -> Credentials {
     Credentials {
@@ -536,6 +573,7 @@ fn get_overlay_settings(store: tauri::State<ConfigStore>) -> OverlaySettings {
         glyph_scale: read_glyph_scale(&store),
         glyph_opacity: read_glyph_opacity(&store),
         combo_growth_enabled: read_combo_growth_enabled(&store),
+        no_combo_growth_ids: read_no_combo_growth_ids(&store),
     }
 }
 
@@ -618,6 +656,33 @@ fn set_overlay_combo_growth(
         .map_err(|e| e.to_string())?;
     }
     obs_bridge.set_combo_growth_enabled(enabled);
+    Ok(())
+}
+
+/// 設定パネルの「個別リアクションごとの『大きくしない』チップ一覧」から
+/// 呼ばれる。set_overlay_combo_growthと同じ構造(保存→Tauriオーバーレイへ
+/// emit→OBS側へも反映)だが、こちらは全体ON/OFFではなくIDの配列を丸ごと
+/// 置き換える形にしてある(チップ側の実装をシンプルにするため。差分計算は
+/// せず、チェックが変わるたびに毎回「今チェックが外れているID全部」を
+/// 送り直す)。
+#[tauri::command]
+fn set_overlay_no_combo_growth_ids(
+    app: tauri::AppHandle,
+    store: tauri::State<ConfigStore>,
+    obs_bridge: tauri::State<obs_bridge::ObsBridge>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    store
+        .set("noComboGrowthIds".to_string(), serde_json::json!(ids))
+        .map_err(|e| e.to_string())?;
+    if let Some(win) = app.get_webview_window("overlay") {
+        win.emit(
+            "overlay:settings",
+            serde_json::json!({ "noComboGrowthIds": ids.clone() }),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    obs_bridge.set_no_combo_growth_ids(ids);
     Ok(())
 }
 
@@ -742,11 +807,13 @@ pub fn run() {
             let initial_glyph_scale = read_glyph_scale(&store);
             let initial_glyph_opacity = read_glyph_opacity(&store);
             let initial_combo_growth_enabled = read_combo_growth_enabled(&store);
+            let initial_no_combo_growth_ids = read_no_combo_growth_ids(&store);
             app.manage(store);
             app.manage(obs_bridge::start(
                 initial_glyph_scale,
                 initial_glyph_opacity,
                 initial_combo_growth_enabled,
+                initial_no_combo_growth_ids,
             ));
             // create_overlay_window内で立ち上げる最前面取り直しスレッドが参照する
             // ため、ウィンドウを作る前に必ず管理下に置いておく。
@@ -845,6 +912,7 @@ pub fn run() {
             set_overlay_glyph_scale,
             set_overlay_glyph_opacity,
             set_overlay_combo_growth,
+            set_overlay_no_combo_growth_ids,
             cfg_get,
             cfg_set,
             emit_overlay_reaction,

@@ -61,7 +61,7 @@
     background: rgba(20,20,24,var(--icon-bg-alpha, 0.55));
     border: none;
     border-radius: 8px;
-    padding: 4px 8px;
+    padding: 4px 6px;
     cursor: pointer;
     transition: transform 0.08s ease, background 0.15s ease;
     line-height: 1;
@@ -72,6 +72,18 @@
        側では絵文字専用フォントを先頭にしていたため発生しなかった不具合)。
        絵文字を描画するボタンだけは色付き絵文字フォントを最優先にする。 */
     font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+    /* それなｗ等の短文リアクションボタンだけ絵文字ボタンより横幅が細く見え、
+       ボタン列の見た目が揃わない(「気持ち悪い」)という指摘への対応。
+       全ボタン共通で、絵文字1文字が収まる幅を最小幅として固定し、
+       中身を中央寄せにする。文字数が多い短文ボタン側は
+       .emoji-btn-textreaction側でfont-sizeを縮小して同じ箱に収める
+       (下記参照)。 */
+    box-sizing: border-box;
+    width: calc(42px * var(--icon-scale, 1));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
   }
   .emoji-btn .hk-badge {
     position: absolute;
@@ -98,6 +110,17 @@
      (.rainbow-textクラスはbar.js参照)。ここでは共通のクラス名だけ定義しておく。 */
   .emoji-btn-textreaction {
     font-weight: 900;
+    /* 「絵文字ボタンと幅を揃えてほしい(上手いやり方が思いつかない)」という
+       指摘への対応。.emoji-btnは既に絵文字1文字分の固定幅
+       (width: 42px*--icon-scale)になっているので、それなｗ等の4文字前後の
+       短文側はフォントサイズを大きく落とし、折り返し(white-space: normal、
+       既定)を許可して同じ固定幅の箱の中に2行程度で収める形にする。
+       絵文字ボタン側の見た目・挙動には一切手を加えていない。 */
+    font-size: calc(11px * var(--icon-scale, 1));
+    line-height: 1.15;
+    white-space: normal;
+    word-break: break-all;
+    text-align: center;
   }
   /* 神ｗ専用の「ゲーミングカラー」(虹色が流れ続けるグラデーション文字)。
      overlay.html/overlay.jsと同じbackground-clip:textの手法。ボタン自体の

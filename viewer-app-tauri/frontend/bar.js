@@ -143,16 +143,27 @@ function onClickEmoji(emojiId) {
   if (now - lastSentAt < DEBOUNCE_MS) return;
   lastSentAt = now;
   if (relayClient) relayClient.send({ type: 'reaction', emoji: emojiId });
-  // ボタンをクリックすると、このバー自身はfocused(false)で作っていても
-  // クリックそのものでOSからキーボードフォーカスを奪ってしまい、pcwmp/
-  // PCRPlayerのコメント入力欄からフォーカスが外れてしまう、というテスター
-  // 報告への対応。直近に検出できていた対象があれば、クリック直後にそちらへ
-  // フォーカスを戻す(対象が無い/まだ検出前の場合は何もしない)。
-  if (lastTargetRawHandle) {
-    invoke('focus_target_window', { rawHandle: lastTargetRawHandle }).catch(() => {
-      // 無視(フォーカスの戻し忘れ程度で、リアクション自体は既に送信済み)
-    });
-  }
+  // 【廃止】以前はここでinvoke('focus_target_window', ...)を呼び、クリック毎に
+  // pcwmp/PCRPlayer側へ明示的にフォーカスを戻していた。しかし「連打すると
+  // ウィンドウ全体がちらつく(枠が黒白黒白と入れ替わる)」という report が
+  // WS_EX_NOACTIVATE対応(main.jsのcreate_bar_window、pcwmp::set_no_activate)
+  // 後もなお解消しないという再報告があった。
+  //
+  // 根本原因の再検討: NOACTIVATEにより、このバー自身のクリックではOSは
+  // そもそもこのウィンドウにフォーカスを渡さなくなっている(=対象側の
+  // フォーカスは最初から失われていないはず)。にもかかわらず、この
+  // focus_target_window呼び出し(=SetForegroundWindow相当)を連打のたびに
+  // 毎回呼び続けていたことで、Windows側のフォアグラウンド窃取防止
+  // ヒューリスティックが働き、要求を許可する代わりにタイトルバー/枠を
+  // 点滅させる「フラッシュ」動作にフォールバックしていたと考えられる
+  // (=このコード自身が、直そうとしていたちらつきの原因になっていた)。
+  // NOACTIVATE側で十分に目的を達成できているはずのため、この「念のため」の
+  // 呼び出しは撤去する。
+  //
+  // 注: 開発環境では実機Windows上での検証ができないため、この診断は
+  // コードレビューベースの推定であることに留意。もし撤去後もちらつきが
+  // 再発するようであれば、原因は別箇所(pcwmp側のイベントフック等)に
+  // ある可能性が高い。
 }
 
 function renderButtons() {
@@ -166,7 +177,10 @@ function renderButtons() {
       // 神ｗ専用: ボタン自体の背景(rgba)とグラデーション文字が同じ
       // background系プロパティを取り合ってしまうため、文字だけを内側のspanに
       // 分離してそちらにグラデーションをかける(overlay.jsのglyphHostと
-      // 同じ考え方)。
+      // 同じ考え方)。他の短文リアクション同様、絵文字ボタンと幅を揃える
+      // ため.emoji-btn-textreaction(フォント縮小+折り返し)もボタン側に
+      // 付与する(font-sizeはこのクラス経由でrainbow-text側にも継承される)。
+      btn.classList.add('emoji-btn-textreaction');
       const textSpan = document.createElement('span');
       textSpan.className = 'rainbow-text';
       textSpan.textContent = emoji.char;
