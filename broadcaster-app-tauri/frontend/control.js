@@ -11,6 +11,7 @@
  * アドレスは視聴者アプリのビルド時に埋め込む前提)。
  */
 const invoke = window.__TAURI__.core.invoke;
+const listen = window.__TAURI__.event.listen;
 
 const connStatusEl = document.getElementById('connStatus');
 const viewerCountEl = document.getElementById('viewerCount');
@@ -44,6 +45,7 @@ const regionWidthValueEl = document.getElementById('regionWidthValue');
 const regionHeightRangeEl = document.getElementById('regionHeightRange');
 const regionHeightValueEl = document.getElementById('regionHeightValue');
 const regionResetBtn = document.getElementById('regionResetBtn');
+const regionPickBtn = document.getElementById('regionPickBtn');
 
 // ネガティブなリアクション(荒らし対策で見たくない配信者もいるため)は、
 // 初回は「受け付けるリアクション」から既定でOFFにしておく。一度でも
@@ -468,6 +470,40 @@ regionResetBtn.addEventListener('click', () => {
   regionEnabledCheckboxEl.checked = false;
   regionFieldsEl.classList.add('disabled');
   applyRegionSettings();
+});
+
+/** 「範囲指定(ドラッグで選ぶ)」ボタン。専用ウィンドウ(region_picker.js)を開く
+ * だけで、実際の保存・オーバーレイへの反映はそちら側がset_overlay_regionを
+ * 直接呼んで完結させる。この画面は下のlisten('overlay-region-picked', ...)で
+ * 確定した値を受け取り、スライダー表示だけを同期する。 */
+regionPickBtn.addEventListener('click', () => {
+  invoke('open_region_picker').catch(() => {
+    // 無視(モニター情報が取得できない等の稀なケース。スライダーでの
+    // 手動指定は引き続き使えるため、致命的ではない)
+  });
+});
+
+/** region_picker.jsがドラッグでの範囲確定後にブロードキャストしてくる
+ * イベント。値は既にRust側(set_overlay_region)へ保存・反映済みなので、
+ * ここではスライダーの見た目をその値に合わせるだけでよい(loadRegionSettings
+ * と同じ表示ロジックを使い回す)。 */
+listen('overlay-region-picked', (event) => {
+  const { x, y, width, height } = event.payload || {};
+  const xPercent = typeof x === 'number' ? Math.round(x * 100) : 0;
+  const yPercent = typeof y === 'number' ? Math.round(y * 100) : 0;
+  const widthPercent = typeof width === 'number' ? Math.round(width * 100) : 100;
+  const heightPercent = typeof height === 'number' ? Math.round(height * 100) : 100;
+
+  regionEnabledCheckboxEl.checked = true;
+  regionFieldsEl.classList.remove('disabled');
+  regionXRangeEl.value = String(xPercent);
+  regionXValueEl.textContent = `${xPercent}%`;
+  regionYRangeEl.value = String(yPercent);
+  regionYValueEl.textContent = `${yPercent}%`;
+  regionWidthRangeEl.value = String(widthPercent);
+  regionWidthValueEl.textContent = `${widthPercent}%`;
+  regionHeightRangeEl.value = String(heightPercent);
+  regionHeightValueEl.textContent = `${heightPercent}%`;
 });
 
 copyBtn.addEventListener('click', async () => {

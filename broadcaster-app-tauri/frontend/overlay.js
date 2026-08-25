@@ -339,6 +339,61 @@ const ANIM_PRESETS = {
     durationFactor: 1.2,
     glyphAnim: 'spin',
   },
+
+  // ---- ここから追加分(短文リアクション・追加の動物リアクション) ----
+
+  // それな/わかる/うまい/神: ニコニコ動画のコメントのように画面右から左へ
+  // 流れて消える短文リアクション共通プリセット(色だけemoji-set.js側の
+  // colorフィールドでリアクションごとに変える)。
+  nicoflow: {
+    motion: 'nicoFlow',
+    durationFactor: 1.3,
+  },
+  // 👶 赤ちゃん: 画面のあちこちを縦横無尽にハイハイして回る(wanderモーション)。
+  // 自己アニメーション(anim-crawl)で、はいはいの上下動を表現する。
+  crawl: {
+    motion: 'wander',
+    riseFactor: 1,
+    durationFactor: 1.6,
+    glyphAnim: 'crawl',
+  },
+  // 🐧 ペンギン: 同じくwanderモーションであちこちとことこ歩き回るが、
+  // 自己アニメーション(anim-waddle)は左右に揺れるヨチヨチ歩きにしてある。
+  waddle: {
+    motion: 'wander',
+    riseFactor: 0.85,
+    durationFactor: 1.6,
+    glyphAnim: 'waddle',
+  },
+  // 🐶 ワンワン: 「ワン!」と吠える勢いのある自己アニメーション(anim-bark)+
+  // 吠え声を表す小さな輪(ring)を添える。
+  bark: {
+    motion: 'rise',
+    riseFactor: 0.75,
+    durationFactor: 1.0,
+    glyphAnim: 'bark',
+    particles: { shape: 'ring', life: 300, small: true },
+  },
+  // 🐷 ブーブー: 「ブー!」と鳴いて可愛らしく揺れる自己アニメーション(anim-oink)。
+  oink: {
+    motion: 'rise',
+    riseFactor: 0.8,
+    durationFactor: 1.05,
+    glyphAnim: 'oink',
+    particles: { shape: 'dot', color: '#ffb6d9', count: 3, spread: 18, life: 500, drift: 'up' },
+  },
+  // 👊 拳: 「停止状態で出て拳で!」という要望通り、その場にどんと構えて
+  // (collapseモーション+既存の🍣と同じ勢いよく飛び出す自己アニメーション
+  // 「punch」を流用)、出現と同時に漫画風の集中線(radialLines)を放射する。
+  fistbump: {
+    motion: 'collapse',
+    riseFactor: 0.2,
+    durationFactor: 0.9,
+    noOuterRotate: true,
+    fullRangeY: true,
+    glyphAnim: 'punch',
+    particles: { shape: 'radialLines', count: 12, life: 420, color: 'rgba(255,255,255,0.92)' },
+  },
 };
 
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcfef', '#a06bff', '#6bff9e', '#ff9e6b'];
@@ -980,6 +1035,72 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     };
   }
 
+  if (motion === 'nicoFlow') {
+    // それな/わかる/うまい/神 等の短文リアクション向け: ニコニコ動画の
+    // コメントのように、画面の右端から左端へ一定速度(linear)で流れて消える。
+    // 文字数によって要素の見た目の幅が変わるため、開始位置は画面右端の外側
+    // (vw)固定にし、移動距離を画面幅より大きめ(1.35倍)に取ることで、
+    // 長い文言でも確実に画面外まで流れきってから消えるようにしてある。
+    const startX = vw;
+    const startY = vh * 0.08 + Math.random() * (vh * 0.8);
+    const travel = vw * 1.35 * driftFactor;
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) scale(1)',
+      finalTransform: `translate(${-travel}px, 0) scale(1)`,
+      moveDuration: duration,
+      easing: 'linear',
+      endX: startX - travel,
+      endY: startY,
+    };
+  }
+
+  if (motion === 'wander') {
+    // 👶🐧: 一方向に流れるのではなく、画面のあちこちを縦横無尽にとことこ
+    // 移動する専用モーション。ランダムな向きへの短い移動(waypoints)を
+    // 複数回つなげてジグザグに歩き回るように見せる(hopの「横断」版に近いが、
+    // 上下左右どちらへも自由に動く点が異なる)。画面端に近づきすぎた場合は
+    // 進行方向を反転させ、画面外へ出てしまわないようにする。
+    const stepCount = 5;
+    const marginX = vw * EDGE_MARGIN_RATIO;
+    const marginY = vh * EDGE_MARGIN_RATIO;
+    const startX = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
+    const startY = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+    let curX = startX;
+    let curY = startY;
+    const stepDist = Math.min(vw, vh) * 0.14 * riseFactor;
+    const legDuration = Math.max(200, Math.round(duration / stepCount));
+    const waypoints = [];
+    for (let i = 1; i <= stepCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      let dx = Math.cos(angle) * stepDist * (0.7 + Math.random() * 0.6);
+      // 縦方向は横方向より控えめにし、床の上を移動しているような見た目にする
+      let dy = Math.sin(angle) * stepDist * (0.7 + Math.random() * 0.6) * 0.6;
+      if (curX + dx < marginX || curX + dx > vw - marginX - size) dx = -dx;
+      if (curY + dy < marginY || curY + dy > vh - marginY - size) dy = -dy;
+      curX += dx;
+      curY += dy;
+      // 進行方向(左右)にあわせて絵文字ごと反転させ、歩いている方を向かせる
+      const facingLeft = dx < 0;
+      waypoints.push({
+        atMs: legDuration * i,
+        legMs: legDuration,
+        transform: `translate(${curX - startX}px, ${curY - startY}px) scale(${facingLeft ? -1 : 1}, 1)`,
+      });
+    }
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) scale(1, 1)',
+      moveDuration: legDuration,
+      easing: 'ease-in-out',
+      waypoints,
+      endX: curX,
+      endY: curY,
+    };
+  }
+
   // 'rise'(既定): 下から出てきて上に上がっていく
   const startX = Math.random() * (vw - size);
   const startY = vh - size - Math.random() * (vh * 0.3);
@@ -1101,7 +1222,23 @@ function spawnReaction(emojiId) {
   el.style.top = `${path.startY}px`;
   el.style.transform = path.initialTransform;
   el.style.opacity = '0';
-  el.style.transition = `transform ${path.moveDuration}ms ${path.easing}, opacity ${duration}ms ease-out`;
+  // フェードイン(0→表示不透明度)にかける時間は、常に全体のduration(表示時間
+  // 全体)と同じにしていたため、durationFactorが大きいリアクション(例: 💣は
+  // 着地後2〜3秒待ってから爆発するため2.6倍にしてある)では、実際に動き終わって
+  // 画面上に着地した後もずっと透明度が上がりきらず、しばらく「半透明のまま」に
+  // 見えてしまう不具合があった(「爆弾が半透明な気がする」という指摘の原因)。
+  // フェードインは実際に動き終わる頃(moveDuration)には完了しているべきなので、
+  // 全体の尺とは切り離し、動きが終わるタイミングを基準にした短い時間に固定する。
+  // (waypointsを使う動き(⚽💩🧨等)は、最初のwaypointが発火した時点で下の
+  // waypointループが改めてopacityのtransition時間をduration基準に上書きするため、
+  // 実質的にこの問題の影響を受けない。影響が出るのはwaypointsを使わない、かつ
+  // moveDurationがdurationよりかなり短い動き(💣のquickFall等)だけ)。
+  const fadeInMs = Math.min(duration, Math.max(220, path.moveDuration + 220));
+  // transform側のtransition時間は、後でフェードアウト(下のsetTimeout)を
+  // 仕掛ける際にも(opacity側だけ変更したいので)そのまま使い回せるよう、
+  // 変数として覚えておく(waypointsでlegMsが指定されるたびに更新する)。
+  let transformDurationMs = path.moveDuration;
+  el.style.transition = `transform ${transformDurationMs}ms ${path.easing}, opacity ${fadeInMs}ms ease-out`;
 
   stage.appendChild(el);
   activeItems.push(el);
@@ -1128,6 +1265,9 @@ function spawnReaction(emojiId) {
   }
 
   // 💣 爆弾専用: 着地してからしばらく待ち、ランダムなタイミングで爆発する。
+  // 「爆発をもっとド派手に」という要望に対応し、以前の紙吹雪+リング1個だけの
+  // 演出から、閃光(spawnFlash)・二重の衝撃波リング・色付きの火花・破片の
+  // 飛散まで含めた、より賑やかな爆発演出に強化してある。
   if (preset.explodeDelayRangeMs) {
     const [minDelay, maxDelay] = preset.explodeDelayRangeMs;
     const explodeDelay = path.moveDuration + minDelay + Math.random() * (maxDelay - minDelay);
@@ -1135,11 +1275,48 @@ function spawnReaction(emojiId) {
     const explodeY = path.endY + size / 2;
     setTimeout(() => {
       if (!el.isConnected) return; // 爆発前に片付けられていたら何もしない(念のため)
-      spawnParticles({ shape: 'confetti', count: 22, life: 750 }, explodeX, explodeY, size);
-      spawnParticles({ shape: 'ring', life: 550 }, explodeX, explodeY, size * 1.3);
-      // 爆発の瞬間、絵文字自体も一瞬弾けて消えるようにする
-      el.style.transition = 'transform 260ms ease-out, opacity 260ms ease-out';
-      el.style.transform += ' scale(1.6)';
+      // 中心の閃光(一瞬だけ明るく光ってから消える)
+      spawnFlash(explodeX, explodeY, size * 2.6);
+      // 破片(紙吹雪)を以前より多めに飛散させる
+      spawnParticles({ shape: 'confetti', count: 26, life: 800 }, explodeX, explodeY, size);
+      // オレンジ・赤の火花を2色重ねて飛ばし、爆炎らしい色の広がりを出す
+      spawnParticles(
+        { shape: 'dot', color: '#ffcf6b', count: 12, spread: 60, life: 620, drift: 'burst' },
+        explodeX,
+        explodeY,
+        size
+      );
+      spawnParticles(
+        { shape: 'dot', color: '#ff5b3d', count: 10, spread: 46, life: 520, drift: 'burst' },
+        explodeX,
+        explodeY,
+        size
+      );
+      // 白い破片線を放射状に飛ばし、勢いを強調する
+      spawnParticles(
+        { shape: 'streak', count: 8, spread: 68, life: 480, color: 'rgba(255,255,255,0.85)' },
+        explodeX,
+        explodeY,
+        size
+      );
+      // 衝撃波を二重(内側は明るく太め、外側は薄く大きめ)に出す
+      spawnRing(explodeX, explodeY, size, {
+        life: 480,
+        thickness: 4,
+        color: 'rgba(255,214,140,0.95)',
+        glow: true,
+        scale: 1.6,
+      });
+      spawnRing(explodeX, explodeY, size, {
+        life: 680,
+        thickness: 2,
+        color: 'rgba(255,255,255,0.55)',
+        scale: 2.8,
+      });
+      // 爆発の瞬間、絵文字自体も勢いよく弾けて回転しながら消えるようにする
+      el.style.transition = 'transform 340ms cubic-bezier(.22,1.6,.4,1), opacity 300ms ease-out';
+      const explodeSpin = (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 14);
+      el.style.transform += ` scale(2.1) rotate(${explodeSpin.toFixed(0)}deg)`;
       el.style.opacity = '0';
     }, explodeDelay);
   }
@@ -1189,6 +1366,7 @@ function spawnReaction(emojiId) {
         // 2プロパティで設定してあるので、transitionDurationを同じ並び
         // (transform用, opacity用)で上書きすればよい。
         if (wp.legMs) {
+          transformDurationMs = wp.legMs;
           el.style.transitionDuration = `${wp.legMs}ms, ${duration}ms`;
         }
         el.style.transform = wp.transform;
@@ -1197,6 +1375,11 @@ function spawnReaction(emojiId) {
   }
 
   setTimeout(() => {
+    // フェードアウトは、上のfadeInMsによる短縮の影響を受けず、これまで通り
+    // duration(表示時間全体)基準のゆったりした減衰カーブのままにする
+    // (transform側の現在のtransition時間(transformDurationMs)はそのまま
+    // 保ちつつ、opacity側だけを差し替える)。
+    el.style.transitionDuration = `${transformDurationMs}ms, ${duration}ms`;
     el.style.opacity = '0';
   }, duration * 0.75);
 
@@ -1223,6 +1406,11 @@ function spawnParticles(spec, cx, cy, baseSize) {
   }
   if (spec.shape === 'laser') {
     spawnLaserBeam(cx, cy, baseSize, spec);
+    return;
+  }
+  // 👊: 中心から放射状に伸びる集中線(漫画の「バーン!」的な演出)。
+  if (spec.shape === 'radialLines') {
+    spawnRadialLines(cx, cy, baseSize, spec);
     return;
   }
   const count = spec.count || 4;
@@ -1252,20 +1440,78 @@ function spawnLaserBeam(cx, cy, baseSize, spec) {
   setTimeout(() => el.remove(), life + 60);
 }
 
+// spec.scale: 最終的な直径をbaseSizeの何倍にするか(既定はsmall:2〜3px枠の
+// 従来通り1.4/2.2倍)。spec.color/thicknessでリングの色・太さを変えられ、
+// spec.glowを立てるとリングの色に合わせたboxShadowの光彩を追加する
+// (💣爆発の衝撃波演出用に拡張。それ以外の既存呼び出し元は指定しないので
+// 従来通りの見た目のまま変わらない)。
 function spawnRing(cx, cy, baseSize, spec) {
   const ring = document.createElement('div');
   ring.className = 'particle';
-  const size = spec.small ? baseSize * 1.4 : baseSize * 2.2;
+  const mult = spec.scale ?? (spec.small ? 1.4 : 2.2);
+  const size = baseSize * mult;
   ring.style.left = `${cx - size / 2}px`;
   ring.style.top = `${cy - size / 2}px`;
   ring.style.width = `${size}px`;
   ring.style.height = `${size}px`;
   ring.style.borderRadius = '50%';
-  ring.style.border = `${spec.small ? 2 : 3}px solid rgba(255,255,255,0.85)`;
+  const thickness = spec.thickness || (spec.small ? 2 : 3);
+  const color = spec.color || 'rgba(255,255,255,0.85)';
+  ring.style.border = `${thickness}px solid ${color}`;
+  if (spec.glow) {
+    ring.style.boxShadow = `0 0 ${thickness * 3}px ${color}`;
+  }
   ring.style.boxSizing = 'border-box';
   ring.style.animation = `particle-ring ${spec.life}ms ease-out forwards`;
   stage.appendChild(ring);
   setTimeout(() => ring.remove(), spec.life + 50);
+}
+
+// 💣爆発専用: 中心が一瞬明るく光ってから広がってフェードする閃光。
+function spawnFlash(cx, cy, size) {
+  const el = document.createElement('div');
+  el.className = 'particle';
+  el.style.left = `${cx - size / 2}px`;
+  el.style.top = `${cy - size / 2}px`;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.borderRadius = '50%';
+  el.style.background =
+    'radial-gradient(circle, rgba(255,244,214,0.95) 0%, rgba(255,158,68,0.8) 38%, rgba(255,90,40,0) 72%)';
+  // 'screen'合成にすることで、暗い配信画面の上でも明るく光って見えつつ、
+  // 四角い当たり判定の縁が不自然に主張しないようにする。
+  el.style.mixBlendMode = 'screen';
+  const life = 380;
+  el.style.animation = `particle-flash ${life}ms ease-out forwards`;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), life + 60);
+}
+
+// 👊専用: (cx, cy)を中心に、放射状に伸びる集中線を複数本出す(漫画の
+// 「バーン!」的な演出)。spawnLaserBeamと同じtransform-origin:left centerの
+// 考え方を使うが、1本だけでなく全方位に等間隔+少しのランダムなずれで
+// 複数本まとめて出す点が異なる。
+function spawnRadialLines(cx, cy, baseSize, spec) {
+  const count = spec.count || 10;
+  const length = spec.length || baseSize * 2.6;
+  const thickness = spec.thickness || 3;
+  const life = spec.life || 380;
+  const color = spec.color || 'rgba(255,255,255,0.9)';
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+    const el = document.createElement('div');
+    el.className = 'particle';
+    el.style.left = `${cx}px`;
+    el.style.top = `${cy - thickness / 2}px`;
+    el.style.width = `${length * (0.75 + Math.random() * 0.35)}px`;
+    el.style.height = `${thickness}px`;
+    el.style.background = color;
+    el.style.transformOrigin = 'left center';
+    el.style.setProperty('--line-rot', `${(angle * 180) / Math.PI}deg`);
+    el.style.animation = `particle-radial-line ${life}ms ease-out forwards`;
+    stage.appendChild(el);
+    setTimeout(() => el.remove(), life + 60);
+  }
 }
 
 function spawnOneParticle(spec, cx, cy, baseSize, i) {

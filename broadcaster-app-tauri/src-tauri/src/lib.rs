@@ -290,6 +290,58 @@ fn set_overlay_region(
     Ok(())
 }
 
+/// 「範囲指定」ボタン(control.js)用: 選択中のモニターいっぱいに、半透明の
+/// 暗いスクリム(regionPicker.html)を張った専用ウィンドウを開く。ユーザーは
+/// その上でマウスをドラッグして範囲を選び、離した瞬間にregion_picker.js側が
+/// 直接set_overlay_regionを呼んで確定させ、自分でこのウィンドウを閉じる
+/// (Rust側からは開くことだけを行い、確定・close自体はJS側に任せる設計。
+/// 理由: この画面は選んだモニターの物理サイズそのままで開くため、JS側の
+/// window.innerWidth/innerHeightがそのままモニターに対する絶対座標として
+/// 使え、ドラッグ座標から%への変換をfrontendだけで完結できるため)。
+///
+/// 既に開いていた場合は前面に出すだけにする(多重に開かない)。
+#[tauri::command]
+fn open_region_picker(app: tauri::AppHandle, store: tauri::State<ConfigStore>) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("regionPicker") {
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    let saved_monitor_id = store
+        .get("overlayMonitorId")
+        .and_then(|v| v.as_str().map(String::from));
+    let (monitor_pos, monitor_size) = resolve_overlay_monitor(&app, saved_monitor_id.as_deref());
+
+    let win = WebviewWindowBuilder::new(
+        &app,
+        "regionPicker",
+        WebviewUrl::App("region_picker.html".into()),
+    )
+    .title("ReaCast - 表示範囲を選択")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .shadow(false)
+    .visible(true)
+    .focused(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    // 選んだモニターの外枠ぴったりに配置する。全体を覆う暗いスクリムなので、
+    // 半透明(alpha≈90/255)の背景色を明示しておく(WebView2の透明ウィンドウは
+    // 背景色を明示しないと環境依存の色になりうるため。他のウィンドウと同じ
+    // 理由でここでも明示する)。
+    win.set_background_color(Some(tauri::window::Color(8, 9, 12, 90)))
+        .map_err(|e| e.to_string())?;
+    win.set_position(tauri::Position::Physical(monitor_pos))
+        .map_err(|e| e.to_string())?;
+    win.set_size(tauri::Size::Physical(monitor_size))
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     if app.get_webview_window("overlay").is_some() {
         return Ok(());
@@ -799,6 +851,7 @@ pub fn run() {
             list_monitors,
             set_overlay_monitor,
             set_overlay_region,
+            open_region_picker,
             updater::check_for_update,
             updater::download_and_apply_update,
         ])

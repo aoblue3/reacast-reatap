@@ -152,9 +152,10 @@ mod win {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
-        IsWindowVisible, SendMessageTimeoutW, SetForegroundWindow, SetWindowLongPtrW,
-        SMTO_ABORTIFHUNG, GWLP_HWNDPARENT, WM_GETTEXT,
+        GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
+        GetWindowThreadProcessId, IsWindowVisible, SendMessageTimeoutW, SetForegroundWindow,
+        SetWindowLongPtrW, GWLP_HWNDPARENT, GWL_EXSTYLE, SMTO_ABORTIFHUNG, WM_GETTEXT,
+        WS_EX_NOACTIVATE,
     };
 
     /// ウィンドウのタイトルを安全に取得する。
@@ -334,6 +335,33 @@ mod win {
         }
     }
 
+    /// このウィンドウ(リアクションバー)がクリックされてもOS側のフォーカス
+    /// (アクティブウィンドウ)を一切奪わないようにする。
+    ///
+    /// 経緯: 「絵文字ボタンを押すたびに配信ウィンドウが非アクティブになり、
+    /// 連打すると枠の色がちらついて気持ち悪い」という報告への対応。以前は
+    /// クリック直後にset_foreground_window()でフォーカスを配信ウィンドウへ
+    /// 事後的に戻していたが、これだと「一瞬奪う→戻す」を毎クリックごとに
+    /// 繰り返すことになり、連打時にその切り替え自体が視覚的なちらつきの
+    /// 原因になっていた。
+    ///
+    /// Win32の拡張ウィンドウスタイルWS_EX_NOACTIVATEを立てておくと、この
+    /// ウィンドウはクリックされても一切アクティブ化されなくなる(=そもそも
+    /// フォーカスを奪う瞬間自体が発生しなくなる)。マウスクリック自体
+    /// (WM_LBUTTONDOWN等)は引き続き正常にこのウィンドウへ届くため、ボタンの
+    /// クリック処理(JS側のclickイベント)には影響しない。オンスクリーン
+    /// キーボードや配信オーバーレイツール等、「常に前面にあるがクリックしても
+    /// フォーカスを奪わないツールバー」的なウィンドウでよく使われる標準的な
+    /// 手法。set_foreground_window()自体は保険として残してあるが、この
+    /// スタイルが効いていればそもそも出番が無くなる想定。
+    pub fn set_no_activate(hwnd_raw: isize) {
+        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+        unsafe {
+            let cur = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, cur | (WS_EX_NOACTIVATE.0 as isize));
+        }
+    }
+
     // MAX_PATHは将来の拡張(短いバッファへのフォールバック等)用に残しておく
     #[allow(dead_code)]
     const _MAX_PATH_HINT: u32 = MAX_PATH;
@@ -364,6 +392,11 @@ mod win {
     pub fn set_foreground_window(_hwnd_raw: isize) {
         // Windows以外では何もしない
     }
+
+    #[allow(dead_code)]
+    pub fn set_no_activate(_hwnd_raw: isize) {
+        // Windows以外では何もしない
+    }
 }
 
 pub fn is_available() -> bool {
@@ -392,6 +425,17 @@ pub fn set_window_owner(our_hwnd_raw: isize, owner_hwnd_raw: isize) {
 /// Windows以外では何もしない。
 pub fn set_foreground_window(hwnd_raw: isize) {
     win::set_foreground_window(hwnd_raw);
+}
+
+/// 指定ウィンドウ(リアクションバー自身)がクリックされてもOS側のフォーカスを
+/// 奪わないようにする(WS_EX_NOACTIVATE)。Windows以外では何もしない。
+///
+/// 呼び出し側(lib.rs)がWindows専用コード内でしか呼ばないため、Linux上での
+/// ビルド(このリポジトリの開発・検証環境)では未使用警告が出るが、実害は無い
+/// (set_window_owner等と同じパターン)。
+#[allow(dead_code)]
+pub fn set_no_activate(hwnd_raw: isize) {
+    win::set_no_activate(hwnd_raw);
 }
 
 pub fn detect_target_window(override_path: Option<&str>, name_filter: Option<&str>) -> Option<WindowInfo> {

@@ -75,6 +75,22 @@ const EMOJI_SET = [
   { id: 'sushi', char: '🍣', label: '寿司', anim: 'sushi' },
   { id: 'cake', char: '🎂', label: 'おめでとう', anim: 'cake' },
   { id: 'soccer', char: '⚽', label: 'サッカー', anim: 'soccer' },
+
+  // ---- ここから短文リアクション(colorはkusaと同じく「絵文字ではなく
+  // 文字として色付き表示する」既存の仕組みを流用。ニコニコ動画のコメントを
+  // イメージし、右から左に流れて消えるnicoflowアニメーションを共通で使う。
+  // overlay.jsのANIM_PRESETS.nicoflow参照) ----
+  { id: 'sorena', char: 'それな', label: 'それな', anim: 'nicoflow', color: '#ffffff' },
+  { id: 'wakaru', char: 'わかる', label: 'わかる', anim: 'nicoflow', color: '#6fe3ff' },
+  { id: 'umai', char: 'うまい', label: 'うまい', anim: 'nicoflow', color: '#ffd93d' },
+  { id: 'kami', char: '神', label: '神', anim: 'nicoflow', color: '#ff7ad9' },
+
+  // ---- ここから追加の動物リアクション ----
+  { id: 'baby', char: '👶', label: '赤ちゃん', anim: 'crawl' },
+  { id: 'penguin', char: '🐧', label: 'ペンギン', anim: 'waddle' },
+  { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark' },
+  { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink' },
+  { id: 'fist', char: '👊', label: '拳', anim: 'fistbump' },
 ];
 
 const EMOJI_BY_ID = new Map(EMOJI_SET.map((e) => [e.id, e]));

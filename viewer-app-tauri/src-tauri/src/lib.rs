@@ -222,6 +222,19 @@ fn create_bar_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<()> {
     // 縮められずに透明な余白がクリックを奪ってしまう不具合が以前発生したため)。
     win.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(1.0, 1.0))))?;
 
+    // 「絵文字ボタンを押すたびに配信ウィンドウが非アクティブになり、連打すると
+    // 枠の色がちらつく」という報告への対応。.focused(false)は「作成直後だけ
+    // フォーカスを与えない」設定でしかなく、その後の実際のクリックによる
+    // フォーカス奪取は防げない。WS_EX_NOACTIVATEを立てることで、このウィンドウは
+    // クリックされても構造的に一切アクティブ化されなくなる(pcwmp::set_no_activate
+    // 参照)。
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(hwnd) = win.hwnd() {
+            pcwmp::set_no_activate(hwnd.0 as isize);
+        }
+    }
+
     Ok(())
 }
 

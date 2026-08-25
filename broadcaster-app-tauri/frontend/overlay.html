@@ -282,6 +282,42 @@
     75% { transform: scale(1.08) rotate(-1deg); }
     100% { transform: scale(1) rotate(0deg); }
   }
+  /* 💣: 導火線が燃えている間、じわっと明るく光りながら小さく脈打つ
+     (「爆発をもっとド派手に」という要望に合わせ、爆発前の緊張感も少し強化)。 */
+  @keyframes anim-bomb {
+    0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+    50% { transform: scale(1.07) rotate(-3deg); filter: drop-shadow(0 0 12px rgba(255,140,60,0.6)); }
+  }
+  /* 🐶: 「ワン!」と吠える勢いのある一瞬の弾み */
+  @keyframes anim-bark {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    12% { transform: scale(1.35, 0.8) rotate(-6deg); }
+    26% { transform: scale(0.92, 1.08) rotate(4deg); }
+    40% { transform: scale(1.18, 0.9) rotate(-3deg); }
+    55%, 100% { transform: scale(1) rotate(0deg); }
+  }
+  /* 🐷: 「ブー!」と鳴いて可愛らしく揺れる */
+  @keyframes anim-oink {
+    0%, 100% { transform: rotate(0deg) translateY(0) scale(1); }
+    20% { transform: rotate(-8deg) translateY(-3px) scale(1.05); }
+    40% { transform: rotate(8deg) translateY(0) scale(0.97); }
+    60% { transform: rotate(-5deg) translateY(-2px) scale(1.03); }
+    80% { transform: rotate(5deg) translateY(0) scale(1); }
+  }
+  /* 👶: ハイハイの上下動 */
+  @keyframes anim-crawl {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1,1); }
+    25% { transform: translateY(-5px) rotate(-6deg) scale(1.05,0.95); }
+    50% { transform: translateY(0) rotate(0deg) scale(0.97,1.03); }
+    75% { transform: translateY(-4px) rotate(6deg) scale(1.05,0.95); }
+  }
+  /* 🐧: 左右に揺れるヨチヨチ歩き */
+  @keyframes anim-waddle {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    25% { transform: rotate(-10deg) translateY(-2px); }
+    50% { transform: rotate(0deg) translateY(0); }
+    75% { transform: rotate(10deg) translateY(-2px); }
+  }
 
   /* パーティクル用の汎用アニメーション(発生位置からの相対移動+フェード) */
   @keyframes particle-up {
@@ -315,6 +351,19 @@
     15% { transform: scaleX(1); opacity: 1; }
     75% { transform: scaleX(1); opacity: 0.9; }
     100% { transform: scaleX(1); opacity: 0; }
+  }
+  /* 💣爆発の中心閃光: 一瞬明るく光ってから広がりつつ消える */
+  @keyframes particle-flash {
+    0% { transform: scale(0.2); opacity: 0.95; }
+    40% { transform: scale(1); opacity: 0.85; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+  /* 👊の集中線: transform-originを左端(spawnRadialLines参照)にした状態で、
+     --line-rotの角度を保ったままscaleXで根本から伸びて消える。 */
+  @keyframes particle-radial-line {
+    0% { transform: rotate(var(--line-rot)) scaleX(0); opacity: 1; }
+    25% { transform: rotate(var(--line-rot)) scaleX(1); opacity: 1; }
+    100% { transform: rotate(var(--line-rot)) scaleX(1); opacity: 0; }
   }
 </style>
 </head>
