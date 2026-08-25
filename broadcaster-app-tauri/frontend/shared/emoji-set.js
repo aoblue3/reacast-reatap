@@ -79,11 +79,13 @@ const EMOJI_SET = [
   // ---- ここから短文リアクション(colorはkusaと同じく「絵文字ではなく
   // 文字として色付き表示する」既存の仕組みを流用。ニコニコ動画のコメントを
   // イメージし、右から左に流れて消えるnicoflowアニメーションを共通で使う。
-  // overlay.jsのANIM_PRESETS.nicoflow参照) ----
-  { id: 'sorena', char: 'それな', label: 'それな', anim: 'nicoflow', color: '#ffffff' },
-  { id: 'wakaru', char: 'わかる', label: 'わかる', anim: 'nicoflow', color: '#6fe3ff' },
-  { id: 'umai', char: 'うまい', label: 'うまい', anim: 'nicoflow', color: '#ffd93d' },
-  { id: 'kami', char: '神', label: '神', anim: 'nicoflow', color: '#ff7ad9' },
+  // overlay.jsのANIM_PRESETS.nicoflow参照)。神ｗだけは特別扱いで、colorの
+  // 代わりにrainbow:trueを立てて虹色が流れ続ける「ゲーミングカラー」にする
+  // (overlay.js/bar.jsのrainbow分岐参照)。他はすべて白文字で統一。 ----
+  { id: 'sorena', char: 'それなｗ', label: 'それなｗ', anim: 'nicoflow', color: '#ffffff' },
+  { id: 'wakaru', char: 'わかるｗ', label: 'わかるｗ', anim: 'nicoflow', color: '#ffffff' },
+  { id: 'umai', char: 'うまいｗ', label: 'うまいｗ', anim: 'nicoflow', color: '#ffffff' },
+  { id: 'kami', char: '神ｗ', label: '神ｗ', anim: 'nicoflow', rainbow: true },
 
   // ---- ここから追加の動物リアクション ----
   { id: 'baby', char: '👶', label: '赤ちゃん', anim: 'crawl' },
@@ -91,6 +93,9 @@ const EMOJI_SET = [
   { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark' },
   { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink' },
   { id: 'fist', char: '👊', label: '拳', anim: 'fistbump' },
+
+  // ---- ここから追加分 ----
+  { id: 'fireworks', char: '🎆', label: '花火', anim: 'fireworks' },
 ];
 
 const EMOJI_BY_ID = new Map(EMOJI_SET.map((e) => [e.id, e]));

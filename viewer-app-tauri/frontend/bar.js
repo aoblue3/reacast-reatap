@@ -161,8 +161,29 @@ function renderButtons() {
   for (const emoji of emojiSet) {
     const btn = document.createElement('button');
     btn.className = 'emoji-btn';
-    btn.textContent = emoji.char;
     btn.dataset.emojiId = emoji.id;
+    if (emoji.rainbow) {
+      // 神ｗ専用: ボタン自体の背景(rgba)とグラデーション文字が同じ
+      // background系プロパティを取り合ってしまうため、文字だけを内側のspanに
+      // 分離してそちらにグラデーションをかける(overlay.jsのglyphHostと
+      // 同じ考え方)。
+      const textSpan = document.createElement('span');
+      textSpan.className = 'rainbow-text';
+      textSpan.textContent = emoji.char;
+      btn.appendChild(textSpan);
+    } else {
+      btn.textContent = emoji.char;
+      if (emoji.color) {
+        // それなｗ等、絵文字ではなく文字として表示する短文リアクションが
+        // 「薄い」と感じられていた(既定の薄いグレー文字のままだったため)
+        // 指摘への対応。太字にした上で、文字色に合わせた淡いグロー+背景との
+        // コントラスト用の暗い縁取りを加え、はっきり見えるようにする
+        // (草(kusa)の専用CSSルールと同じ考え方をemoji-set.js全体に一般化)。
+        btn.classList.add('emoji-btn-textreaction');
+        btn.style.color = emoji.color;
+        btn.style.textShadow = `0 0 6px ${emoji.color}, 0 1px 2px rgba(0,0,0,0.75)`;
+      }
+    }
     btn.addEventListener('click', () => onClickEmoji(emoji.id));
     const hotkey = hotkeyMap[emoji.id];
     btn.title = hotkey ? `${emoji.label}(${formatHotkeyLabel(hotkey)})` : emoji.label;

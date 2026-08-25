@@ -28,6 +28,14 @@
   }
   .reaction-glyph {
     display: inline-block;
+    /* それな/わかる等の短文リアクションが、横一列ではなく1文字ずつ縦に
+       積まれて表示されてしまう不具合への対応。.reaction-item(親)は
+       position:absoluteでwidth未指定のため、通常はコンテンツ幅に合わせて
+       自動的に横一杯に広がるはずだが、環境によっては折り返し計算が意図せず
+       狭い幅に丸められ、日本語の文字列が1文字ごとに改行されて縦書きのように
+       見えてしまうことがあった。white-space: nowrapで折り返し自体を明示的に
+       禁止し、常に1行で横並びに表示されるようにする。 */
+    white-space: nowrap;
     filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
     transform-origin: 50% 50%;
     /* 絵文字用フォントを明示指定しておく。異体字セレクタ(U+FE0F)を付けていても、
@@ -317,6 +325,21 @@
     25% { transform: rotate(-10deg) translateY(-2px); }
     50% { transform: rotate(0deg) translateY(0); }
     75% { transform: rotate(10deg) translateY(-2px); }
+  }
+  /* 🎆: パッと明るく光ってから少し落ち着く、打ち上げ花火が開いた瞬間の輝き */
+  @keyframes anim-firework {
+    0% { transform: scale(0.3); filter: brightness(1) drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+    25% { transform: scale(1.5); filter: brightness(1.9) drop-shadow(0 0 18px rgba(255,220,120,0.95)); }
+    55% { transform: scale(1.08); filter: brightness(1.25) drop-shadow(0 0 10px rgba(255,220,120,0.6)); }
+    100% { transform: scale(1); filter: brightness(1) drop-shadow(0 2px 6px rgba(0,0,0,0.45)); }
+  }
+  /* それなｗ/わかるｗ/うまいｗ/神ｗ等の短文リアクション用、神ｗだけに使う
+     「ゲーミングカラー」(虹色が流れ続けるグラデーション文字)。
+     background-clip:textでグラデーションを文字の形にクリップし、
+     background-positionをアニメーションさせて色が流れて見えるようにする。 */
+  @keyframes rainbow-shift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
   }
 
   /* パーティクル用の汎用アニメーション(発生位置からの相対移動+フェード) */

@@ -101,6 +101,22 @@
     padding: 6px 10px;
     font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
   }
+  /* 神ｗ専用の「ゲーミングカラー」(虹色が流れ続けるグラデーション文字)。
+     overlay.html/bar.htmlと同じbackground-clip:textの手法(control.js参照)。 */
+  .rainbow-text {
+    background: linear-gradient(90deg, #ff3b3b, #ffb03b, #f4ff3b, #3bff6b, #3bd4ff, #7a3bff, #ff3bd4, #ff3b3b);
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    font-weight: 900;
+    animation: rainbow-shift 1.1s linear infinite;
+  }
+  @keyframes rainbow-shift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
+  }
   select {
     background: #24252b;
     color: #eee;

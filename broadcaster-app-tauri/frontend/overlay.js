@@ -394,6 +394,19 @@ const ANIM_PRESETS = {
     glyphAnim: 'punch',
     particles: { shape: 'radialLines', count: 12, life: 420, color: 'rgba(255,255,255,0.92)' },
   },
+  // 🎆 花火: 画面のランダムな位置にほぼその場に留まり(collapseモーション)、
+  // 本体+近くの2地点で少しずつタイミングをずらして次々にバーストする
+  // (fireworksBurst。spawnReaction/spawnFireworkBurst参照)。「ド派手に」という
+  // 要望に応え、単発の爆発より賑やかな花火大会らしい見た目にしてある。
+  fireworks: {
+    motion: 'collapse',
+    riseFactor: 0.1,
+    durationFactor: 1.3,
+    noOuterRotate: true,
+    fullRangeY: true,
+    glyphAnim: 'firework',
+    fireworksBurst: true,
+  },
 };
 
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcfef', '#a06bff', '#6bff9e', '#ff9e6b'];
@@ -1177,6 +1190,28 @@ function spawnReaction(emojiId) {
   glyph.style.animationTimingFunction = 'ease-in-out';
   glyph.style.animationFillMode = 'both';
 
+  // 神ｗ専用の「ゲーミングカラー」(虹色が流れ続けるグラデーション文字)。
+  // background-clip:textでグラデーションを文字の形にクリップし、
+  // background-positionを動かすアニメーション(rainbow-shift)を、上ですでに
+  // 設定済みのグリフ自己アニメーション(anim-${glyphAnimKey})に追加で重ねる。
+  // CSSのanimation-name等はカンマ区切りで複数指定できるため、既存の値の後ろに
+  // 追記するだけでよい(単純に上書きすると自己アニメーションが消えてしまう)。
+  if (emoji.rainbow) {
+    glyph.style.background =
+      'linear-gradient(90deg, #ff3b3b, #ffb03b, #f4ff3b, #3bff6b, #3bd4ff, #7a3bff, #ff3bd4, #ff3b3b)';
+    glyph.style.backgroundSize = '400% 100%';
+    glyph.style.webkitBackgroundClip = 'text';
+    glyph.style.backgroundClip = 'text';
+    glyph.style.color = 'transparent';
+    glyph.style.webkitTextFillColor = 'transparent';
+    glyph.style.fontWeight = '900';
+    glyph.style.animationName += ', rainbow-shift';
+    glyph.style.animationDuration += ', 1.1s';
+    glyph.style.animationIterationCount += ', infinite';
+    glyph.style.animationTimingFunction += ', linear';
+    glyph.style.animationFillMode += ', both';
+  }
+
   // 🎉のように絵文字自体のデザイン上いつも同じ向きになってしまうものは、
   // preset.randomFlipが立っていれば約半分の確率で左右反転させる。glyph本体の
   // transformはCSSの@keyframesが常に上書きしてしまうため、反転だけは
@@ -1344,6 +1379,26 @@ function spawnReaction(emojiId) {
     }, explodeDelay);
   }
 
+  // 🎆花火専用: 「ランダムで出る感じでド派手に」という要望に応え、1回の
+  // リアクションで複数の打ち上げ地点(本体の位置+近くのランダムな2地点)を
+  // 少しずつタイミングをずらして開かせることで、単発のバーストより花火大会
+  // らしい賑やかさを出す(spawnFireworkBurst参照)。
+  if (preset.fireworksBurst) {
+    const burstX = path.startX + size / 2;
+    const burstY = path.startY + size / 2;
+    setTimeout(() => {
+      if (el.isConnected) spawnFireworkBurst(burstX, burstY, size);
+    }, 60);
+    for (let i = 0; i < 2; i++) {
+      const offsetX = (Math.random() - 0.5) * size * 5;
+      const offsetY = -Math.random() * size * 2.5;
+      const delay = 280 + i * 280 + Math.random() * 180;
+      setTimeout(() => {
+        if (el.isConnected) spawnFireworkBurst(burstX + offsetX, burstY + offsetY, size);
+      }, delay);
+    }
+  }
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       // waypointsがある場合(ジグザグ等)は、最初の経由地点をrAFで適用し、
@@ -1485,6 +1540,17 @@ function spawnFlash(cx, cy, size) {
   el.style.animation = `particle-flash ${life}ms ease-out forwards`;
   stage.appendChild(el);
   setTimeout(() => el.remove(), life + 60);
+}
+
+// 🎆専用: 1箇所分の花火バースト(閃光+紙吹雪+色付きの輝き粒+衝撃波リング)を
+// まとめて出す。色はCONFETTI_COLORSからランダムに選び、毎回違う色合いの
+// 花火に見えるようにする。
+function spawnFireworkBurst(cx, cy, size) {
+  const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+  spawnFlash(cx, cy, size * 1.9);
+  spawnParticles({ shape: 'confetti', count: 22, life: 950 }, cx, cy, size);
+  spawnParticles({ shape: 'dot', color, count: 16, spread: 62, life: 900, drift: 'twinkle' }, cx, cy, size);
+  spawnRing(cx, cy, size, { life: 520, thickness: 3, color: 'rgba(255,255,255,0.85)', glow: true, scale: 2.3 });
 }
 
 // 👊専用: (cx, cy)を中心に、放射状に伸びる集中線を複数本出す(漫画の

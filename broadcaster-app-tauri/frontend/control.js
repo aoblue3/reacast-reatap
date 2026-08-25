@@ -181,12 +181,21 @@ function loadEmojiTestButtons() {
   for (const emoji of emojiSet) {
     const btn = document.createElement('button');
     btn.className = 'secondary';
-    btn.textContent = emoji.char;
     btn.title = emoji.label;
-    // 「草」のような、絵文字ではなく普通の文字として色指定が要る項目用
-    if (emoji.color) {
-      btn.style.color = emoji.color;
-      btn.style.fontWeight = '900';
+    if (emoji.rainbow) {
+      // 神ｗ専用の「ゲーミングカラー」。bar.js/overlay.jsと同じく、ボタン自体の
+      // 背景と文字のグラデーションが競合しないよう内側のspanに分離する。
+      const textSpan = document.createElement('span');
+      textSpan.className = 'rainbow-text';
+      textSpan.textContent = emoji.char;
+      btn.appendChild(textSpan);
+    } else {
+      btn.textContent = emoji.char;
+      // 「草」のような、絵文字ではなく普通の文字として色指定が要る項目用
+      if (emoji.color) {
+        btn.style.color = emoji.color;
+        btn.style.fontWeight = '900';
+      }
     }
     btn.addEventListener('click', () => {
       invoke('emit_overlay_reaction', { emoji: emoji.id, viewerId: 'test' });

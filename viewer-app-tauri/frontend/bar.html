@@ -92,6 +92,31 @@
     font-weight: 900;
     text-shadow: 0 0 6px rgba(90, 214, 90, 0.7);
   }
+  /* それなｗ/わかるｗ/うまいｗ等、絵文字ではなく文字として表示する短文
+     リアクション用。「文字が薄い」という指摘への対応で、bar.js側が
+     emoji.colorを見て太字+グロー(この見た目)をJSから直接適用する
+     (.rainbow-textクラスはbar.js参照)。ここでは共通のクラス名だけ定義しておく。 */
+  .emoji-btn-textreaction {
+    font-weight: 900;
+  }
+  /* 神ｗ専用の「ゲーミングカラー」(虹色が流れ続けるグラデーション文字)。
+     overlay.html/overlay.jsと同じbackground-clip:textの手法。ボタン自体の
+     背景(.emoji-btnのrgba背景)とは別に、文字だけをこの内側のspanで
+     描画するためのクラス(bar.js参照)。 */
+  .rainbow-text {
+    background: linear-gradient(90deg, #ff3b3b, #ffb03b, #f4ff3b, #3bff6b, #3bd4ff, #7a3bff, #ff3bd4, #ff3b3b);
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    font-weight: 900;
+    animation: rainbow-shift 1.1s linear infinite;
+  }
+  @keyframes rainbow-shift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
+  }
   .emoji-btn:hover { background: rgba(40,40,46,0.7); }
   .emoji-btn:active { transform: scale(0.85); }
   .emoji-btn.muted {
