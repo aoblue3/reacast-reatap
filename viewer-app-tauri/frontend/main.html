@@ -214,6 +214,34 @@
   .ro-row .ro-label { flex: 1 1 auto; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ro-row button { margin: 0; padding: 3px 8px; font-size: 11px; }
   .ro-row .ro-updown { padding: 2px 6px; background: #333; }
+  /* マウスでドラッグして並び替えるための、専用のつまみ(main.jsのrenderReactionOrderList参照)。
+     行全体ではなくこのつまみだけをdraggable="true"にすることで、チェックボックスや
+     ↑↓ボタンの通常のクリック操作とドラッグ操作が競合しないようにしてある。 */
+  .ro-row .ro-handle {
+    cursor: grab;
+    color: #777;
+    font-size: 13px;
+    padding: 0 2px;
+    user-select: none;
+    flex: 0 0 auto;
+  }
+  .ro-row.ro-dragging { opacity: 0.35; }
+  /* ドラッグ中の行が、この行の直前/直後のどちらに挿入されようとしているかを
+     示す青いライン。 */
+  .ro-row.ro-drop-before { box-shadow: inset 0 2px 0 0 #4da3ff; }
+  .ro-row.ro-drop-after { box-shadow: inset 0 -2px 0 0 #4da3ff; }
+  /* 「何番目に移動するか」を数字で直接指定する欄(main.js参照)。 */
+  .ro-row .ro-pos-input {
+    width: 32px;
+    text-align: center;
+    background: #181920;
+    color: #eee;
+    border: 1px solid #35363c;
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 2px 0;
+    flex: 0 0 auto;
+  }
 
   .confirm-overlay {
     display: none;

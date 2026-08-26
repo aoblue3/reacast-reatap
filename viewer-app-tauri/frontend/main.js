@@ -192,6 +192,41 @@ async function persistBarAppearance() {
   await notifyAllActiveProfiles();
 }
 
+// ドラッグ中の行のインデックス(HTML5 Drag and Drop用)。ドラッグ操作全体を
+// 通して1つしか存在しないため、モジュール変数1つで十分(main.jsのウィンドウは
+// 1つしか無い)。
+let dragFromIndex = null;
+
+/** 指定したインデックスの項目を並び順から取り出し、targetIndexの位置
+ * (insertAfter=trueならtargetIndexの直後、falseなら直前)へ挿入し直す。
+ * 数字入力(reorderReactionByPosition)・ドラッグ&ドロップ(reorderReactionByDrag)
+ * の両方から使う共通処理。 */
+async function applyReactionReorder(fromIndex, targetIndex, insertAfter) {
+  const arr = getEffectiveOrder();
+  if (fromIndex < 0 || fromIndex >= arr.length) return;
+  const [item] = arr.splice(fromIndex, 1);
+  let insertIndex = targetIndex;
+  // 取り出した項目より後ろにあった項目は、取り出しによって1つ前へ詰まっている
+  // ため、その分を補正する。
+  if (fromIndex < targetIndex) insertIndex -= 1;
+  if (insertAfter) insertIndex += 1;
+  insertIndex = Math.max(0, Math.min(arr.length, insertIndex));
+  arr.splice(insertIndex, 0, item);
+  reactionOrder = arr;
+  await persistReactionOrder();
+  renderReactionOrderList();
+}
+
+/** 「何番目に移動するか」を数字で直接指定できる欄用。1始まりの表示値を
+ * そのまま「その位置に挿入する」という意味で扱う。 */
+async function reorderReactionByPosition(fromIndex, newPosition1Based) {
+  const arr = getEffectiveOrder();
+  const clamped = Math.max(1, Math.min(arr.length, Math.round(newPosition1Based) || 1));
+  // targetIndexは0始まりの「挿入先の直前の項目の位置」として扱うため、
+  // insertAfter=falseで(clamped-1)番目の直前に挿入する。
+  await applyReactionReorder(fromIndex, clamped - 1, false);
+}
+
 function renderReactionOrderList() {
   const order = getEffectiveOrder();
   reactionOrderListEl.innerHTML = '';
@@ -201,6 +236,65 @@ function renderReactionOrderList() {
     const hidden = hiddenReactionIds.includes(id);
     const row = document.createElement('div');
     row.className = 'ro-row' + (hidden ? ' ro-hidden' : '');
+    row.dataset.index = String(index);
+
+    // ドラッグ移動用のつまみ。マウスでここを掴んで上下にドラッグすると、
+    // ドロップした位置にその項目が挿入される。チェックボックスやボタンの
+    // クリックとドラッグ操作が競合しないよう、行全体ではなくこの専用の
+    // つまみ部分だけをdraggable="true"にしてある。
+    const handle = document.createElement('span');
+    handle.className = 'ro-handle';
+    handle.textContent = '⠿';
+    handle.title = 'ドラッグして並び替え';
+    handle.draggable = true;
+    handle.addEventListener('dragstart', (e) => {
+      dragFromIndex = index;
+      row.classList.add('ro-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // 一部ブラウザ/WebViewでdragstartにdataが無いとdrop系イベントが
+      // 発火しないことがあるため、念のため設定しておく(値自体は
+      // dragFromIndexで持っているので中身は使わない)。
+      try {
+        e.dataTransfer.setData('text/plain', String(index));
+      } catch {
+        // 無視(一部環境ではsetData自体が例外を投げることがあるが、
+        // dragFromIndexで代替できるため実害は無い)
+      }
+    });
+    handle.addEventListener('dragend', () => {
+      dragFromIndex = null;
+      row.classList.remove('ro-dragging');
+      reactionOrderListEl
+        .querySelectorAll('.ro-row.ro-drop-before, .ro-row.ro-drop-after')
+        .forEach((el) => el.classList.remove('ro-drop-before', 'ro-drop-after'));
+    });
+    row.appendChild(handle);
+
+    // ドラッグ中の行がこの行の上を通過した時、マウスが上半分/下半分の
+    // どちらにあるかで「この行の前に挿入」「この行の後に挿入」を示す
+    // 線を出す(insertAfterの判定にも同じ値を使う)。
+    row.addEventListener('dragover', (e) => {
+      if (dragFromIndex === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = row.getBoundingClientRect();
+      const insertAfter = e.clientY - rect.top > rect.height / 2;
+      row.classList.toggle('ro-drop-before', !insertAfter);
+      row.classList.toggle('ro-drop-after', insertAfter);
+    });
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('ro-drop-before', 'ro-drop-after');
+    });
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (dragFromIndex === null) return;
+      const rect = row.getBoundingClientRect();
+      const insertAfter = e.clientY - rect.top > rect.height / 2;
+      const fromIndex = dragFromIndex;
+      dragFromIndex = null;
+      row.classList.remove('ro-drop-before', 'ro-drop-after');
+      await applyReactionReorder(fromIndex, index, insertAfter);
+    });
 
     const visLabel = document.createElement('label');
     visLabel.style.margin = '0';
@@ -228,6 +322,33 @@ function renderReactionOrderList() {
     labelSpan.className = 'ro-label';
     labelSpan.textContent = emoji.label;
     row.appendChild(labelSpan);
+
+    // 「何番目に移動するか」を直接数字で指定できる欄。現在の位置(1始まり)を
+    // 表示しておき、別の数字を入力してEnterまたはフォーカスを外すと、
+    // その位置へ直接挿入し直す。ドラッグでの細かい位置調整が難しい・
+    // 面倒という声を想定し、遠く離れた位置へ一気に動かしたい時向け。
+    const posInput = document.createElement('input');
+    posInput.type = 'number';
+    posInput.className = 'ro-pos-input';
+    posInput.min = '1';
+    posInput.max = String(order.length);
+    posInput.value = String(index + 1);
+    posInput.title = 'この番号の位置に挿入します';
+    const applyPosInput = async () => {
+      const newPos = Number(posInput.value);
+      if (!Number.isFinite(newPos) || Math.round(newPos) === index + 1) {
+        posInput.value = String(index + 1);
+        return;
+      }
+      await reorderReactionByPosition(index, newPos);
+    };
+    posInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        posInput.blur();
+      }
+    });
+    posInput.addEventListener('blur', applyPosInput);
+    row.appendChild(posInput);
 
     const upBtn = document.createElement('button');
     upBtn.className = 'secondary ro-updown';
