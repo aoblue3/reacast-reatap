@@ -145,10 +145,15 @@ pub fn filter_candidate_windows(
 mod win {
     use super::WindowInfo;
     use std::sync::Mutex;
-    use windows::core::{BOOL, PWSTR};
+    use windows::core::{BOOL, PCWSTR, PWSTR};
     use windows::Win32::Foundation::{HWND, LPARAM, MAX_PATH, WPARAM};
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+    };
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        GetCurrentProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -383,6 +388,59 @@ mod win {
         !fg.0.is_null() && fg.0 == hwnd.0
     }
 
+    /// 「ReaTapをタスクトレイから終了したはずなのに、後で配信画面を開いたら
+    /// 前回のリアクションがまだ出ていた」という報告への対策。中継サーバー・
+    /// クライアントのコード上はメッセージの保存・再送は一切しておらず、原因の
+    /// 心当たりとして最も有力なのは「×ボタン/終了メニューでapp.exit(0)を
+    /// 呼んでプロセスを強制終了させた際、WebView2が裏で使っている子プロセスの
+    /// 後始末が間に合わず、タスクトレイからもタスクバーからも見えなくなった後も
+    /// 実際にはプロセスが生き残ってしまう」パターン。create_main_windowで既に
+    /// close_all_bar_windows()を先に呼ぶ対策はしてあるが、それでも取りこぼしが
+    /// 起き得るため、Windows Job Object(親プロセスに全ての子プロセスを
+    /// 紐付けておき、親のハンドルが閉じた瞬間に子も含めて丸ごとOSに強制終了
+    /// させてもらう仕組み)を使って「完膚なきまでの終了」をOS側に保証させる。
+    ///
+    /// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: このJobオブジェクトの最後のハンドルが
+    /// 閉じられた時(=このプロセスの終了時)、Jobに所属する全プロセスを道連れに
+    /// 終了させる。
+    /// JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK: 万一どこかの子プロセスが明示的に
+    /// 離脱(breakaway)を要求してきた場合はエラーにせず黙って許可する
+    /// (更新時のヘルパープロセスがCREATE_BREAKAWAY_FROM_JOBで離脱するのに必要。
+    /// updater.rsのspawn_apply_update_helper参照)。
+    ///
+    /// 失敗しても致命的ではない(=このハードニングが効かないだけで、従来通りの
+    /// 動作にフォールバックする)ため、戻り値は無視して構わない設計にしている。
+    pub fn harden_process_termination() {
+        unsafe {
+            let job = match CreateJobObjectW(None, PCWSTR::null()) {
+                Ok(h) if !h.is_invalid() => h,
+                _ => return,
+            };
+
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags =
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+
+            let ok = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if ok.is_err() {
+                return;
+            }
+
+            let _ = AssignProcessToJobObject(job, GetCurrentProcess());
+
+            // 作成したJobハンドルはプロセス終了までずっと生かしておく必要がある
+            // (=ここでdropして閉じてしまうと、その時点でKILL_ON_JOB_CLOSEが
+            // 発動してしまう)。プロセス寿命全体で1個だけ保持すればよいため、
+            // 単純にリークさせる(OSがプロセス終了時にまとめて回収する)。
+            std::mem::forget(job);
+        }
+    }
+
     // MAX_PATHは将来の拡張(短いバッファへのフォールバック等)用に残しておく
     #[allow(dead_code)]
     const _MAX_PATH_HINT: u32 = MAX_PATH;
@@ -424,6 +482,11 @@ mod win {
         // Windows以外では判定できないため、常にfalse(=フォーカスを戻す動作は
         // 発生しない)を返す
         false
+    }
+
+    #[allow(dead_code)]
+    pub fn harden_process_termination() {
+        // Windows以外ではJob Objectの概念自体が無いため何もしない
     }
 }
 
@@ -470,6 +533,18 @@ pub fn set_no_activate(hwnd_raw: isize) {
 /// 常にfalse。
 pub fn is_window_foreground(hwnd_raw: isize) -> bool {
     win::is_window_foreground(hwnd_raw)
+}
+
+/// 起動時に一度だけ呼ぶ。プロセス終了時にWebView2の子プロセス等を含めて
+/// 確実に道連れ終了させるためのWindows Job Objectのハードニング設定。
+/// Windows以外では何もしない。詳細はwin::harden_process_terminationのコメント参照。
+///
+/// 呼び出し側(lib.rs)が#[cfg(target_os = "windows")]の中でしか呼ばないため、
+/// Linux上でのビルド(このリポジトリの開発・検証環境)では未使用警告が出るが、
+/// 実害は無い(set_window_owner等と同じパターン)。
+#[allow(dead_code)]
+pub fn harden_process_termination() {
+    win::harden_process_termination();
 }
 
 pub fn detect_target_window(override_path: Option<&str>, name_filter: Option<&str>) -> Option<WindowInfo> {

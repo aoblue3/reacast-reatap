@@ -197,6 +197,15 @@ mod apply {
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
+    // v1.3.3で追加したWindows Job Objectハードニング(pcwmp::harden_process_termination)
+    // により、本体プロセス(ReaTap.exe)は「自分が終了したら子プロセスも道連れに
+    // 終了する」Jobに所属するようになった。しかし、この差し替え役ヘルパー
+    // プロセスは、呼び出し元(本体)がapp.exit(0)される直後まさにその瞬間も
+    // 生き残っていなければならない(ファイル差し替え・再起動を行う役目のため)。
+    // 何もしなければJobのKILL_ON_JOB_CLOSEに巻き込まれて一緒に終了してしまい、
+    // 自動アップデート自体が機能しなくなる(元のバグより悪い退行になる)ため、
+    // このヘルパーの起動時にだけ明示的にJobから離脱させるフラグを付ける。
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
     /// このプロセスが「差し替え役」として起動された時に付ける特別な引数。
     /// `download_and_apply_update`がダウンロード後に新exe自身をこの引数
@@ -368,7 +377,9 @@ mod apply {
             .arg(APPLY_UPDATE_FLAG)
             .arg(current_pid.to_string())
             .arg(current_exe_path)
-            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            // CREATE_BREAKAWAY_FROM_JOBの理由は本ファイル冒頭の定数コメント参照。
+            // このヘルパーだけは本体のJob Objectに巻き込まれず生き残る必要がある。
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB)
             .spawn()?;
         Ok(())
     }
