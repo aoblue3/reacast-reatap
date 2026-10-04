@@ -4,3 +4,5 @@ dist/
 .DS_Store
 target/
 gen/
+*.zip
+引継書.md
