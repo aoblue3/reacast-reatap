@@ -2,10 +2,24 @@
 const assert = require('assert');
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const http = require('http');
 const { RelayServer } = require('../server');
 
 const PORT = 39299;
 const PROTOCOL_VERSION = 2; // relay-client.js側のPROTOCOL_VERSIONと同じ値にしておくこと
+
+// ReaTap Web(web-viewer/)の静的配信のテスト用。WebSocketと同じポートで
+// 普通のHTTP GETがちゃんと処理されるかを見る(RelayServer#_handleHttpRequest参照)。
+function httpGet(pathname) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(`http://127.0.0.1:${PORT}${pathname}`, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => resolve({ statusCode: res.statusCode, headers: res.headers, body }));
+    });
+    req.once('error', reject);
+  });
+}
 
 // サーバーが複数メッセージを立て続けに送ってくることがあるため、
 // once()を毎回付け直す方式だと取りこぼす。受信したメッセージは
@@ -201,6 +215,33 @@ async function run() {
     console.log('OK: 配信者接続が切れている(放置された)部屋が持つ合言葉は、別の部屋が横取りできる');
 
     viewerReconnected.close();
+
+    // --- 12. ReaTap Web(web-viewer/)の静的ファイルが同じポートで配信される ---
+    const indexResp = await httpGet('/');
+    assert.strictEqual(indexResp.statusCode, 200);
+    assert.ok(indexResp.headers['content-type'].startsWith('text/html'));
+    assert.ok(indexResp.body.includes('ReaTap Web'));
+    console.log('OK: ReaTap Webのindex.htmlが"/"で配信される');
+
+    const appJsResp = await httpGet('/app.js');
+    assert.strictEqual(appJsResp.statusCode, 200);
+    assert.ok(appJsResp.headers['content-type'].startsWith('text/javascript'));
+    console.log('OK: ReaTap Webのapp.jsが配信される');
+
+    const notFoundResp = await httpGet('/no-such-file.html');
+    assert.strictEqual(notFoundResp.statusCode, 404);
+    console.log('OK: 存在しない静的ファイルは404になる');
+
+    // パストラバーサル対策(web-viewer/の外にあるファイルを覗き見できないこと)。
+    // 素の"../"はnew URL()のパス正規化で先に潰れてしまい、このサーバーの
+    // ガード自体を通らないため、それをすり抜けるための"%2f"(エンコードした
+    // "/")を使ったペイロードでテストする(_handleHttpRequestのコメント参照。
+    // decodeURIComponent()が正規化"後"に効くため、"..%2f"は正規化をすり抜けて
+    // 一旦"/../"に戻ってしまう。それを最終的なパス比較でブロックできているかの
+    // テスト)。
+    const traversalResp = await httpGet('/..%2f..%2fserver.js');
+    assert.strictEqual(traversalResp.statusCode, 403);
+    console.log('OK: エンコードされたパストラバーサル(..%2f)でweb-viewer/の外のファイルは読めない');
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');
     clearTimeout(watchdog);

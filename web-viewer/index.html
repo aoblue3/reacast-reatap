@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>ReaTap Web</title>
+<!-- ブラウザが自動的にfavicon.icoを取りに行き、無いと404(コンソールにエラー
+     表示)になってしまうのを避けるため、ファイルを追加せず済むdata URIの
+     簡易アイコンを指定しておく。 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%8B%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --icon-scale: 1;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    background: #17181c;
+    color: #eee;
+    box-sizing: border-box;
+    /* 接続が一瞬切れて再接続を試みている間、bar.js版と同じくうっすら
+       暗くして「今は届いていないかもしれない」ことが分かるようにする
+       (画面が急に固まったように見えないための工夫)。 */
+    transition: opacity 0.2s ease;
+  }
+  * { box-sizing: border-box; }
+  .screen { display: none; min-height: 100vh; flex-direction: column; }
+  .screen.active { display: flex; }
+
+  /* ---------------- 共通パーツ ---------------- */
+  header.app-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #2a2b30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .app-brand { font-size: 13px; color: #7a8bd6; letter-spacing: 0.04em; }
+  h1 { font-size: 16px; margin: 0; }
+  p { font-size: 13px; color: #aaa; line-height: 1.7; }
+  button {
+    background: #3a6df0;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.secondary { background: #333; }
+  button.danger { background: #6b2b2b; }
+  button.icon-only { padding: 8px 10px; font-size: 16px; line-height: 1; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  input[type="text"] {
+    background: #0d0e11;
+    color: #9ff29f;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: monospace;
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* ---------------- 接続画面 ---------------- */
+  #connectScreen .inner {
+    padding: 20px;
+    max-width: 420px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+  #passphraseForm { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  #errorMsg { color: #ff8a8a; font-size: 12px; min-height: 16px; }
+  #savedList { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .saved-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1e1f25;
+    border: 1px solid #2a2b30;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .saved-row .saved-passphrase { font-family: monospace; color: #9ff29f; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-row button { padding: 5px 10px; font-size: 12px; margin: 0; }
+  #advancedDetails { margin-top: 14px; font-size: 12px; color: #aaa; }
+  #advancedDetails summary { cursor: pointer; color: #8ac6ff; }
+  #advancedDetails .field-row { margin-top: 8px; }
+  #advancedDetails label { display: block; font-size: 11px; color: #ccc; margin-bottom: 3px; }
+  #advancedDetails input[type="text"] {
+    color: #eee; font-size: 12px; padding: 6px 8px;
+  }
+
+  /* ---------------- リアクション画面 ---------------- */
+  #reactionScreen .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #2a2b30;
+    gap: 8px;
+  }
+  #connLabel { font-size: 12px; color: #8ac6ff; font-family: monospace; }
+  #muteNotice {
+    text-align: center;
+    font-size: 12px;
+    color: #ffb3b3;
+    background: rgba(107,43,43,0.35);
+    padding: 6px 8px;
+    visibility: hidden;
+  }
+  #muteNotice.visible { visibility: visible; }
+  #grid {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(64px * var(--icon-scale, 1)), 1fr));
+    gap: 8px;
+    padding: 12px;
+    align-content: start;
+  }
+  .emoji-btn {
+    position: relative;
+    background: #22232a;
+    border: 1px solid #2c2d34;
+    border-radius: 10px;
+    padding: 10px 4px;
+    cursor: pointer;
+    font-size: calc(26px * var(--icon-scale, 1));
+    line-height: 1.15;
+    color: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(56px * var(--icon-scale, 1));
+    transition: transform 0.08s ease, background 0.15s ease;
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .emoji-btn:active { transform: scale(0.9); background: #2c2d36; }
+  .emoji-btn.muted { opacity: 0.3; cursor: not-allowed; filter: grayscale(1); }
+  .emoji-btn[data-emoji-id="kusa"] { color: #5ad65a; font-weight: 900; text-shadow: 0 0 6px rgba(90,214,90,0.7); }
+  .emoji-btn-textreaction {
+    font-weight: 900;
+    font-size: calc(13px * var(--icon-scale, 1));
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-all;
+    text-align: center;
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+  }
+  .rainbow-text {
+    background: linear-gradient(90deg, #ff3b3b, #ffb03b, #f4ff3b, #3bff6b, #3bd4ff, #7a3bff, #ff3bd4, #ff3b3b);
+    background-size: 400% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    font-weight: 900;
+    animation: rainbow-shift 1.1s linear infinite;
+  }
+  @keyframes rainbow-shift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
+  }
+
+  /* ---------------- 設定パネル(モーダル) ---------------- */
+  #settingsOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 10;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  #settingsOverlay.active { display: flex; }
+  #settingsPanel {
+    background: #1a1b20;
+    border: 1px solid #2a2b30;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  #settingsPanel h2 { font-size: 14px; margin: 14px 0 6px; color: #ccd; }
+  #settingsPanel h2:first-child { margin-top: 0; }
+  #settingsPanelHead { display: flex; align-items: center; justify-content: space-between; }
+  .field-row { margin-top: 8px; }
+  .field-row label { display: block; font-size: 12px; color: #ccc; margin-bottom: 4px; }
+  input[type="range"] { width: 100%; }
+
+  #reactionOrderList { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+  .ro-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #202127;
+    border: 1px solid #2a2b30;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .ro-row.ro-hidden { opacity: 0.5; }
+  .ro-row .ro-emoji {
+    font-size: 17px;
+    width: 22px;
+    text-align: center;
+    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+  }
+  .ro-row .ro-label { flex: 1 1 auto; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ro-row button { margin: 0; padding: 3px 8px; font-size: 11px; }
+  .ro-row .ro-updown { padding: 2px 6px; background: #333; }
+  .ro-row .ro-handle {
+    cursor: grab;
+    color: #777;
+    font-size: 14px;
+    padding: 0 4px;
+    user-select: none;
+    flex: 0 0 auto;
+    touch-action: none;
+  }
+  .ro-row.ro-dragging { opacity: 0.35; }
+  .ro-row.ro-drop-before { box-shadow: inset 0 2px 0 0 #4da3ff; }
+  .ro-row.ro-drop-after { box-shadow: inset 0 -2px 0 0 #4da3ff; }
+  .ro-row .ro-pos-input {
+    width: 34px;
+    text-align: center;
+    background: #181920;
+    color: #eee;
+    border: 1px solid #35363c;
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 3px 0;
+    flex: 0 0 auto;
+  }
+</style>
+</head>
+<body>
+
+  <!-- ============ 接続画面 ============ -->
+  <div id="connectScreen" class="screen active">
+    <div class="inner">
+      <div class="app-brand">ReaTap Web</div>
+      <h1>合言葉を入力して接続</h1>
+      <p>配信者から聞いた合言葉を入力してください。インストール不要で、このページをタップするだけでリアクションを送れます。</p>
+
+      <form id="passphraseForm">
+        <input type="text" id="passphraseInput" placeholder="合言葉(例: abc123)" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button type="submit">接続する</button>
+        <div id="errorMsg"></div>
+      </form>
+
+      <div id="savedWrap" style="display:none;">
+        <h2 style="font-size:13px;color:#ccd;margin:18px 0 4px;">前回までの合言葉</h2>
+        <div id="savedList"></div>
+      </div>
+
+      <details id="advancedDetails">
+        <summary>詳細設定(通常は変更不要)</summary>
+        <div class="field-row">
+          <label for="relayHostInput">中継サーバーのアドレス(空欄でこのページと同じサーバーを使用)</label>
+          <input type="text" id="relayHostInput" placeholder="例: 203.0.113.1" />
+        </div>
+        <div class="field-row">
+          <label for="relayPortInput">ポート番号(空欄で既定値)</label>
+          <input type="text" id="relayPortInput" placeholder="例: 39200" />
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ============ リアクション画面 ============ -->
+  <div id="reactionScreen" class="screen">
+    <div class="toolbar">
+      <div id="connLabel"></div>
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="secondary icon-only" id="openSettingsBtn" title="設定">⚙</button>
+        <button type="button" class="danger icon-only" id="disconnectBtn" title="切断">✕</button>
+      </div>
+    </div>
+    <div id="muteNotice"></div>
+    <div id="grid"></div>
+  </div>
+
+  <!-- ============ 設定パネル ============ -->
+  <div id="settingsOverlay">
+    <div id="settingsPanel">
+      <div id="settingsPanelHead">
+        <h1 style="font-size:14px;">設定</h1>
+        <button type="button" class="secondary icon-only" id="closeSettingsBtn">✕</button>
+      </div>
+
+      <h2>ボタンの大きさ</h2>
+      <div class="field-row">
+        <input type="range" id="iconScaleRange" min="0.7" max="1.8" step="0.05" />
+      </div>
+
+      <h2>表示するリアクション・並び順</h2>
+      <p style="margin-top:0;">チェックを外すと非表示になります。左のつまみをドラッグするか、右の数字欄に直接入力すると並び替えられます。</p>
+      <div id="reactionOrderList"></div>
+      <button type="button" class="secondary" id="resetOrderBtn" style="margin-top:12px;">並び順を初期状態に戻す</button>
+    </div>
+  </div>
+
+  <script src="shared/relay-client.js"></script>
+  <script src="shared/emoji-set.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

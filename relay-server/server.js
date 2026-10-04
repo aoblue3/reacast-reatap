@@ -31,9 +31,23 @@
  * 視聴者はこの合言葉だけを入力すればよい。合言葉は大文字小文字を区別せず
  * (内部で小文字化して比較・保存する)、他の部屋と重複しては使えない
  * (passphrases Mapで排他制御する)。
+ *
+ * ReaTap Web(web-viewer/)について: exeのインストールが敷居が高いという声を
+ * 受け、ブラウザだけで合言葉入力→タップができる軽量版を追加した。この
+ * 中継サーバー自身がweb-viewer/配下の静的ファイル(index.html等)も一緒に
+ * 配信することで、ReaTap Web側は「このページを開いているサーバーに、
+ * そのままWebSocketで繋ぎに行けばよい」だけで済み、利用者側でアドレスを
+ * 設定する必要が一切無くなる(web-viewer/app.jsのresolveRelayUrl参照)。
+ * WebSocketのアップグレード要求はwsライブラリが処理し、それ以外の通常の
+ * HTTP GETリクエストだけをこの静的配信ロジックが処理する(同じポート・
+ * 同じhttp.Serverを共有しているだけで、お互いに干渉しない)。
  */
 
 const WebSocket = require('ws');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { URL } = require('url');
 
 // ---- 設定値 ----
 const RATE_LIMIT_WINDOW_MS = 10_000; // 直近何ミリ秒を見るか
@@ -58,6 +72,23 @@ const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // 英数字で開始�
 // 同時に(新しい値に)上げること。
 const MIN_PROTOCOL_VERSION = 2;
 
+// ReaTap Web(web-viewer/)の静的ファイルの既定の場所。このファイル自身の
+// 場所(__dirname)基準の相対パスにしておくことで、`cd relay-server &&
+// node server.js`のようにどのディレクトリから起動しても正しく解決される
+// (README.mdの起動手順を参照。process.cwd()基準にすると起動場所によって
+// 壊れるため避けている)。
+const DEFAULT_STATIC_DIR = path.join(__dirname, '..', 'web-viewer');
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
 /**
  * 部屋の状態:
  *   {
@@ -68,9 +99,14 @@ const MIN_PROTOCOL_VERSION = 2;
  *   }
  */
 class RelayServer {
-  constructor({ port = 39200, logger = console } = {}) {
+  constructor({ port = 39200, logger = console, staticDir = DEFAULT_STATIC_DIR } = {}) {
     this.port = port;
     this.logger = logger;
+    // staticDirが実際に存在しない環境(web-viewer/を配置していないデプロイ等)
+    // でも中継サーバー自体は問題なく起動できるようにするため、存在確認だけ
+    // ここでしておき、無ければ静的配信自体を諦める(HTTPリクエストには
+    // 常に404を返す。WebSocketの中継機能には一切影響しない)。
+    this.staticDir = staticDir && fs.existsSync(staticDir) ? staticDir : null;
     this.rooms = new Map(); // roomId -> room
     this.passphrases = new Map(); // 小文字化した合言葉 -> roomId
     // 連打防止のレート状態は、以前は接続(ws)ごとのWeakMapで管理していたが、
@@ -79,20 +115,84 @@ class RelayServer {
     // 作られ、WeakMapのキーも新品になるため)。そこで「部屋ID+接続元IP」を
     // キーにした通常のMapで管理し、繋ぎ直してもレート状態が引き継がれるようにする。
     this.rateByRoomIp = new Map(); // "roomId:ip" -> {timestamps:[], mutedUntil:0, lastSeenAt}
+    this.httpServer = null;
     this.wss = null;
     this._rateCleanupTimer = null;
   }
 
   start() {
-    this.wss = new WebSocket.Server({ port: this.port, maxPayload: MAX_MESSAGE_BYTES });
+    // 以前はWebSocket.Serverに直接{port}を渡して単独でlistenさせていたが、
+    // ReaTap Web(web-viewer/)の静的ファイルも同じポートで配信したいため、
+    // 先に素のhttp.Serverを作り、それをWebSocket.Serverと共有する形に変更した。
+    // 通常のHTTP GETリクエストはこのhttp.Server自身のrequestハンドラ
+    // (_handleHttpRequest)が処理し、WebSocketのアップグレード要求はws
+    // ライブラリが従来通り自動的に横取りして処理する(互いに干渉しない)。
+    this.httpServer = http.createServer((req, res) => this._handleHttpRequest(req, res));
+    this.wss = new WebSocket.Server({ server: this.httpServer, maxPayload: MAX_MESSAGE_BYTES });
     this.wss.on('connection', (ws, req) => this._handleConnection(ws, req));
-    this.logger.log(`[relay] listening on ws://0.0.0.0:${this.port}`);
+    this.httpServer.listen(this.port, () => {
+      this.logger.log(`[relay] listening on ws://0.0.0.0:${this.port}`);
+      if (this.staticDir) {
+        this.logger.log(`[relay] serving ReaTap Web from ${this.staticDir} (http://0.0.0.0:${this.port}/)`);
+      }
+    });
 
     // 使われなくなったIP別レート状態が溜まり続けないよう定期的に掃除する。
     this._rateCleanupTimer = setInterval(() => this._cleanupRateState(), RATE_STATE_CLEANUP_INTERVAL_MS);
     if (typeof this._rateCleanupTimer.unref === 'function') this._rateCleanupTimer.unref();
 
     return this;
+  }
+
+  /** ReaTap Web用の静的ファイル配信。WebSocketのアップグレード要求はここに
+   * 来ない(wsライブラリがhttp.Serverの'upgrade'イベント側で横取りする
+   * ため、この'request'イベントハンドラには通常のHTTPリクエストしか
+   * 来ない)。 */
+  _handleHttpRequest(req, res) {
+    if (!this.staticDir) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not Found');
+      return;
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' });
+      res.end('Method Not Allowed');
+      return;
+    }
+
+    let pathname;
+    try {
+      pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Bad Request');
+      return;
+    }
+    if (pathname === '/') pathname = '/index.html';
+
+    // "../"等でstaticDirの外に出ようとするパストラバーサル対策。path.join
+    // した後の絶対パスが必ずstaticDir配下に収まっていることを確認する
+    // (path.normalizeだけでは"../"を残したままにするOSもあるため、最終的な
+    // 絶対パスでの前方一致チェックが最も確実)。
+    const filePath = path.join(this.staticDir, pathname);
+    const staticDirWithSep = this.staticDir + path.sep;
+    if (filePath !== this.staticDir && !filePath.startsWith(staticDirWithSep)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Forbidden');
+      return;
+    }
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not Found');
+        return;
+      }
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
+      res.end(req.method === 'HEAD' ? undefined : data);
+    });
   }
 
   stop() {
@@ -108,7 +208,18 @@ class RelayServer {
       for (const client of this.wss.clients) {
         try { client.terminate(); } catch { /* noop */ }
       }
-      this.wss.close(() => resolve());
+      this.wss.close(() => {
+        // wsはserverオプションで渡されたhttp.Serverの所有権を持たない
+        // (自分で作ったものではないため、close()しても自動では閉じない)。
+        // このRelayServerがstart()で自分で作ったhttp.Serverなので、
+        // ここで明示的に閉じてやる必要がある(閉じないとNodeプロセスが
+        // 終了できずテストがハングする)。
+        if (this.httpServer) {
+          this.httpServer.close(() => resolve());
+        } else {
+          resolve();
+        }
+      });
     });
   }
 

@@ -13,6 +13,7 @@ relay-server/           中継サーバー(Node.js製、WebSocket)。配信者�
 
 broadcaster-app-tauri/  ReaCast(配信者アプリ、Tauri製)。実行ファイルが数MB程度と非常に軽い
 viewer-app-tauri/       ReaTap(視聴者アプリ、Tauri製)。pcwmpを自動検出し、リアクションバーを追従表示する
+web-viewer/             ReaTap Web(視聴者側のブラウザ版)。exe不要、合言葉を入力してタップするだけの軽量版。relay-server自身が配信する(下記「ReaTap Web」参照)
 ```
 
 以前あったElectron版(`broadcaster-app/` / `viewer-app/`)は使わなくなったため廃止しました。今後はこのTauri版(`broadcaster-app-tauri/` / `viewer-app-tauri/`)だけを使ってください。
@@ -59,6 +60,8 @@ PORT=39200 node server.js
 
 本番運用時は、これを常時起動しておく小型VPS(または無料枠クラウド)に配置してください。従量課金の仕組みは使っていないので、Firebase等と違って「月末に上限で止まる」ことは起きません。
 
+中継サーバーを起動すると、同じポートでReaTap Web(下記)も自動的に配信されます。ブラウザで`http://<中継サーバーのアドレス>:39200/`を開くと、追加の設定なしにそのまま使えます。
+
 続けて、配信者アプリ・視聴者アプリをそれぞれビルドします。
 
 ```bash
@@ -81,6 +84,26 @@ npm run build
 ```
 
 コード署名をしない場合、配布時にWindows SmartScreenの警告が出るのは既定の挙動です。
+
+## ReaTap Web(ブラウザ版、exe不要)
+
+「exeのインストールは敷居が高いので、合言葉を入力するだけでブラウザからタップしたい」という要望に応える、視聴者側の軽量版です。追加のインストール・ビルドは一切不要で、中継サーバー(`relay-server`)を起動した時点で自動的に配信されます。
+
+```
+http://<中継サーバーのアドレス>:39200/
+```
+
+をブラウザ(スマホでもPCでも)で開き、合言葉を入力するだけで使えます。ReaTap(exe版)と同じ`relay-client.js`/`emoji-set.js`をそのまま使っており、送信する内容・中継サーバー側の扱い(連打制限等)はexe版と完全に同じです。
+
+**exe版との違い**: ReaTap Webは「別タブ/別ウィンドウとして開いたまま、自分でタップする」だけのページです。exe版が持っている「pcwmp/PCRPlayerのウィンドウを自動検出してその上に追従表示する」「クリックしても配信ソフト側のフォーカスを奪わない」といった、OSのネイティブAPIに依存する機能はブラウザからは実現できないため持っていません。その代わり、以下の主要な設定機能はexe版と同様に使えます。
+
+- 合言葉の入力履歴(ブラウザに保存され、次回以降ワンタップで再接続できます)
+- 表示するリアクションの選択・並び替え(ドラッグ&ドロップ、または何番目かを数字で直接指定)
+- ボタンの大きさ調整
+
+設定は「このブラウザ」の`localStorage`に保存されます(ReaTap exe版のような設定ファイルではないため、別の端末・別のブラウザとは共有されません。プライベートブラウジング等では次回開いた時に引き継がれないことがあります)。
+
+中継サーバーとは別のアドレスでReaTap Webだけを配信したい場合は、`web-viewer/`フォルダの中身をそのまま任意の静的ホスティング(GitHub Pages等)に置いてください。その場合、ページを開いた後に「詳細設定」から接続先の中継サーバーのアドレス・ポートを入力する必要があります(中継サーバー自身から配信する場合は、このページと同じサーバーに自動的に繋ぎに行くため、この入力は不要です)。
 
 ## 自動アップデート機能について
 
@@ -121,16 +144,18 @@ git push origin v1.0.1
 
 タグをpushすると自動的にGitHub Actionsが動き出し、数分でReaCast.exe/ReaTap.exeが新しく作られ、その`v1.0.1`という名前のGitHub Releaseに添付されます(進行状況はGitHubの「Actions」タブで確認できます)。バージョン番号は自由に決められますが、**必ず前回公開したタグより新しい番号にしてください**(自動アップデート機能は単純な数値比較でこれを判定しているため、番号を古いものに戻したり同じものを使い回したりすると「更新なし」と誤判定されます)。
 
+**注意: `relay-server/`(ReaTap Webを含む)はこの自動リリースの対象外です。** ReaCast.exe/ReaTap.exeはタグpushだけで利用者に自動配布されますが、中継サーバー自体はご自身のVPS上で常時起動しているプロセスのため、`relay-server/`や`web-viewer/`に変更を加えた場合は、VPS側で`git pull`してから`node server.js`を再起動する、という手動の反映作業が別途必要です。
+
 ## 絵文字を追加・変更する
 
-`viewer-app-tauri/frontend/shared/emoji-set.js` と `broadcaster-app-tauri/frontend/shared/emoji-set.js` の2箇所(内容は同じものを複製してあります)を編集してください。`id` は英数字と `_-` のみ(中継サーバー側のバリデーションと合わせる必要があります)。
+`viewer-app-tauri/frontend/shared/emoji-set.js` と `broadcaster-app-tauri/frontend/shared/emoji-set.js`、`web-viewer/shared/emoji-set.js` の3箇所(内容は同じものを複製してあります)を編集してください。`id` は英数字と `_-` のみ(中継サーバー側のバリデーションと合わせる必要があります)。
 
 ## テストの実行
 
 ```bash
 (cd viewer-app-tauri/src-tauri && cargo test)
 (cd broadcaster-app-tauri/src-tauri && cargo test)
-(cd relay-server && node test/e2e.test.js)
+(cd relay-server && npm install && node test/e2e.test.js)  # ReaTap Webの静的配信テストも含む
 ```
 
 ## 今後の実装候補(仕様書 v0.4 未確定事項より)
