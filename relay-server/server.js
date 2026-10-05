@@ -63,6 +63,16 @@ const ALLOWED_EMOJI_ID_RE = /^[a-zA-Z0-9_-]{1,32}$/; // 絵文字IDの形式チ�
 const ROOM_ID_RE = /^[0-9a-f]{10}$/; // 5byte hex
 const BROADCASTER_TOKEN_RE = /^[0-9a-f]{48}$/; // 24byte hex
 const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // 英数字で開始、3〜32文字(- _ 可)
+// 接続の生存確認(ping)の間隔。応答(pong)が次のpingまでに返ってこない接続は
+// 切れているとみなして破棄する。スマホのブラウザを閉じた・電波が切れた等で
+// closeが届かないまま残った接続を掃除するため(残ったままだと、後述の
+// 「ブラウザ版は同一IPから1接続まで」の制限で本人が繋ぎ直せなくなる)。
+const HEARTBEAT_INTERVAL_MS = 30_000;
+// 配信者も視聴者も繋がっていない状態でこの時間が経った部屋は削除する
+// (部屋が消えても、配信者アプリが同じroomId/トークンで再登録すれば
+// 新しく作り直されるだけなので実害は無い)。
+const ROOM_IDLE_TTL_MS = 24 * 60 * 60_000;
+const ROOM_CLEANUP_INTERVAL_MS = 10 * 60_000;
 
 // この中継サーバーが要求する最低プロトコルバージョン。これより小さい
 // protocolVersionを送ってきた接続(=これより古いバージョンのアプリ)は、
@@ -99,7 +109,13 @@ const MIME_TYPES = {
  *   }
  */
 class RelayServer {
-  constructor({ port = 39200, logger = console, staticDir = DEFAULT_STATIC_DIR } = {}) {
+  constructor({
+    port = 39200,
+    logger = console,
+    staticDir = DEFAULT_STATIC_DIR,
+    heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+    roomIdleTtlMs = ROOM_IDLE_TTL_MS,
+  } = {}) {
     this.port = port;
     this.logger = logger;
     // staticDirが実際に存在しない環境(web-viewer/を配置していないデプロイ等)
@@ -115,9 +131,15 @@ class RelayServer {
     // 作られ、WeakMapのキーも新品になるため)。そこで「部屋ID+接続元IP」を
     // キーにした通常のMapで管理し、繋ぎ直してもレート状態が引き継がれるようにする。
     this.rateByRoomIp = new Map(); // "roomId:ip" -> {timestamps:[], mutedUntil:0, lastSeenAt}
+    // ブラウザ版(ReaTap Web)の接続は同一IPから1本までに制限する(exe版は対象外)。
+    this.webConnByIp = new Map(); // ip -> ws
+    this.heartbeatIntervalMs = heartbeatIntervalMs;
+    this.roomIdleTtlMs = roomIdleTtlMs;
     this.httpServer = null;
     this.wss = null;
     this._rateCleanupTimer = null;
+    this._heartbeatTimer = null;
+    this._roomCleanupTimer = null;
   }
 
   start() {
@@ -141,7 +163,55 @@ class RelayServer {
     this._rateCleanupTimer = setInterval(() => this._cleanupRateState(), RATE_STATE_CLEANUP_INTERVAL_MS);
     if (typeof this._rateCleanupTimer.unref === 'function') this._rateCleanupTimer.unref();
 
+    this._heartbeatTimer = setInterval(() => this._heartbeat(), this.heartbeatIntervalMs);
+    if (typeof this._heartbeatTimer.unref === 'function') this._heartbeatTimer.unref();
+
+    this._roomCleanupTimer = setInterval(() => this._cleanupIdleRooms(), ROOM_CLEANUP_INTERVAL_MS);
+    if (typeof this._roomCleanupTimer.unref === 'function') this._roomCleanupTimer.unref();
+
     return this;
+  }
+
+  /** 前回のpingに応答しなかった接続を破棄し、残りに次のpingを送る。
+   * ブラウザもexe版(WebView2)もpingにはWebSocketの仕組みとして自動で
+   * pongを返すので、クライアント側の対応は不要。 */
+  _heartbeat() {
+    for (const ws of this.wss.clients) {
+      if (ws._isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      ws._isAlive = false;
+      try { ws.ping(); } catch { /* noop */ }
+    }
+  }
+
+  /** 配信者も視聴者も繋がっていないまま一定時間経った部屋を削除する。 */
+  _cleanupIdleRooms(now = Date.now()) {
+    for (const [roomId, room] of this.rooms) {
+      if (room.broadcasterConn || room.viewerConns.size > 0) continue;
+      if (now - room.lastActiveAt <= this.roomIdleTtlMs) continue;
+      if (room.passphrase && this.passphrases.get(room.passphrase) === roomId) {
+        this.passphrases.delete(room.passphrase);
+      }
+      this.rooms.delete(roomId);
+      this.logger.log(`[relay] room ${roomId}: removed after being idle`);
+    }
+  }
+
+  /** ブラウザ版(ReaTap Web)からの接続かどうか。ReaTap Webはこのサーバー
+   * 自身が配信しているページなので、WebSocketのOriginのホストが接続先
+   * (Hostヘッダー)と一致する。exe版(Tauri)のOriginはhttp://tauri.localhost
+   * 等になるので一致しない。 */
+  _isWebViewerRequest(req) {
+    const origin = req && req.headers && req.headers.origin;
+    const host = req && req.headers && req.headers.host;
+    if (!origin || !host) return false;
+    try {
+      return new URL(origin).host === host;
+    } catch {
+      return false;
+    }
   }
 
   /** ReaTap Web用の静的ファイル配信。WebSocketのアップグレード要求はここに
@@ -170,6 +240,15 @@ class RelayServer {
     }
     if (pathname === '/') pathname = '/index.html';
 
+    // NUL文字(%00)を含むパスをfs.readFileに渡すと例外が同期的に投げられ、
+    // 誰も受け止めないためプロセスごと落ちてしまう(GET /%00だけで中継
+    // サーバーを止められる不具合があった)。ここで先に弾く。
+    if (pathname.includes('\0')) {
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Bad Request');
+      return;
+    }
+
     // "../"等でstaticDirの外に出ようとするパストラバーサル対策。path.join
     // した後の絶対パスが必ずstaticDir配下に収まっていることを確認する
     // (path.normalizeだけでは"../"を残したままにするOSもあるため、最終的な
@@ -182,24 +261,32 @@ class RelayServer {
       return;
     }
 
-    fs.readFile(filePath, (err, data) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Not Found');
-        return;
-      }
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
-      res.end(req.method === 'HEAD' ? undefined : data);
-    });
+    const notFound = () => {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not Found');
+    };
+    // 上のNUL文字チェック以外の理由でfs.readFileが同期的に例外を投げても
+    // プロセスが落ちないよう、念のため受け止めておく。
+    try {
+      fs.readFile(filePath, (err, data) => {
+        if (err) return notFound();
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
+        res.end(req.method === 'HEAD' ? undefined : data);
+      });
+    } catch {
+      notFound();
+    }
   }
 
   stop() {
     return new Promise((resolve) => {
-      if (this._rateCleanupTimer) {
-        clearInterval(this._rateCleanupTimer);
-        this._rateCleanupTimer = null;
+      for (const key of ['_rateCleanupTimer', '_heartbeatTimer', '_roomCleanupTimer']) {
+        if (this[key]) {
+          clearInterval(this[key]);
+          this[key] = null;
+        }
       }
       if (!this.wss) return resolve();
       // ws の Server#close() は「新規接続の受付を止める」だけで、既存の接続が
@@ -246,6 +333,31 @@ class RelayServer {
     ws._roomId = null;
     ws._viewerId = null;
     ws._ip = this._extractIp(req);
+    ws._isAlive = true;
+    ws.on('pong', () => {
+      ws._isAlive = true;
+    });
+
+    // ブラウザ版は同一IPから1接続まで。既に同じIPからの接続が生きていれば、
+    // 新しい方を断る(古い方を切る方式にすると、2つのタブがお互いを切り
+    // 合って再接続を繰り返してしまうため)。
+    if (this._isWebViewerRequest(req)) {
+      const existing = this.webConnByIp.get(ws._ip);
+      if (existing && existing.readyState === WebSocket.OPEN) {
+        this._send(ws, {
+          type: 'error',
+          code: 'already_connected',
+          message:
+            '同じネットワークから既にReaTap Webで接続しています。他のタブやウィンドウを閉じてから、もう一度お試しください',
+        });
+        ws.close();
+        return;
+      }
+      this.webConnByIp.set(ws._ip, ws);
+      ws.on('close', () => {
+        if (this.webConnByIp.get(ws._ip) === ws) this.webConnByIp.delete(ws._ip);
+      });
+    }
 
     ws.on('message', (raw) => this._handleMessage(ws, raw));
     ws.on('close', () => this._handleClose(ws));
@@ -411,6 +523,7 @@ class RelayServer {
     }
 
     room.viewerConns.add(ws);
+    room.lastActiveAt = Date.now();
     ws._role = 'viewer';
     ws._roomId = roomId;
     ws._viewerId = `v_${Math.random().toString(36).slice(2, 10)}`;
@@ -458,6 +571,7 @@ class RelayServer {
 
     const room = this.rooms.get(ws._roomId);
     if (!room) return; // 部屋が消えている(異常系)
+    room.lastActiveAt = now;
 
     if (room.broadcasterConn) {
       this._send(room.broadcasterConn, {
@@ -476,6 +590,7 @@ class RelayServer {
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (!room) return;
+    room.lastActiveAt = Date.now();
 
     if (ws._role === 'broadcaster' && room.broadcasterConn === ws) {
       room.broadcasterConn = null;

@@ -25,9 +25,9 @@ function httpGet(pathname) {
 // once()を毎回付け直す方式だと取りこぼす。受信したメッセージは
 // 全てキューに貯めておき、nextMessage()はキューから取り出す/なければ待つ、
 // という方式にする。
-function connect() {
+function connect(options) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, options);
     ws._queue = [];
     ws._waiters = [];
     ws.on('message', (raw) => {
@@ -242,6 +242,79 @@ async function run() {
     const traversalResp = await httpGet('/..%2f..%2fserver.js');
     assert.strictEqual(traversalResp.statusCode, 403);
     console.log('OK: エンコードされたパストラバーサル(..%2f)でweb-viewer/の外のファイルは読めない');
+
+    // --- 13. NUL文字(%00)を含むパスでサーバーが落ちない ---
+    const nulResp = await httpGet('/%00');
+    assert.strictEqual(nulResp.statusCode, 400);
+    const afterNulResp = await httpGet('/');
+    assert.strictEqual(afterNulResp.statusCode, 200);
+    console.log('OK: /%00 にアクセスしてもサーバーが落ちない(400を返す)');
+
+    // --- 14. ブラウザ版(ReaTap Web)は同一IPから1接続まで。exe版は対象外 ---
+    const webOrigin = { origin: `http://127.0.0.1:${PORT}` };
+    const web1 = await connect(webOrigin);
+    send(web1, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(web1)).type, 'joined');
+    const web2 = await connect(webOrigin);
+    const web2Err = await nextMessage(web2);
+    assert.strictEqual(web2Err.type, 'error');
+    assert.strictEqual(web2Err.code, 'already_connected');
+    await new Promise((r) => web2.once('close', r));
+    console.log('OK: ブラウザ版の2本目の接続は already_connected で断られる');
+
+    const tauriOrigin = { origin: 'http://tauri.localhost' };
+    const exe1 = await connect(tauriOrigin);
+    const exe2 = await connect(tauriOrigin);
+    for (const exe of [exe1, exe2]) {
+      send(exe, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+      assert.strictEqual((await nextMessage(exe)).type, 'joined');
+    }
+    exe1.close();
+    exe2.close();
+    console.log('OK: exe版は同じIPから複数接続できる');
+
+    web1.close();
+    await new Promise((r) => web1.once('close', r));
+    await new Promise((r) => setTimeout(r, 50));
+    const web3 = await connect(webOrigin);
+    send(web3, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(web3)).type, 'joined');
+    web3.close();
+    console.log('OK: ブラウザ版の接続を閉じれば、同じIPから繋ぎ直せる');
+
+    // --- 15. 生存確認(ping)に応答する接続は切られない ---
+    const alive = await connect();
+    server._heartbeat();
+    await new Promise((r) => setTimeout(r, 100));
+    server._heartbeat();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(alive.readyState, WebSocket.OPEN);
+    alive.close();
+    console.log('OK: pingに応答している接続は生存確認で切られない');
+
+    // --- 16. 誰も繋がっていない部屋は一定時間後に削除される ---
+    const idleRoomId = crypto.randomBytes(5).toString('hex');
+    const idlePassphrase = `idle-${crypto.randomBytes(3).toString('hex')}`;
+    const idleBroadcaster = await connect();
+    send(idleBroadcaster, {
+      type: 'register',
+      roomId: idleRoomId,
+      broadcasterToken: crypto.randomBytes(24).toString('hex'),
+      passphrase: idlePassphrase,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    assert.strictEqual((await nextMessage(idleBroadcaster)).type, 'registered');
+    const DAY_PLUS = 25 * 60 * 60_000;
+    server._cleanupIdleRooms(Date.now() + DAY_PLUS);
+    assert.ok(server.rooms.has(idleRoomId), '配信者が繋がっている部屋は消えない');
+    idleBroadcaster.close();
+    await new Promise((r) => setTimeout(r, 100));
+    server._cleanupIdleRooms(Date.now());
+    assert.ok(server.rooms.has(idleRoomId), '切断直後の部屋はまだ消えない');
+    server._cleanupIdleRooms(Date.now() + DAY_PLUS);
+    assert.ok(!server.rooms.has(idleRoomId));
+    assert.ok(!server.passphrases.has(idlePassphrase));
+    console.log('OK: 誰も繋がっていない部屋は一定時間後に合言葉ごと削除される');
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');
     clearTimeout(watchdog);

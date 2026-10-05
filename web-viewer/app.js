@@ -458,7 +458,12 @@ function startConnect(rawPassphrase) {
   });
 
   relayClient.on('type:error', (msg) => {
-    if (msg.code === 'room_not_found' || msg.code === 'invalid_params' || msg.code === 'outdated_app') {
+    if (
+      msg.code === 'room_not_found' ||
+      msg.code === 'invalid_params' ||
+      msg.code === 'outdated_app' ||
+      msg.code === 'already_connected'
+    ) {
       // まだ「リアクション画面」に切り替わっていない(=接続確立前)場合のみ、
       // 接続画面側にエラーを出す。接続済み状態での一時的なエラーで画面ごと
       // 戻してしまうと、再接続中に毎回接続画面へ引き戻されてしまうため。
