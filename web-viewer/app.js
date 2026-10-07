@@ -63,6 +63,7 @@ const resetOrderBtn = document.getElementById('resetOrderBtn');
 
 /* ------------------------- 状態 ------------------------- */
 let relayClient = null;
+let isJoined = false; // 中継サーバーへのjoinが完了していて、今リアクションを送れるか
 let currentPassphrase = '';
 let lastSentAt = 0;
 let mutedUntil = 0;
@@ -293,8 +294,13 @@ function onClickEmoji(emojiId) {
   const now = Date.now();
   if (now < mutedUntil) return;
   if (now - lastSentAt < DEBOUNCE_MS) return;
+  // 繋ぎ直しの最中に押されたリアクションは送れない。以前はここで黙って
+  // 捨てていたため「押しても届かない」ように見えていたので、状態を表示する。
+  if (!relayClient || !isJoined || !relayClient.send({ type: 'reaction', emoji: emojiId })) {
+    setConnLabel('再接続中… (この間はリアクションを送れません)', false);
+    return;
+  }
   lastSentAt = now;
-  if (relayClient) relayClient.send({ type: 'reaction', emoji: emojiId });
   // Web版はブラウザのタブとして独立して開く運用のため、Tauri版のような
   // 「配信ソフト側へのフォーカス戻し」処理は存在しない(そもそも他の
   // ネイティブウィンドウにフォーカスを移す手段がブラウザには無いため)。
@@ -432,6 +438,11 @@ function setErrorMsg(text) {
   errorMsgEl.textContent = text || '';
 }
 
+function setConnLabel(text, ok) {
+  connLabelEl.textContent = text;
+  connLabelEl.classList.toggle('ng', !ok);
+}
+
 function startConnect(rawPassphrase) {
   const passphrase = (rawPassphrase || '').trim();
   if (!PASSPHRASE_RE.test(passphrase)) {
@@ -447,17 +458,33 @@ function startConnect(rawPassphrase) {
 
   currentPassphrase = passphrase;
   const url = resolveRelayUrl();
-  relayClient = new window.RelayClient({ url, hello: { type: 'join', passphrase } });
+  const client = new window.RelayClient({ url, hello: { type: 'join', passphrase } });
+  relayClient = client;
+  isJoined = false;
+  // 古いクライアント(startConnectで作り直す前のもの)から遅れて届いたイベントで
+  // 今の状態を上書きしないよう、各ハンドラは今のクライアントの時だけ動かす。
+  const isCurrent = () => relayClient === client;
 
-  relayClient.on('type:joined', () => {
+  client.on('type:joined', () => {
+    if (!isCurrent()) return;
+    isJoined = true;
     touchSavedPassphrase(passphrase);
-    connLabelEl.textContent = `接続中: ${passphrase.toLowerCase()}`;
+    setConnLabel(`接続中: ${passphrase.toLowerCase()}`, true);
     document.body.style.opacity = '1';
     renderGrid();
     showScreen(reactionScreen);
   });
 
-  relayClient.on('type:error', (msg) => {
+  client.on('type:error', (msg) => {
+    if (!isCurrent()) return;
+    if (msg.code === 'replaced') {
+      // 同じネットワークの別のタブ・端末で接続し直された。自動で繋ぎ直すと
+      // そちらを切ってしまい、お互いに切り合い続けるので、ここで止めて
+      // 接続画面に戻し、理由を表示する。
+      disconnect();
+      setErrorMsg(msg.message || '別のタブ・端末で接続されたため切断しました');
+      return;
+    }
     if (
       msg.code === 'room_not_found' ||
       msg.code === 'invalid_params' ||
@@ -469,29 +496,30 @@ function startConnect(rawPassphrase) {
       // 戻してしまうと、再接続中に毎回接続画面へ引き戻されてしまうため。
       if (!reactionScreen.classList.contains('active')) {
         setErrorMsg(msg.message || '接続に失敗しました');
-        relayClient.close();
+        client.close();
         relayClient = null;
       }
     }
   });
 
-  relayClient.on('type:muted', (m) => {
+  client.on('type:muted', (m) => {
+    if (!isCurrent()) return;
     mutedUntil = m.untilMs;
     applyMuteUI();
   });
 
-  relayClient.on('open', () => {
-    document.body.style.opacity = '1';
-  });
-  relayClient.on('close', () => {
+  client.on('close', () => {
+    if (!isCurrent()) return;
+    isJoined = false;
     // 接続画面にまだいる場合(=最初の接続確立前に切れた)は見た目を暗くする
     // 必要は無い。接続済み画面にいる間だけ「再接続中」の見た目にする。
     if (reactionScreen.classList.contains('active')) {
       document.body.style.opacity = '0.6';
+      setConnLabel('再接続中… (この間はリアクションを送れません)', false);
     }
   });
 
-  relayClient.connect();
+  client.connect();
 }
 
 function disconnect() {
@@ -499,6 +527,7 @@ function disconnect() {
     relayClient.close();
     relayClient = null;
   }
+  isJoined = false;
   document.body.style.opacity = '1';
   currentPassphrase = '';
   showScreen(connectScreen);
@@ -513,6 +542,16 @@ passphraseForm.addEventListener('submit', (e) => {
 });
 
 disconnectBtn.addEventListener('click', disconnect);
+
+// スマホで配信アプリ等に切り替えている間に通信が切れていた場合、戻ってきた
+// 瞬間にすぐ繋ぎ直す(RelayClientの自動再接続は待ち時間が最大30秒まで
+// 伸びるため、それを待たずに済むようにする)。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!currentPassphrase || isJoined) return;
+  if (!reactionScreen.classList.contains('active')) return;
+  startConnect(currentPassphrase);
+});
 
 openSettingsBtn.addEventListener('click', () => {
   renderReactionOrderList();

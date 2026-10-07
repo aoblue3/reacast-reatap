@@ -250,37 +250,50 @@ async function run() {
     assert.strictEqual(afterNulResp.statusCode, 200);
     console.log('OK: /%00 にアクセスしてもサーバーが落ちない(400を返す)');
 
-    // --- 14. ブラウザ版(ReaTap Web)は同一IPから1接続まで。exe版は対象外 ---
+    // --- 14. ブラウザ版(ReaTap Web)は同一IPから1接続まで(後から来た方が残る)。exe版は対象外 ---
+    const webPassphrase = `web-${crypto.randomBytes(3).toString('hex')}`;
+    const webBroadcaster = await connect();
+    send(webBroadcaster, {
+      type: 'register',
+      roomId: crypto.randomBytes(5).toString('hex'),
+      broadcasterToken: crypto.randomBytes(24).toString('hex'),
+      passphrase: webPassphrase,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    assert.strictEqual((await nextMessage(webBroadcaster)).type, 'registered');
     const webOrigin = { origin: `http://127.0.0.1:${PORT}` };
     const web1 = await connect(webOrigin);
-    send(web1, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+    send(web1, { type: 'join', passphrase: webPassphrase, protocolVersion: PROTOCOL_VERSION });
     assert.strictEqual((await nextMessage(web1)).type, 'joined');
+    const web1Closed = new Promise((r) => web1.once('close', r));
     const web2 = await connect(webOrigin);
-    const web2Err = await nextMessage(web2);
-    assert.strictEqual(web2Err.type, 'error');
-    assert.strictEqual(web2Err.code, 'already_connected');
-    await new Promise((r) => web2.once('close', r));
-    console.log('OK: ブラウザ版の2本目の接続は already_connected で断られる');
+    send(web2, { type: 'join', passphrase: webPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(web2)).type, 'joined');
+    const web1Replaced = await nextMessage(web1);
+    assert.strictEqual(web1Replaced.type, 'error');
+    assert.strictEqual(web1Replaced.code, 'replaced');
+    await web1Closed;
+    console.log('OK: ブラウザ版の2本目の接続が来ると、1本目は replaced で切断される(繋ぎ直しは断られない)');
+
+    // 1本目が切れた後も、2本目のリアクションはちゃんと配信者に届く
+    send(web2, { type: 'reaction', emoji: 'clap' });
+    let fwd;
+    do { fwd = await nextMessage(webBroadcaster); } while (fwd.type !== 'reaction');
+    assert.strictEqual(fwd.emoji, 'clap');
+    web2.close();
+    console.log('OK: 残った2本目の接続からのリアクションは配信者に届く');
 
     const tauriOrigin = { origin: 'http://tauri.localhost' };
     const exe1 = await connect(tauriOrigin);
     const exe2 = await connect(tauriOrigin);
     for (const exe of [exe1, exe2]) {
-      send(exe, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
+      send(exe, { type: 'join', passphrase: webPassphrase, protocolVersion: PROTOCOL_VERSION });
       assert.strictEqual((await nextMessage(exe)).type, 'joined');
     }
     exe1.close();
     exe2.close();
+    webBroadcaster.close();
     console.log('OK: exe版は同じIPから複数接続できる');
-
-    web1.close();
-    await new Promise((r) => web1.once('close', r));
-    await new Promise((r) => setTimeout(r, 50));
-    const web3 = await connect(webOrigin);
-    send(web3, { type: 'join', passphrase, protocolVersion: PROTOCOL_VERSION });
-    assert.strictEqual((await nextMessage(web3)).type, 'joined');
-    web3.close();
-    console.log('OK: ブラウザ版の接続を閉じれば、同じIPから繋ぎ直せる');
 
     // --- 15. 生存確認(ping)に応答する接続は切られない ---
     const alive = await connect();

@@ -338,20 +338,24 @@ class RelayServer {
       ws._isAlive = true;
     });
 
-    // ブラウザ版は同一IPから1接続まで。既に同じIPからの接続が生きていれば、
-    // 新しい方を断る(古い方を切る方式にすると、2つのタブがお互いを切り
-    // 合って再接続を繰り返してしまうため)。
+    // ブラウザ版は同一IPから1接続まで。既に同じIPからの接続があれば、
+    // 古い方を切って新しい方を残す。以前は新しい方を断っていたが、スマホで
+    // アプリを切り替えて戻った時など、サーバーがまだ気づいていない切れた
+    // 接続が残っていると本人の繋ぎ直しまで断られ、リアクション画面のまま
+    // 黙って送信できなくなる不具合があった(2026-10-07の配信中に報告)。
+    // 切られた側には'replaced'を送り、ReaTap Web側はこれを受けたら自動の
+    // 再接続をやめる(2つのタブがお互いを切り合い続けないようにするため)。
     if (this._isWebViewerRequest(req)) {
       const existing = this.webConnByIp.get(ws._ip);
-      if (existing && existing.readyState === WebSocket.OPEN) {
-        this._send(ws, {
+      if (existing && existing !== ws) {
+        this._send(existing, {
           type: 'error',
-          code: 'already_connected',
+          code: 'replaced',
           message:
-            '同じネットワークから既にReaTap Webで接続しています。他のタブやウィンドウを閉じてから、もう一度お試しください',
+            '同じネットワークの別のタブ・端末からReaTap Webで接続されたため、こちらは切断しました',
         });
-        ws.close();
-        return;
+        try { existing.close(); } catch { /* noop */ }
+        this.logger.log('[relay] web viewer: replaced an older connection from the same IP');
       }
       this.webConnByIp.set(ws._ip, ws);
       ws.on('close', () => {
