@@ -71,6 +71,21 @@
   .copy-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
   .copy-row code { background: #15161a; padding: 4px 6px; border-radius: 4px; flex: 1; }
   h3 { font-size: 13px; margin: 16px 0 8px; color: #fff; }
+  #threadList {
+    max-height: calc(100vh - 230px);
+    overflow-y: auto;
+    border: 1px solid #3a3d47;
+    border-radius: 6px;
+    background: #15161a;
+  }
+  .post { padding: 6px 10px; border-bottom: 1px solid #26282f; }
+  .post:last-child { border-bottom: none; }
+  .post-head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #8fd88f; }
+  .post-head .date { color: #8d909c; }
+  .post-head button { margin-left: auto; padding: 2px 8px; font-size: 12px; }
+  .post-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+  .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
+  .empty { padding: 16px; color: #8d909c; }
   #preview {
     margin-top: 12px;
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
@@ -93,6 +108,7 @@
 
   <nav id="tabs">
     <button data-tab="fetch" class="active">取得</button>
+    <button data-tab="thread">スレッドのレス</button>
     <button data-tab="speech">読み上げ</button>
     <button data-tab="subtitle">字幕</button>
     <button data-tab="aa">AAモード</button>
@@ -103,7 +119,7 @@
 
   <main>
     <section data-tab="fetch" class="active">
-      <div class="hint">jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/ao33/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
+      <div class="hint">上の欄に、使いたい掲示板のスレッドのURLを入れて「開始」を押してください。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/ao33/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
       <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
@@ -114,15 +130,20 @@
       <div class="hint">順番待ちの先頭に割り込んで表示・読み上げます(取得を開始していなくても使えます)。</div>
     </section>
 
+    <section data-tab="thread">
+      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。</div>
+      <div id="threadList"><div class="empty">取得を開始すると、ここにスレッドのレスが表示されます</div></div>
+    </section>
+
     <section data-tab="speech">
       <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
       <div class="field"><label>読み上げソフト(コマンドライン引渡し)</label><div><input type="text" class="wide" data-key="commandPath" /></div></div>
       <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
-      <div class="hint">#Res#(本文)・#No#(番号)・#Name#(名前)・#Time#(時間)が置き換わります。SpeechCastMeと同じく、vrx.exe(民安★TALK)なら「#Res#」のままで使えます。本文はシェルを通さずそのまま1つの引数として渡します。</div>
+      <div class="hint">#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。既定の「#Res#」なら、vrx.exe(民安★TALK)には本文だけが渡り、レス番号や名前は読み上げません。本文はシェルを通さずそのまま1つの引数として渡します。</div>
       <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>レス読み上げ間隔(ターボモード)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>ターボを開始するレス件数</label><div><input type="number" min="1" data-key="turboThreshold" /><span class="unit">順番待ちがこの件数以上溜まったら短い間隔にします</span></div></div>
-      <div class="field"><label>レス番号を読み上げる</label><div><input type="checkbox" data-key="readResNumber" /></div></div>
+      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /><span class="unit">ONにすると本文の前に番号を付けて渡します(既定OFF)</span></div></div>
       <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
     </section>
 
@@ -162,7 +183,7 @@
         <label><input type="checkbox" data-key="style.aa.shrinkToHeight" /> 高さに合わせる</label>
       </div></div>
       <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
-      <div class="field"><label>レス番号を読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
+      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
       <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
       <h3>AAモードになる条件</h3>
       <div class="inline"><input type="number" min="0" data-key="aaThresholdChars" /><span>文字以上(0で文字数では判定しない)、または下記の文字列を含む場合(1行に1つ)</span></div>

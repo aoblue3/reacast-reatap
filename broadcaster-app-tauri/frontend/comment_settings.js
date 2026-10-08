@@ -200,6 +200,54 @@ startBtn.addEventListener('click', async () => {
 
 stopBtn.addEventListener('click', () => invoke('comments_stop'));
 
+// ---- スレッドのレス(過去のレスを遡る) ----
+const threadListEl = document.getElementById('threadList');
+
+function buildPostEl(p) {
+  const el = document.createElement('div');
+  el.className = 'post' + (p.aa ? ' aa' : '');
+  const head = document.createElement('div');
+  head.className = 'post-head';
+  const no = document.createElement('span');
+  no.textContent = String(p.no);
+  const name = document.createElement('span');
+  name.textContent = p.name || '';
+  const date = document.createElement('span');
+  date.className = 'date';
+  date.textContent = p.date || '';
+  const btn = document.createElement('button');
+  btn.className = 'secondary';
+  btn.textContent = '読み上げ';
+  btn.title = 'このレスをもう一度字幕に表示して読み上げます';
+  btn.addEventListener('click', () => invoke('comments_replay', { no: p.no }).catch(() => {}));
+  head.append(no, name, date, btn);
+  const body = document.createElement('div');
+  body.className = 'post-body';
+  body.textContent = p.body || '';
+  el.append(head, body);
+  return el;
+}
+
+function appendPosts(posts) {
+  if (!posts.length) return;
+  // 一番下を見ている時だけ、新しいレスに合わせて自動でスクロールする
+  const atBottom = threadListEl.scrollHeight - threadListEl.scrollTop - threadListEl.clientHeight < 40;
+  const empty = threadListEl.querySelector('.empty');
+  if (empty) empty.remove();
+  const frag = document.createDocumentFragment();
+  for (const p of posts) frag.appendChild(buildPostEl(p));
+  threadListEl.appendChild(frag);
+  if (atBottom) threadListEl.scrollTop = threadListEl.scrollHeight;
+}
+
+function resetPosts() {
+  threadListEl.textContent = '';
+  const empty = document.createElement('div');
+  empty.className = 'empty';
+  empty.textContent = '取得を開始すると、ここにスレッドのレスが表示されます';
+  threadListEl.appendChild(empty);
+}
+
 document.getElementById('testBtn').addEventListener('click', () => {
   const text = document.getElementById('testText').value.trim();
   if (text) invoke('comments_test', { text });
@@ -212,4 +260,11 @@ document.getElementById('testBtn').addEventListener('click', () => {
   renderFields();
   renderStatus(await invoke('comments_status'));
   listen('comments:status', (e) => renderStatus(e.payload));
+  const thread = await invoke('comments_get_thread');
+  appendPosts(thread.posts || []);
+  threadListEl.scrollTop = threadListEl.scrollHeight;
+  listen('comments:posts', (e) => {
+    if (e.payload.reset) resetPosts();
+    appendPosts(e.payload.posts || []);
+  });
 })();

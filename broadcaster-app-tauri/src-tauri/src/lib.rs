@@ -1105,6 +1105,8 @@ pub fn run() {
             comments::comments_start,
             comments::comments_stop,
             comments::comments_test,
+            comments::comments_get_thread,
+            comments::comments_replay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -88,7 +88,8 @@ impl Default for CommentSettings {
             read_interval_ms: 3000,
             turbo_interval_ms: 400,
             turbo_threshold: 3,
-            read_res_number: true,
+            // 既定は本文だけを読み上げる(レス番号・名前は読まない)
+            read_res_number: false,
             max_chars: 270,
             reading_rules: [
                 r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
@@ -103,7 +104,7 @@ impl Default for CommentSettings {
             aa_threshold_chars: 300,
             aa_patterns: ["Д", "(●)", "从", "∀", "( 人 )"].join("\n"),
             aa_read_quoted_only: true,
-            aa_read_res_number: true,
+            aa_read_res_number: false,
             aa_fixed_reading: "アスキーアート".into(),
             desktop_enabled: true,
             desktop_monitor_id: None,
@@ -188,6 +189,8 @@ struct State {
     /// start/stopのたびに増やす。古い取得タスクはこれが変わったら終了する。
     run_id: u64,
     queue: VecDeque<Post>,
+    /// 今読んでいるスレッドの全レス(設定ウィンドウで過去のレスを遡る用)
+    thread_posts: Vec<Post>,
     status: CommentStatus,
 }
 
@@ -206,6 +209,7 @@ impl CommentEngine {
                 settings,
                 run_id: 0,
                 queue: VecDeque::new(),
+                thread_posts: Vec::new(),
                 status: CommentStatus::default(),
             }),
             wake: Notify::new(),
@@ -244,11 +248,13 @@ impl CommentEngine {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
             st.queue.clear();
+            st.thread_posts.clear();
             st.settings.thread_url = url.trim().to_string();
             st.status = CommentStatus { running: true, ..Default::default() };
             st.run_id
         };
         self.emit_status();
+        self.emit_thread_reset();
         let me = self.clone();
         tauri::async_runtime::spawn(async move { me.run_fetch(run_id, board, key).await });
         Ok(())
@@ -259,13 +265,62 @@ impl CommentEngine {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
             st.queue.clear();
+            st.thread_posts.clear();
             st.status = CommentStatus::default();
         }
         self.bridge().clear_subtitle();
         self.emit_status();
+        self.emit_thread_reset();
+    }
+
+    fn emit_thread_reset(&self) {
+        let _ = self.app.emit("comments:posts", serde_json::json!({ "reset": true, "posts": [] }));
     }
 
     /// 設定画面の「テスト表示」用。順番待ちの先頭に割り込ませる。
+    /// 今のスレッドの全レス(設定ウィンドウの「スレッドのレス」タブ用)
+    pub fn thread_posts_json(&self) -> serde_json::Value {
+        let st = self.state.lock().unwrap();
+        let posts: Vec<serde_json::Value> = st
+            .thread_posts
+            .iter()
+            .map(|p| p.to_json(text::is_aa(&p.body, st.settings.aa_threshold_chars, &st.compiled.aa_patterns)))
+            .collect();
+        serde_json::json!({ "posts": posts })
+    }
+
+    /// 指定したレス番号のレスを、順番待ちの先頭に入れてもう一度表示・読み上げる。
+    pub fn replay(&self, no: u32) -> Result<(), String> {
+        let mut st = self.state.lock().unwrap();
+        let post = st.thread_posts.iter().find(|p| p.no == no).cloned().ok_or("そのレスが見つかりません")?;
+        st.queue.push_front(post);
+        drop(st);
+        self.wake.notify_one();
+        Ok(())
+    }
+
+    /// 取得したレスをスレッドの全レス一覧に追加し、設定ウィンドウにも知らせる。
+    fn record_posts(&self, run_id: u64, posts: &[Post], reset: bool) {
+        let json = {
+            let mut st = self.state.lock().unwrap();
+            if st.run_id != run_id {
+                return;
+            }
+            if reset {
+                st.thread_posts.clear();
+            }
+            st.thread_posts.extend(posts.iter().cloned());
+            let (threshold, compiled) = (st.settings.aa_threshold_chars, st.compiled.clone());
+            posts
+                .iter()
+                .map(|p| p.to_json(text::is_aa(&p.body, threshold, &compiled.aa_patterns)))
+                .collect::<Vec<_>>()
+        };
+        if reset || !json.is_empty() {
+            let _ = self.app.emit("comments:posts", serde_json::json!({ "reset": reset, "posts": json }));
+        }
+    }
+
     pub fn test(&self, body: &str) {
         let mut post = Post::system(body);
         post.no = 1;
@@ -346,6 +401,7 @@ impl CommentEngine {
             match reader.poll(&client).await {
                 Ok(raw) => {
                     let posts: Vec<Post> = raw.iter().map(Post::from_raw).collect();
+                    self.record_posts(run_id, &posts, false);
                     if first {
                         // 起動時点で既にあったレスは読み上げない(右のレス一覧にだけ載せる)
                         first = false;
@@ -383,6 +439,7 @@ impl CommentEngine {
                                 if let Some(next) = source::pick_next(&list, &reader.thread.key, &settings.next_thread_keyword) {
                                     // 次スレのレスは1番から全部新着として扱う
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
+                                    self.record_posts(run_id, &[], true);
                                     warned = false;
                                     self.update_status(run_id, |s| s.warning = None);
                                     self.enqueue(run_id, vec![Post::system(format!("次スレ「{}」に移動しました", next.title))]);
@@ -550,6 +607,16 @@ pub fn comments_stop(app: AppHandle, engine: Engine) {
 }
 
 #[tauri::command]
+pub fn comments_get_thread(engine: Engine) -> serde_json::Value {
+    engine.thread_posts_json()
+}
+
+#[tauri::command]
+pub fn comments_replay(engine: Engine, no: u32) -> Result<(), String> {
+    engine.replay(no)
+}
+
+#[tauri::command]
 pub fn comments_test(engine: Engine, text: String) {
     engine.test(&text);
 }
@@ -566,9 +633,12 @@ mod tests {
     fn speech_text_for_normal_and_aa_posts() {
         let mut s = CommentSettings::default();
         let c = Compiled::from(&s);
-        assert_eq!(speech_text(&post(69, "おつかれ www"), false, &s, &c), "69、おつかれ ワラワラ");
-        assert_eq!(speech_text(&post(5, "(´Д｀)「やあ」"), true, &s, &c), "5、やあ");
-        assert_eq!(speech_text(&post(5, "(´Д｀)"), true, &s, &c), "5、アスキーアート");
+        // 既定は本文だけ(レス番号は読まない)
+        assert_eq!(speech_text(&post(69, "おつかれ www"), false, &s, &c), "おつかれ ワラワラ");
+        assert_eq!(speech_text(&post(5, "(´Д｀)「やあ」"), true, &s, &c), "やあ");
+        assert_eq!(speech_text(&post(5, "(´Д｀)"), true, &s, &c), "アスキーアート");
+        s.read_res_number = true;
+        assert_eq!(speech_text(&post(69, "おつかれ"), false, &s, &c), "69、おつかれ");
         s.read_res_number = false;
         s.max_chars = 4;
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
