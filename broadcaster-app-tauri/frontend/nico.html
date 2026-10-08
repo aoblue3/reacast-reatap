@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaCast ニコ生風コメント</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+  /* カスタムCSSで使えるクラス: .nico(流れるコメント1つ) */
+  .nico {
+    position: absolute;
+    white-space: pre;
+    line-height: 1.2;
+    will-change: transform;
+  }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    const C = window.CommentCommon;
+    const stage = document.getElementById('stage');
+    let style = C.mergeStyle(null);
+    // 行ごとに、最後に流したコメントの情報 {start, width, speed}
+    let lanes = [];
+
+    function laneHeight() {
+      return (Number(style.nico.fontSize) || 40) * 1.25;
+    }
+
+    function laneCount() {
+      const fit = Math.max(1, Math.floor(window.innerHeight / laneHeight()));
+      const max = Number(style.nico.maxLines) || 0;
+      return max > 0 ? Math.min(fit, max) : fit;
+    }
+
+    /** 前のコメントとぶつからない行を選ぶ(ニコニコと同じ考え方)。
+     * 条件: 前のコメントが右端から完全に出てきていて、かつ新しいコメントが
+     * 左端に着くまでに前のコメントが画面から出きっていること。空きが無ければ
+     * 一番早く空く行に重ねる。 */
+    function pickLane(now, width, speed, durationMs) {
+      const W = window.innerWidth;
+      const n = laneCount();
+      if (lanes.length !== n) lanes = Array.from({ length: n }, (_, i) => lanes[i] || null);
+      let best = 0;
+      let bestFree = Infinity;
+      for (let i = 0; i < n; i++) {
+        const prev = lanes[i];
+        if (!prev) return i;
+        const elapsed = now - prev.start;
+        const entered = elapsed * prev.speed >= prev.width + 20;
+        const remaining = durationMs - elapsed; // 前のコメントが出きるまでの時間
+        const reachLeft = W / speed; // 新しいコメントの先頭が左端に着くまでの時間
+        if (entered && reachLeft >= remaining) return i;
+        if (remaining < bestFree) {
+          bestFree = remaining;
+          best = i;
+        }
+      }
+      return best;
+    }
+
+    function flow(res) {
+      if (res.system) return;
+      if (res.aa && !style.nico.showAA) return;
+      const s = style.nico;
+      const text = res.aa ? String(res.body || '') : String(res.body || '').replace(/\s*\n\s*/g, ' ');
+      if (!text.trim()) return;
+
+      const el = document.createElement('div');
+      el.className = 'nico';
+      el.textContent = text;
+      el.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      el.style.fontSize = `${Number(s.fontSize) || 40}px`;
+      el.style.fontWeight = s.bold ? 'bold' : 'normal';
+      el.style.color = s.color;
+      el.style.opacity = String(Math.max(0, Math.min(100, Number(s.opacity) || 100)) / 100);
+      el.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      el.style.left = `${window.innerWidth}px`;
+      el.style.visibility = 'hidden';
+      stage.appendChild(el);
+
+      const W = window.innerWidth;
+      const width = el.offsetWidth;
+      const durationMs = Math.max(1000, (Number(s.durationSec) || 5) * 1000);
+      const speed = (W + width) / durationMs; // px/ms
+      const now = performance.now();
+      const lane = pickLane(now, width, speed, durationMs);
+      lanes[lane] = { start: now, width, speed };
+      el.style.top = `${lane * laneHeight()}px`;
+      el.style.visibility = '';
+      const anim = el.animate(
+        [{ transform: 'translateX(0)' }, { transform: `translateX(${-(W + width)}px)` }],
+        { duration: durationMs, easing: 'linear' }
+      );
+      anim.onfinish = () => el.remove();
+    }
+
+    C.connectBridge((msg) => {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        C.applyCustomCss(style.nico.customCss);
+      } else if (msg.type === 'comment' && msg.res) {
+        flow(msg.res);
+      }
+    });
+  </script>
+</body>
+</html>

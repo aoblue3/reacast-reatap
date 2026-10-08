@@ -1124,6 +1124,7 @@ pub fn run() {
             comments::comments_start,
             comments::comments_stop,
             comments::comments_test,
+            comments::comments_test_list,
             comments::comments_get_thread,
             comments::comments_replay,
             comments::comments_preview_next_thread,

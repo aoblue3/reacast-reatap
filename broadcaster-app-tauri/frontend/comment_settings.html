@@ -102,6 +102,14 @@
   .path-row { display: flex; gap: 6px; }
   .path-row input { flex: 1; }
   .radio-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .preview-frame {
+    width: 100%;
+    height: 280px;
+    border: 1px solid #3a3d47;
+    border-radius: 6px;
+    background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
+  }
+  textarea.css { min-height: 110px; }
 </style>
 </head>
 <body>
@@ -123,6 +131,7 @@
     <button data-tab="create">次スレ作成</button>
     <button data-tab="words">NGワード・読み方</button>
     <button data-tab="list">右のレス一覧</button>
+    <button data-tab="nico">ニコ生風</button>
     <button data-tab="output">表示先(OBS・デスクトップ)</button>
   </nav>
 
@@ -134,7 +143,7 @@
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
       <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
       <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
-      <div class="field"><label>開始レス番号</label><div><input type="number" min="0" data-key="startResNo" /><span class="unit">開始時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら直近の5件</span></div></div>
+      <div class="field"><label>開始レス番号</label><div><input type="number" min="0" data-key="startResNo" /><span class="unit">開始時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら表示しません</span></div></div>
       <div class="field"><label>初期表示テキスト</label><div><input type="text" class="wide" data-key="initialText" /><span class="unit">開始時に右のレス一覧に表示します(空欄なら表示しません)</span></div></div>
       <h3>テスト表示</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button></div>
@@ -196,6 +205,8 @@
       </div></div>
       <div id="preview"><div id="previewText"></div></div>
       <div class="hint">プレビューには文字揃え・縦の位置・位置の微調整も反映されます。実際の大きさで確かめたい時は「取得」タブの「テスト表示」を使ってください。</div>
+      <h3>カスタムCSS(上級者向け)</h3>
+      <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>
     </section>
 
     <section data-tab="aa">
@@ -242,7 +253,15 @@
     <section data-tab="list">
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>番号・名前の色 / 本文の色</label><div class="inline"><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.bodyColor" /></div></div>
+      <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
+      <div class="field"><label>見出しの大きさ</label><div class="inline"><input type="number" min="0" max="200" data-key="style.list.headFontSize" /><span class="unit">px(0なら本文の80%)</span><label><input type="checkbox" data-key="style.list.headBold" /> 太字</label></div></div>
+      <div class="field"><label>レス番号 / 名前 / 時刻の色</label><div class="inline"><input type="color" data-key="style.list.numberColor" /><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.dateColor" /></div></div>
+      <div class="field"><label>レスごとの背景</label><div class="inline">
+        <input type="color" data-key="style.list.itemBgColor" />
+        不透明度 <input type="number" min="0" max="100" data-key="style.list.itemBgOpacity" />%
+        余白 <input type="number" min="0" max="60" data-key="style.list.itemPadding" />px
+        角の丸み <input type="number" min="0" max="60" data-key="style.list.itemRadius" />px
+      </div></div>
       <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
       <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(文字の大きさに対して。既定1.3)</span></div></div>
       <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
@@ -263,6 +282,31 @@
       <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" id="pickIconFolderBtn">参照...</button></div></div>
       <div class="hint">右のレス一覧には、字幕に表示されたのと同じタイミングでレスが追加されます(字幕・読み上げとずれません)。</div>
+      <h3>カスタムCSS(上級者向け。unacastのように見た目を自由に変えられます)</h3>
+      <textarea class="css" data-key="style.list.customCss" placeholder=".item { border-left: 4px solid #7dff7d; }&#10;.name { font-style: italic; }"></textarea>
+      <div class="hint">使えるクラス: .item(レス全体) .icon(アイコン) .head(見出し) .no(番号) .name(名前) .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA)</div>
+      <h3>プレビュー</h3>
+      <iframe id="listPreview" class="preview-frame" src="comments.html?preview"></iframe>
+      <div class="inline" style="margin-top:6px">
+        <input id="listTestName" type="text" value="名無し＠BBSさん" style="width:160px" />
+        <input id="listTestText" type="text" value="右のレス一覧の文字のテストです" style="flex:1" />
+        <button class="secondary" id="listTestBtn">右の一覧・ニコ生風だけにテスト表示</button>
+      </div>
+      <div class="hint">テスト表示は、OBSの右のレス一覧とニコ生風の画面にだけ出ます(字幕・読み上げはしません)。</div>
+    </section>
+
+    <section data-tab="nico">
+      <div class="hint">レスを右から左に流します(ニコニコ生放送のコメントのような表示)。OBSのブラウザソースに「表示先」タブのニコ生風のURLを指定し、配信画面と同じ大きさ(例: 1920×1080)にして重ねてください。レスは字幕に表示されるのと同じタイミングで流れます。</div>
+      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.nico.fontFamily" /></div></div>
+      <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="300" data-key="style.nico.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.nico.bold" /> 太字</label></div></div>
+      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.nico.color" /><input type="color" data-key="style.nico.outlineColor" /></div></div>
+      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.nico.outlineWidth" /><span class="unit">px</span></div></div>
+      <div class="field"><label>流れる時間</label><div><input type="number" min="1" max="30" step="0.5" data-key="style.nico.durationSec" /><span class="unit">秒(画面を横切るのにかかる時間。長いコメントほど速く流れます)</span></div></div>
+      <div class="field"><label>不透明度</label><div><input type="number" min="10" max="100" data-key="style.nico.opacity" /><span class="unit">%</span></div></div>
+      <div class="field"><label>最大の行数</label><div><input type="number" min="0" max="50" data-key="style.nico.maxLines" /><span class="unit">0なら画面の高さに収まるだけ</span></div></div>
+      <div class="field"><label>AAも流す</label><div><input type="checkbox" data-key="style.nico.showAA" /></div></div>
+      <h3>カスタムCSS(上級者向け)</h3>
+      <textarea class="css" data-key="style.nico.customCss" placeholder=".nico { letter-spacing: 0.05em; }"></textarea>
     </section>
 
     <section data-tab="output">
@@ -270,6 +314,7 @@
       <div class="hint">OBSで「ブラウザ」ソースを追加し、URLに下記を指定してください(ReaCastの起動中だけ表示されます)。幅・高さは配信画面に合わせて調整してください(字幕は指定した範囲の下端に表示します)。</div>
       <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
       <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
 
       <h3>デスクトップ字幕(配信者のPCの画面に、読み上げ中のレスを表示)</h3>
       <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>

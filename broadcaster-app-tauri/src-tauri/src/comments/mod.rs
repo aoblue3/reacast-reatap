@@ -25,9 +25,6 @@ use tokio::sync::Notify;
 
 pub const SETTINGS_KEY: &str = "commentSettings";
 
-/// 起動直後(最初の取得)に、既に書き込まれていたレスのうち右のレス一覧に
-/// 載せておく件数(読み上げはしない)。
-const INITIAL_HISTORY: usize = 5;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -40,7 +37,7 @@ pub struct CommentSettings {
     /// このレス番号に達したら一度だけ「次スレを立ててください」と知らせる(0で知らせない)
     pub thread_warn_count: u32,
     pub start_on_launch: bool,
-    /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら直近の数件だけ。読み上げはしない)
+    /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
     pub initial_text: String,
@@ -374,6 +371,8 @@ impl CommentEngine {
         };
         self.emit_status();
         self.emit_thread_reset();
+        // 開始(再開始)のたびに右のレス一覧を空にしてから始める
+        self.bridge().clear_comments();
         let initial = self.settings().initial_text;
         if !initial.trim().is_empty() {
             self.bridge().push_comment(Post::system(initial).to_json(false));
@@ -531,11 +530,12 @@ impl CommentEngine {
                         first = false;
                         let compiled = self.state.lock().unwrap().compiled.clone();
                         let settings = self.settings();
-                        let skip = posts.len().saturating_sub(INITIAL_HISTORY);
+                        // 開始レス番号が指定されている時だけ、それ以降を右のレス一覧に載せる
+                        // (既定では載せず、「スレッド読み込みを開始しました」だけを出す)
                         let shown: Vec<&Post> = if settings.start_res_no > 0 {
                             posts.iter().filter(|p| p.no >= settings.start_res_no).collect()
                         } else {
-                            posts.iter().skip(skip).collect()
+                            Vec::new()
                         };
                         for p in shown {
                             if !text::contains_ng(&p.name, &p.body, &compiled.ng_words) {
@@ -824,6 +824,19 @@ pub fn comments_test(app: AppHandle, engine: Engine, text: String) {
         std::thread::sleep(hold + Duration::from_millis(200));
         crate::sync_subtitle_window(&app);
     });
+}
+
+/// 右のレス一覧・ニコ生風の表示だけに、見た目の確認用のレスを出す
+/// (字幕・読み上げはしない)。
+#[tauri::command]
+pub fn comments_test_list(engine: Engine, text: String, name: String) {
+    let mut post = Post::system(text);
+    post.system = false;
+    post.no = 1;
+    post.name = name;
+    post.date = "2026/10/08(木) 21:00:00.00 ID:test".into();
+    post.icon = engine.pick_icon();
+    engine.bridge().push_comment(post.to_json(false));
 }
 
 /// 次スレのタイトルと>>1の本文を確認する(実際には建てない)。

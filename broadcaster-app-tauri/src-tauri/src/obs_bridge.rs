@@ -46,6 +46,7 @@ const EMOJI_SET_JS: &str = include_str!("../../frontend/shared/emoji-set.js");
 // コメント読み上げ・字幕機能(comments/参照)のOBS向け画面。
 const SUBTITLE_HTML: &str = include_str!("../../frontend/subtitle.html");
 const COMMENTS_HTML: &str = include_str!("../../frontend/comments.html");
+const NICO_HTML: &str = include_str!("../../frontend/nico.html");
 const COMMENT_COMMON_JS: &str = include_str!("../../frontend/shared/comment-common.js");
 
 /// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
@@ -204,6 +205,12 @@ impl ObsBridge {
     }
 
     /// コメント機能: 取得を止めた時に字幕を消す。
+    /// コメント機能: 右のレス一覧を空にする(開始・再開始時)。
+    pub fn clear_comments(&self) {
+        self.comments.lock().unwrap().history.clear();
+        let _ = self.tx.send(serde_json::json!({ "type": "commentClear" }).to_string());
+    }
+
     pub fn clear_subtitle(&self) {
         self.comments.lock().unwrap().subtitle = None;
         let _ = self.tx.send(serde_json::json!({ "type": "subtitleClear" }).to_string());
@@ -336,6 +343,7 @@ Connection: close
         "/shared/emoji-set.js" => ("text/javascript; charset=utf-8", EMOJI_SET_JS),
         "/subtitle.html" => ("text/html; charset=utf-8", SUBTITLE_HTML),
         "/comments.html" => ("text/html; charset=utf-8", COMMENTS_HTML),
+        "/nico.html" => ("text/html; charset=utf-8", NICO_HTML),
         "/shared/comment-common.js" => ("text/javascript; charset=utf-8", COMMENT_COMMON_JS),
         _ => ("text/plain; charset=utf-8", "not found"),
     };

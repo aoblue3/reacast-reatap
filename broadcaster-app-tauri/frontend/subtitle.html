@@ -263,6 +263,7 @@
     C.connectBridge((msg) => {
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
+        C.applyCustomCss(style.subtitle.customCss);
         if (current) {
           applyBoxStyle(current.aa);
           setContent(current, String(current.body || ''));

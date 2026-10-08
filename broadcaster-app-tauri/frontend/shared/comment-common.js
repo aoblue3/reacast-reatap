@@ -34,6 +34,7 @@
       showTime: false,
       offsetX: 0,
       offsetY: 0,
+      customCss: '',
     },
     aa: {
       fontFamily: 'MS UI Gothic',
@@ -47,10 +48,21 @@
     list: {
       fontFamily: 'BIZ UDゴシック',
       fontSize: 22,
+      // 見出し(レス番号・名前・時刻)の文字の大きさ(px。0なら本文の80%)と色
+      headFontSize: 0,
+      headBold: true,
+      numberColor: '#7dff7d',
       nameColor: '#7dff7d',
+      dateColor: '#bbbbbb',
       bodyColor: '#ffffff',
+      bodyBold: false,
       outlineWidth: 2,
       outlineColor: '#000000',
+      // レスごとの背景(不透明度0なら背景なし)
+      itemBgColor: '#000000',
+      itemBgOpacity: 0,
+      itemPadding: 0,
+      itemRadius: 6,
       maxItems: 30,
       newestFirst: true,
       // 行間(文字の大きさに対する倍率)と、レスとレスの間の空き(px)
@@ -66,6 +78,23 @@
       hideImageUrl: false,
       showIcon: false,
       iconSize: 40,
+      customCss: '',
+    },
+    // ニコ生風(右から左に流れる)
+    nico: {
+      fontFamily: 'BIZ UDゴシック',
+      fontSize: 40,
+      bold: true,
+      color: '#ffffff',
+      outlineWidth: 2.5,
+      outlineColor: '#000000',
+      // 画面を横切るのにかかる秒数(ニコニコと同じく、長いコメントほど速く流れる)
+      durationSec: 5,
+      opacity: 100,
+      // 同時に流す最大の行数(0なら画面の高さに収まるだけ)
+      maxLines: 0,
+      showAA: false,
+      customCss: '',
     },
   };
 
@@ -116,6 +145,25 @@
     ws.addEventListener('error', () => ws.close());
   }
 
+  /** #rrggbb と不透明度(0〜100)から rgba() を作る。 */
+  function rgba(hex, opacityPercent) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+    const a = Math.max(0, Math.min(100, Number(opacityPercent) || 0)) / 100;
+    if (!m) return `rgba(0,0,0,${a})`;
+    return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})`;
+  }
+
+  /** 設定の「カスタムCSS」をページに差し込む(配信者が自分の画面用に書くCSS)。 */
+  function applyCustomCss(css) {
+    let el = document.getElementById('reacast-custom-css');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'reacast-custom-css';
+      document.head.appendChild(el);
+    }
+    el.textContent = String(css || '');
+  }
+
   /** 本文に含まれる画像のURL(サムネイル表示用)。 */
   const IMAGE_URL_RE = /https?:\/\/[^\s"'<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s"'<>]*)?(?=$|[\s"'<>])/gi;
   function findImageUrls(text) {
@@ -140,5 +188,7 @@
     findImageUrls,
     IMAGE_URL_RE,
     resHeader,
+    rgba,
+    applyCustomCss,
   };
 })();

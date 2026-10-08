@@ -23,6 +23,9 @@
   }
   /* 新しいレスを下に追加する設定の時は、下端に寄せる */
   #list.bottom { justify-content: flex-end; }
+  /* カスタムCSSで使えるクラス:
+     .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .name(名前)
+     .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ) */
   .item {
     display: flex;
     gap: 0.4em;
@@ -30,10 +33,11 @@
     margin: 0 0 var(--item-gap, 10px);
     animation: item-in 220ms ease-out;
     flex: 0 0 auto;
+    box-sizing: border-box;
   }
   .icon { flex: 0 0 auto; object-fit: cover; border-radius: 6px; }
   .content { min-width: 0; flex: 1 1 auto; }
-  .head { font-size: 0.8em; font-weight: bold; }
+  .head > span + span { margin-left: 0.4em; }
   .content.inline .head { display: inline; margin-right: 0.5em; }
   .content.inline .body { display: inline; }
   .body { white-space: pre-wrap; word-break: break-word; }
@@ -66,12 +70,25 @@
       listEl.style.setProperty('--item-gap', `${Math.max(0, Number(s.itemGap) || 0)}px`);
       listEl.classList.toggle('bottom', !s.newestFirst);
       listEl.classList.toggle('nowrap', !s.wrap);
+      C.applyCustomCss(s.customCss);
+    }
+
+    function span(cls, text, color) {
+      const el = document.createElement('span');
+      el.className = cls;
+      el.textContent = text;
+      if (color) el.style.color = color;
+      return el;
     }
 
     function buildItem(res) {
       const s = style.list;
       const el = document.createElement('div');
-      el.className = 'item' + (res.aa ? ' aa' : '');
+      el.className = 'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '');
+      const bgOpacity = Number(s.itemBgOpacity) || 0;
+      if (bgOpacity > 0) el.style.background = C.rgba(s.itemBgColor, bgOpacity);
+      el.style.padding = `${Math.max(0, Number(s.itemPadding) || 0)}px`;
+      el.style.borderRadius = `${Math.max(0, Number(s.itemRadius) || 0)}px`;
 
       if (s.showIcon && res.icon) {
         const img = document.createElement('img');
@@ -85,14 +102,18 @@
 
       const content = document.createElement('div');
       content.className = 'content' + (s.separateLines ? '' : ' inline');
-      const headText = res.system ? res.name || '' : C.resHeader(res, s);
-      if (headText) {
-        const head = document.createElement('div');
-        head.className = 'head';
-        head.style.color = s.nameColor;
-        head.textContent = headText;
-        content.appendChild(head);
+      const head = document.createElement('div');
+      head.className = 'head';
+      head.style.fontSize = Number(s.headFontSize) > 0 ? `${Number(s.headFontSize)}px` : '0.8em';
+      head.style.fontWeight = s.headBold ? 'bold' : 'normal';
+      if (res.system) {
+        if (res.name) head.appendChild(span('name', res.name, s.nameColor));
+      } else {
+        if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
+        if (s.showName && res.name) head.appendChild(span('name', res.name, s.nameColor));
+        if (s.showDate && res.date) head.appendChild(span('date', res.date, s.dateColor));
       }
+      if (head.childNodes.length) content.appendChild(head);
 
       const images = s.thumbnails === 'chat' && !res.aa ? C.findImageUrls(res.body) : [];
       let bodyText = String(res.body || '');
@@ -101,6 +122,7 @@
         const body = document.createElement('div');
         body.className = 'body';
         body.style.color = s.bodyColor;
+        body.style.fontWeight = s.bodyBold ? 'bold' : 'normal';
         body.textContent = bodyText;
         content.appendChild(body);
       }
@@ -147,17 +169,31 @@
       }
     }
 
-    C.connectBridge((msg) => {
+    function handle(msg) {
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
         render();
       } else if (msg.type === 'commentHistory') {
         items = Array.isArray(msg.items) ? msg.items.slice(-100) : [];
         render();
+      } else if (msg.type === 'commentClear') {
+        items = [];
+        render();
       } else if (msg.type === 'comment' && msg.res) {
         add(msg.res);
       }
-    });
+    }
+
+    // ?preview: ReaCastの設定画面に埋め込むプレビュー用。ブリッジには繋がず、
+    // 設定画面から送られてくる見た目とサンプルのレスで描画する。
+    if (new URLSearchParams(location.search).has('preview')) {
+      window.addEventListener('message', (e) => {
+        if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
+        handle(e.data);
+      });
+    } else {
+      C.connectBridge(handle);
+    }
     applyListStyle();
   </script>
 </body>

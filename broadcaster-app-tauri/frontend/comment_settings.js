@@ -90,7 +90,28 @@ function renderPreview() {
     p.appendChild(h);
   }
   p.appendChild(document.createTextNode(sample.body));
+  renderListPreview();
 }
+
+// ---- 右のレス一覧のプレビュー(comments.html?previewを埋め込んで同じ描画をさせる) ----
+const listPreview = document.getElementById('listPreview');
+const LIST_SAMPLES = [
+  { no: 67, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:01.11 ID:abc', body: '水中にいるみたい', aa: false, icon: null },
+  { no: 68, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:05.22 ID:def', body: 'ちょっと長めのレスです。横幅を超えた時の折り返しや行間の確認用のテキストです。', aa: false, icon: null },
+  { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:09.33 ID:ghi', body: 'おつかれ', aa: false, icon: null },
+];
+function renderListPreview() {
+  if (!listPreview || !listPreview.contentWindow) return;
+  listPreview.contentWindow.postMessage({ type: 'commentStyle', style: settings.style }, '*');
+  listPreview.contentWindow.postMessage({ type: 'commentHistory', items: LIST_SAMPLES }, '*');
+}
+listPreview.addEventListener('load', renderListPreview);
+
+document.getElementById('listTestBtn').addEventListener('click', () => {
+  const text = document.getElementById('listTestText').value.trim();
+  const name = document.getElementById('listTestName').value;
+  if (text) invoke('comments_test_list', { text, name }).catch((e) => showStatusError(String(e)));
+});
 
 function scheduleSave() {
   clearTimeout(saveTimer);
