@@ -282,13 +282,27 @@ fn parse_subject(text: &str, shitaraba: bool) -> Vec<ThreadInfo> {
     out
 }
 
-/// 板の中から「一番新しい、まだ埋まっていないスレッド」を選ぶ(板のURLが
-/// 入力された時用)。
-pub fn pick_newest(threads: &[ThreadInfo]) -> Option<&ThreadInfo> {
-    threads
-        .iter()
-        .filter(|t| t.count < 1000)
-        .max_by_key(|t| t.key.parse::<u64>().unwrap_or(0))
+/// 板の中から「今使っている(現行の)スレッド」を選ぶ(板のURLが入力された時用)。
+///
+/// 埋まった(1000に達した)スレッドのうち一番新しいものの、すぐ次に立った
+/// まだ埋まっていないスレッドを選ぶ。以前は「一番新しい、まだ埋まっていない
+/// スレッド」を選んでいたため、現行スレが終わる前に次スレを建てておくと、
+/// 開始・再起動した時に現行スレではなく建てたばかりの次スレを読んでしまっていた。
+/// keywordが空でなければタイトルにそれを含むスレッドだけで判断する(合うものが
+/// 無ければ条件なしで選び直す)。
+pub fn pick_current<'a>(threads: &'a [ThreadInfo], keyword: &str) -> Option<&'a ThreadInfo> {
+    let key = |t: &ThreadInfo| t.key.parse::<u64>().unwrap_or(0);
+    let choose = |use_keyword: bool| {
+        let pool: Vec<&ThreadInfo> = threads
+            .iter()
+            .filter(|t| !use_keyword || keyword.is_empty() || t.title.contains(keyword))
+            .collect();
+        let last_full = pool.iter().filter(|t| t.count >= 1000).map(|t| key(t)).max().unwrap_or(0);
+        pool.into_iter()
+            .filter(|t| t.count < 1000 && key(t) > last_full)
+            .min_by_key(|t| key(t))
+    };
+    choose(true).or_else(|| choose(false))
 }
 
 /// 今のスレッドより後に立った、まだ埋まっていないスレッドのうち一番古いもの
@@ -429,7 +443,7 @@ mod tests {
             let client = http_client();
             let (board, _) = parse_url(&board_url).unwrap();
             let list = list_threads(&client, &board).await.unwrap();
-            let newest = pick_newest(&list).expect("スレッドがあるはず");
+            let newest = pick_current(&list, "").expect("スレッドがあるはず");
             let mut reader = ThreadReader::new(ThreadRef { board, key: newest.key.clone() });
             let posts = reader.poll(&client).await.unwrap();
             assert!(!posts.is_empty());
@@ -466,10 +480,29 @@ mod tests {
         assert_eq!(nch.len(), 3);
         assert_eq!(nch[2].title, "雑談 (part2)");
         assert_eq!(nch[2].count, 12);
-        assert_eq!(pick_newest(&nch).unwrap().key, "1700000003");
+        assert_eq!(pick_current(&nch, "").unwrap().key, "1700000003");
         assert_eq!(pick_next(&nch, "1700000002", "").unwrap().key, "1700000003");
         assert!(pick_next(&nch, "1700000003", "").is_none());
         assert!(pick_next(&nch, "1700000002", "存在しない").is_none());
+
+        // 現行スレ(539)が終わる前に次スレ(540)を建てていても、現行スレを選ぶ
+        let early = parse_subject(
+            "1700000004.dat<>540 (1)\n1700000003.dat<>539 (69)\n1700000002.dat<>538 (1001)\n1700000001.dat<>537 (1001)\n",
+            false,
+        );
+        assert_eq!(pick_current(&early, "").unwrap().title, "539");
+        // 現行スレが1000に達したら、次スレへ(既存のpick_next)
+        assert_eq!(pick_next(&early, "1700000003", "").unwrap().title, "540");
+        // 埋まったスレッドが一覧に無い板では、まだ埋まっていない一番古いスレッド
+        let fresh = parse_subject("1700000006.dat<>2 (3)\n1700000005.dat<>1 (500)\n", false);
+        assert_eq!(pick_current(&fresh, "").unwrap().title, "1");
+        // キーワードがあれば、それを含むスレッドだけで判断する(避難所などを避ける)
+        let mixed = parse_subject(
+            "1700000009.dat<>避難所 (5)\n1700000008.dat<>配信スレ12 (40)\n1700000007.dat<>配信スレ11 (1001)\n",
+            false,
+        );
+        assert_eq!(pick_current(&mixed, "配信スレ").unwrap().title, "配信スレ12");
+        assert_eq!(pick_current(&mixed, "存在しない").unwrap().title, "配信スレ12");
 
         let sh = parse_subject("1700000002.cgi,次のスレ(3)\n1700000001.cgi,前のスレ(1000)\n1700000002.cgi,次のスレ(3)\n", true);
         assert_eq!(sh.len(), 2);

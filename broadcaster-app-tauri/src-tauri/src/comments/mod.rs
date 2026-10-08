@@ -766,7 +766,7 @@ impl CommentEngine {
                     return;
                 }
                 match source::list_threads(&client, &board).await {
-                    Ok(list) => match source::pick_newest(&list) {
+                    Ok(list) => match source::pick_current(&list, &self.settings().next_thread_keyword) {
                         Some(t) => break t.key.clone(),
                         None => self.update_status(run_id, |s| s.error = Some("板にスレッドが見つかりません".into())),
                     },
