@@ -1102,6 +1102,60 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
     engine.bridge().push_comment(post.to_json(false));
 }
 
+/// YouTubeのURLで、配信とチャットに接続できるかを確かめる(取得は開始しない)。
+#[tauri::command]
+pub async fn comments_check_youtube(target: String) -> youtube::CheckResult {
+    youtube::check(&target).await
+}
+
+/// Twitchのチャンネルに接続できるかを確かめる(数秒だけ繋いでコメントを受け取る)。
+#[tauri::command]
+pub async fn comments_check_twitch(channel: String) -> serde_json::Value {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    let channel = match twitch::parse_channel(&channel) {
+        Ok(c) => c,
+        Err(e) => return serde_json::json!({ "ok": false, "message": e, "samples": [] }),
+    };
+    let (mut write, mut read) = match tokio_tungstenite::connect_async("wss://irc-ws.chat.twitch.tv:443").await {
+        Ok((ws, _)) => ws.split(),
+        Err(e) => return serde_json::json!({ "ok": false, "message": format!("Twitchへの接続に失敗しました: {e}"), "samples": [] }),
+    };
+    for line in [
+        "CAP REQ :twitch.tv/tags twitch.tv/commands".to_string(),
+        "PASS SCHMOOPIIE".to_string(),
+        format!("NICK justinfan{}", rand::random::<u32>() % 90000 + 10000),
+        format!("JOIN #{channel}"),
+    ] {
+        let _ = write.send(Message::Text(line)).await;
+    }
+    let mut joined = false;
+    let mut samples: Vec<String> = Vec::new();
+    let end = tokio::time::Instant::now() + Duration::from_secs(8);
+    while tokio::time::Instant::now() < end {
+        let left = end - tokio::time::Instant::now();
+        let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(left, read.next()).await else {
+            break;
+        };
+        for line in text.split("\r\n") {
+            if line.contains(&format!(" JOIN #{channel}")) {
+                joined = true;
+            } else if let Some(m) = twitch::parse_privmsg(line) {
+                if samples.len() < 5 {
+                    samples.push(format!("{}: {}", m.author, m.text));
+                }
+            }
+        }
+    }
+    let _ = write.close().await;
+    let message = match (joined, samples.len()) {
+        (false, _) => "チャンネルに参加できませんでした".to_string(),
+        (true, 0) => "接続できました(8秒の間にコメントはありませんでした。配信していないか、コメントが少ない可能性があります)".to_string(),
+        (true, n) => format!("接続できました(8秒の間に{n}件以上のコメントを受信)"),
+    };
+    serde_json::json!({ "ok": joined, "message": message, "channel": channel, "samples": samples })
+}
+
 /// 次スレのタイトルと>>1の本文を確認する(実際には建てない)。
 #[tauri::command]
 pub fn comments_preview_next_thread(engine: Engine) -> Result<serde_json::Value, String> {

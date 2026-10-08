@@ -606,7 +606,7 @@ mod tests {
         let windows = vec![w(
             "PCRPlayer",
             "SomeMfcClass",
-            r"C:\Users\noobo\Desktop\PCRPlayer64.exe",
+            r"C:\Users\user\Desktop\PCRPlayer64.exe",
         )];
         let found = find_pcwmp_window(&windows).expect("should find PCRPlayer64.exe");
         assert_eq!(found.title, "PCRPlayer");

@@ -86,9 +86,9 @@ mod tests {
 
     #[test]
     fn parses_channel_inputs() {
-        assert_eq!(parse_channel("kato_junichi0817").unwrap(), "kato_junichi0817");
-        assert_eq!(parse_channel("https://www.twitch.tv/StylishNoob4/").unwrap(), "stylishnoob4");
-        assert_eq!(parse_channel("#shaka").unwrap(), "shaka");
+        assert_eq!(parse_channel("example_channel").unwrap(), "example_channel");
+        assert_eq!(parse_channel("https://www.twitch.tv/ExampleStreamer/").unwrap(), "examplestreamer");
+        assert_eq!(parse_channel("#example").unwrap(), "example");
         assert!(parse_channel("https://example.com/x").is_err());
         assert!(parse_channel("bad name!").is_err());
         assert!(parse_channel("").is_err());
@@ -96,10 +96,10 @@ mod tests {
 
     #[test]
     fn parses_privmsg_lines() {
-        let line = "@badge-info=;color=#1E90FF;display-name=ケミカル甘味;emotes=;id=x :chem!chem@chem.tmi.twitch.tv PRIVMSG #kato_junichi0817 :今日から風呂入らずに行こうかな";
+        let line = "@badge-info=;color=#1E90FF;display-name=テストユーザー;emotes=;id=x :testuser!testuser@testuser.tmi.twitch.tv PRIVMSG #example_channel :こんにちは、テストです";
         assert_eq!(
             parse_privmsg(line),
-            Some(ChatMessage { author: "ケミカル甘味".into(), text: "今日から風呂入らずに行こうかな".into() })
+            Some(ChatMessage { author: "テストユーザー".into(), text: "こんにちは、テストです".into() })
         );
         // display-nameが空ならログイン名、本文中の " :" で切れない
         let line2 = "@display-name=;id=y :abc!abc@abc.tmi.twitch.tv PRIVMSG #ch :a : b";

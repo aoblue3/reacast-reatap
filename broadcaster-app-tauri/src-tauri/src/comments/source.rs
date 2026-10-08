@@ -12,7 +12,7 @@ use reqwest::{StatusCode, Url};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Board {
-    /// 2ch互換。origin例: `https://bbs.jpnkn.com`、board例: `ao33`
+    /// 2ch互換。origin例: `https://bbs.jpnkn.com`、board例: `example`
     Nch { origin: String, board: String },
     /// したらば。`https://jbbs.shitaraba.jp/bbs/read.cgi/{category}/{board}/{key}/`
     Shitaraba { category: String, board: String },
@@ -387,13 +387,13 @@ mod tests {
 
     #[test]
     fn parses_jpnkn_thread_and_board_urls() {
-        let (b, k) = parse_url("https://bbs.jpnkn.com/test/read.cgi/ao33/1791357173/").unwrap();
-        assert_eq!(b, Board::Nch { origin: "https://bbs.jpnkn.com".into(), board: "ao33".into() });
-        assert_eq!(k.as_deref(), Some("1791357173"));
-        let (_, k) = parse_url("https://bbs.jpnkn.com/test/read.cgi/ao33/1791357173/l50").unwrap();
-        assert_eq!(k.as_deref(), Some("1791357173"));
-        let (b, k) = parse_url("https://bbs.jpnkn.com/ao33/").unwrap();
-        assert_eq!(b, Board::Nch { origin: "https://bbs.jpnkn.com".into(), board: "ao33".into() });
+        let (b, k) = parse_url("https://bbs.jpnkn.com/test/read.cgi/example/1700000001/").unwrap();
+        assert_eq!(b, Board::Nch { origin: "https://bbs.jpnkn.com".into(), board: "example".into() });
+        assert_eq!(k.as_deref(), Some("1700000001"));
+        let (_, k) = parse_url("https://bbs.jpnkn.com/test/read.cgi/example/1700000001/l50").unwrap();
+        assert_eq!(k.as_deref(), Some("1700000001"));
+        let (b, k) = parse_url("https://bbs.jpnkn.com/example/").unwrap();
+        assert_eq!(b, Board::Nch { origin: "https://bbs.jpnkn.com".into(), board: "example".into() });
         assert_eq!(k, None);
     }
 
@@ -414,15 +414,20 @@ mod tests {
         assert!(parse_url("https://bbs.jpnkn.com/a/b/c/d").is_err());
     }
 
-    /// 実際のjpnknの板からスレッド一覧とレスを取得する(ネットワークに繋ぐので
-    /// 普段は実行しない。`cargo test -- --ignored`で実行する)。差分取得
-    /// (2回目のpollで新着が無ければ空)も確認する。
+    /// 実際の2ch互換の掲示板からスレッド一覧とレスを取得する(ネットワークに
+    /// 繋ぐので普段は実行しない)。使う板は環境変数で指定する:
+    /// `REACAST_TEST_BOARD_URL=https://bbs.jpnkn.com/板名/ cargo test -- --ignored`
+    /// 差分取得(2回目のpollで新着が無ければ空)も確認する。
     #[test]
     #[ignore]
-    fn fetches_real_jpnkn_board() {
+    fn fetches_real_board() {
+        let Ok(board_url) = std::env::var("REACAST_TEST_BOARD_URL") else {
+            eprintln!("REACAST_TEST_BOARD_URLが未設定のため省略");
+            return;
+        };
         tauri::async_runtime::block_on(async {
             let client = http_client();
-            let (board, _) = parse_url("https://bbs.jpnkn.com/ao33/").unwrap();
+            let (board, _) = parse_url(&board_url).unwrap();
             let list = list_threads(&client, &board).await.unwrap();
             let newest = pick_newest(&list).expect("スレッドがあるはず");
             let mut reader = ThreadReader::new(ThreadRef { board, key: newest.key.clone() });
@@ -455,16 +460,16 @@ mod tests {
     #[test]
     fn parses_subject_lines_and_picks_threads() {
         let nch = parse_subject(
-            "1791357173.dat<>539 (69)\n1790705505.dat<>538 (1001)\n1790309432.dat<>雑談 (part2) (12)\n",
+            "1700000003.dat<>539 (69)\n1700000002.dat<>538 (1001)\n1700000001.dat<>雑談 (part2) (12)\n",
             false,
         );
         assert_eq!(nch.len(), 3);
         assert_eq!(nch[2].title, "雑談 (part2)");
         assert_eq!(nch[2].count, 12);
-        assert_eq!(pick_newest(&nch).unwrap().key, "1791357173");
-        assert_eq!(pick_next(&nch, "1790705505", "").unwrap().key, "1791357173");
-        assert!(pick_next(&nch, "1791357173", "").is_none());
-        assert!(pick_next(&nch, "1790705505", "存在しない").is_none());
+        assert_eq!(pick_newest(&nch).unwrap().key, "1700000003");
+        assert_eq!(pick_next(&nch, "1700000002", "").unwrap().key, "1700000003");
+        assert!(pick_next(&nch, "1700000003", "").is_none());
+        assert!(pick_next(&nch, "1700000002", "存在しない").is_none());
 
         let sh = parse_subject("1700000002.cgi,次のスレ(3)\n1700000001.cgi,前のスレ(1000)\n1700000002.cgi,次のスレ(3)\n", true);
         assert_eq!(sh.len(), 2);

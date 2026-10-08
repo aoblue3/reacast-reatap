@@ -263,6 +263,51 @@ document.getElementById('previewThreadBtn').addEventListener('click', async () =
   }
 });
 
+// ---- YouTube・Twitchの接続確認(取得は開始しない) ----
+const checkResultEl = document.getElementById('checkResult');
+function showCheck(lines, ok) {
+  checkResultEl.style.display = '';
+  checkResultEl.style.color = ok ? '#7dff9a' : '#ff8a8a';
+  checkResultEl.textContent = lines.filter(Boolean).join('\n');
+}
+document.getElementById('checkYoutubeBtn').addEventListener('click', async (e) => {
+  const target = (settings.youtubeTarget || '').trim();
+  if (!target) return showCheck(['YouTubeの配信URLかチャンネルを入力してください'], false);
+  e.target.disabled = true;
+  showCheck(['YouTubeに接続しています…'], true);
+  try {
+    const r = await invoke('comments_check_youtube', { target });
+    showCheck(
+      [
+        (r.ok ? '○ ' : '× ') + r.message,
+        r.title ? `配信: ${r.title}` : '',
+        r.videoId ? `動画ID: ${r.videoId}` : '',
+        r.samples.length ? '直近のコメント:' : '',
+        ...r.samples.map((s) => '  ' + s),
+      ],
+      r.ok
+    );
+  } catch (err) {
+    showCheck([String(err)], false);
+  } finally {
+    e.target.disabled = false;
+  }
+});
+document.getElementById('checkTwitchBtn').addEventListener('click', async (e) => {
+  const channel = (settings.twitchChannel || '').trim();
+  if (!channel) return showCheck(['Twitchのチャンネル名を入力してください'], false);
+  e.target.disabled = true;
+  showCheck(['Twitchに接続しています(8秒ほどコメントを待ちます)…'], true);
+  try {
+    const r = await invoke('comments_check_twitch', { channel });
+    showCheck([(r.ok ? '○ ' : '× ') + r.message, r.samples.length ? '受信したコメント:' : '', ...r.samples.map((s) => '  ' + s)], r.ok);
+  } catch (err) {
+    showCheck([String(err)], false);
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
 // ---- 表示するモニター ----
 monitorSelect.addEventListener('change', () => {
   settings.desktopMonitorId = monitorSelect.value || null;

@@ -115,7 +115,7 @@
 <body>
   <header>
     <div class="url-row">
-      <input id="threadUrl" type="text" data-key="threadUrl" placeholder="スレッド(または板)のURL 例: https://bbs.jpnkn.com/test/read.cgi/ao33/1791357173/" />
+      <input id="threadUrl" type="text" data-key="threadUrl" placeholder="スレッド(または板)のURL 例: https://bbs.jpnkn.com/test/read.cgi/板の名前/スレッド番号/" />
       <button id="startBtn">開始</button>
       <button id="stopBtn" class="secondary">停止</button>
     </div>
@@ -137,10 +137,11 @@
 
   <main>
     <section data-tab="fetch" class="active">
-      <div class="hint">上の欄に、使いたい掲示板のスレッドのURLを入れて「開始」を押してください。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/ao33/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
+      <div class="hint">上の欄に、使いたい掲示板のスレッドのURLを入れて「開始」を押してください。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
       <h3>配信サイトのコメント(空欄なら取得しません)</h3>
-      <div class="field"><label>YouTube Live</label><div><input type="text" class="wide" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル(配信が始まるのを待って自動で繋ぎます)" /></div></div>
-      <div class="field"><label>Twitch</label><div><input type="text" class="wide" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /></div></div>
+      <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル(配信が始まるのを待って自動で繋ぎます)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
+      <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
+      <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:#15161a; padding:8px; border-radius:6px; display:none"></pre>
       <div class="hint">掲示板・YouTube・Twitchのコメントは、すべて同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げされます(同時配信でも表示が重なりません)。掲示板のURLを空欄にすれば、配信サイトのコメントだけを取得できます。どちらも非公式の方法で取得しているため、各サイトの仕様変更で取得できなくなることがあります。</div>
       <h3>掲示板</h3>
       <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>

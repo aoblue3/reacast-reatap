@@ -141,11 +141,10 @@ fn runs_text(runs: Option<&serde_json::Value>) -> String {
         .collect()
 }
 
-/// get_live_chatの応答(JSON)から新着コメントと次のcontinuationを取り出す。
-pub fn parse_chat_response(v: &serde_json::Value) -> ChatPage {
-    let lc = v.pointer("/continuationContents/liveChatContinuation");
+/// チャットの「アクション」の一覧からコメントを取り出す(新着の応答・最初のページ共通)。
+fn parse_actions(actions: &[serde_json::Value]) -> Vec<ChatMessage> {
     let mut messages = Vec::new();
-    if let Some(actions) = lc.and_then(|l| l.get("actions")).and_then(|a| a.as_array()) {
+    {
         for a in actions {
             let Some(item) = a.pointer("/addChatItemAction/item") else {
                 continue;
@@ -169,6 +168,17 @@ pub fn parse_chat_response(v: &serde_json::Value) -> ChatPage {
             });
         }
     }
+    messages
+}
+
+/// get_live_chatの応答(JSON)から新着コメントと次のcontinuationを取り出す。
+pub fn parse_chat_response(v: &serde_json::Value) -> ChatPage {
+    let lc = v.pointer("/continuationContents/liveChatContinuation");
+    let messages = lc
+        .and_then(|l| l.get("actions"))
+        .and_then(|a| a.as_array())
+        .map(|a| parse_actions(a))
+        .unwrap_or_default();
     let next = lc
         .and_then(|l| l.pointer("/continuations/0"))
         .and_then(|c| c.as_object())
@@ -179,6 +189,103 @@ pub fn parse_chat_response(v: &serde_json::Value) -> ChatPage {
             Some((c, t))
         });
     ChatPage { messages, next }
+}
+
+/// live_chatのページに最初から載っている直近のコメント(接続確認の表示用)。
+pub fn extract_initial_messages(html: &str) -> Vec<ChatMessage> {
+    let start = ["ytInitialData\"] = ", "var ytInitialData = "]
+        .iter()
+        .find_map(|k| html.find(k).map(|i| i + k.len()));
+    let Some(start) = start else {
+        return Vec::new();
+    };
+    let mut it = serde_json::Deserializer::from_str(&html[start..]).into_iter::<serde_json::Value>();
+    let Some(Ok(v)) = it.next() else {
+        return Vec::new();
+    };
+    v.pointer("/contents/liveChatRenderer/actions")
+        .and_then(|a| a.as_array())
+        .map(|a| parse_actions(a))
+        .unwrap_or_default()
+}
+
+/// 動画・配信のページからタイトルを取り出す。
+pub fn extract_title(html: &str) -> Option<String> {
+    static TITLE: OnceLock<Regex> = OnceLock::new();
+    let re = TITLE.get_or_init(|| Regex::new(r#"<meta name="title" content="([^"]*)""#).unwrap());
+    re.captures(html).map(|c| super::text::html_to_text(&c[1])).filter(|t| !t.is_empty())
+}
+
+/// 接続確認の結果(設定画面の「接続を確認」ボタン用)。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckResult {
+    pub ok: bool,
+    pub message: String,
+    pub video_id: Option<String>,
+    pub title: Option<String>,
+    pub samples: Vec<String>,
+}
+
+/// 入力されたURLで、配信中の動画とチャットが取れるかを確かめる(取得は開始しない)。
+pub async fn check(input: &str) -> CheckResult {
+    let fail = |message: String| CheckResult { ok: false, message, video_id: None, title: None, samples: Vec::new() };
+    let target = match parse_target(input) {
+        Ok(t) => t,
+        Err(e) => return fail(e),
+    };
+    let c = client();
+    let (video_id, title, live) = match &target {
+        Target::Channel(url) => match get_text(&c, &format!("{url}/live")).await {
+            Ok(html) => match extract_live_video_id(&html) {
+                Some(id) => (id, extract_title(&html), true),
+                None => {
+                    return fail(
+                        "チャンネルは見つかりましたが、今は配信していません(取得を開始しておけば、配信が始まった時に自動で繋ぎます)"
+                            .into(),
+                    )
+                }
+            },
+            Err(e) => return fail(e),
+        },
+        Target::Video(id) => match get_text(&c, &format!("https://www.youtube.com/watch?v={id}")).await {
+            Ok(html) => {
+                let live = html.contains("\"isLiveNow\":true") || html.contains("\"isLive\":true");
+                (id.clone(), extract_title(&html), live)
+            }
+            Err(e) => return fail(e),
+        },
+    };
+    let chat = match get_text(&c, &format!("https://www.youtube.com/live_chat?is_popout=1&v={video_id}")).await {
+        Ok(html) => html,
+        Err(e) => return CheckResult { ok: false, message: e, video_id: Some(video_id), title, samples: Vec::new() },
+    };
+    if extract_chat_params(&chat).is_none() {
+        return CheckResult {
+            ok: false,
+            message: if live {
+                "配信は見つかりましたが、チャットを読み込めません(チャットが無効になっている可能性があります)".into()
+            } else {
+                "この動画は配信中ではないか、チャットがありません".into()
+            },
+            video_id: Some(video_id),
+            title,
+            samples: Vec::new(),
+        };
+    }
+    let msgs = extract_initial_messages(&chat);
+    let samples: Vec<String> = msgs.iter().rev().take(5).rev().map(|m| format!("{}: {}", m.author, m.text)).collect();
+    CheckResult {
+        ok: true,
+        message: if live {
+            "配信中のチャットに接続できます".into()
+        } else {
+            "チャットに接続できます(配信中ではない可能性があります)".into()
+        },
+        video_id: Some(video_id),
+        title,
+        samples,
+    }
 }
 
 pub fn client() -> reqwest::Client {
@@ -233,12 +340,12 @@ mod tests {
         assert_eq!(parse_target("@LofiGirl").unwrap(), Target::Channel("https://www.youtube.com/@LofiGirl".into()));
         assert_eq!(parse_target("https://www.youtube.com/@LofiGirl/live").unwrap(), Target::Channel("https://www.youtube.com/@LofiGirl".into()));
         assert_eq!(
-            parse_target("UCoNlwM7wU-l3r-t5lXefFoQ").unwrap(),
-            Target::Channel("https://www.youtube.com/channel/UCoNlwM7wU-l3r-t5lXefFoQ".into())
+            parse_target("UCaaaaaaaaaaaaaaaaaaaaaa").unwrap(),
+            Target::Channel("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa".into())
         );
         assert_eq!(
-            parse_target("https://www.youtube.com/channel/UCoNlwM7wU-l3r-t5lXefFoQ").unwrap(),
-            Target::Channel("https://www.youtube.com/channel/UCoNlwM7wU-l3r-t5lXefFoQ".into())
+            parse_target("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa").unwrap(),
+            Target::Channel("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa".into())
         );
         assert!(parse_target("https://example.com/x").is_err());
         assert!(parse_target("").is_err());
@@ -255,6 +362,18 @@ mod tests {
         let p = extract_chat_params(html).unwrap();
         assert_eq!(p.client_version, "2.20261007.01.00");
         assert_eq!(p.continuation, "0ofABC");
+    }
+
+    #[test]
+    fn extracts_initial_messages_and_title() {
+        let html = r#"<meta name="title" content="テスト配信 &amp; 雑談"><script>window["ytInitialData"] = {"contents":{"liveChatRenderer":{"actions":[
+            {"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":"x","authorName":{"simpleText":"@a"},"message":{"runs":[{"text":"こんばんは"}]}}}}}
+        ]}}};</script>"#;
+        let msgs = extract_initial_messages(html);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].text, "こんばんは");
+        assert_eq!(extract_title(html).as_deref(), Some("テスト配信 & 雑談"));
+        assert!(extract_initial_messages("<html></html>").is_empty());
     }
 
     #[test]
@@ -282,6 +401,20 @@ mod tests {
         assert_eq!(page.next, Some(("NEXT".into(), 10000)));
         let ended = parse_chat_response(&serde_json::json!({}));
         assert!(ended.messages.is_empty() && ended.next.is_none());
+    }
+
+    /// 接続確認を実際のYouTubeで試す(ネットワークに繋ぐので普段は実行しない)。
+    #[test]
+    #[ignore]
+    fn checks_real_youtube_target() {
+        tauri::async_runtime::block_on(async {
+            let r = check("@LofiGirl").await;
+            eprintln!("ok={} message={} title={:?} samples={}", r.ok, r.message, r.title, r.samples.len());
+            assert!(r.ok);
+            let bad = check("https://www.youtube.com/watch?v=aaaaaaaaaaa").await;
+            eprintln!("bad: ok={} message={}", bad.ok, bad.message);
+            assert!(!bad.ok);
+        });
     }
 
     /// 実際のYouTubeのライブからチャットを取る(ネットワークに繋ぐので普段は実行しない)。
