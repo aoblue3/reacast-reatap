@@ -40,6 +40,22 @@ pub struct CommentSettings {
     /// このレス番号に達したら一度だけ「次スレを立ててください」と知らせる(0で知らせない)
     pub thread_warn_count: u32,
     pub start_on_launch: bool,
+    /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら直近の数件だけ。読み上げはしない)
+    pub start_res_no: u32,
+    /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
+    pub initial_text: String,
+    /// 右のレス一覧に出すアイコン画像のフォルダ(掲示板のレス用。中の画像からランダムに選ぶ)
+    pub icon_folder_bbs: String,
+    // ---- 次スレの自動作成 ----
+    pub auto_create_thread: bool,
+    /// このレス番号に達したら次スレを建てる
+    pub create_thread_count: u32,
+    /// {next}=今のタイトルの最後の数字を1増やしたもの、{n}=その数字だけ
+    pub create_title_template: String,
+    pub create_name: String,
+    pub create_mail: String,
+    /// {prevUrl}=今のスレッドのURL、{prevTitle}=今のタイトル、{title}=新しいタイトル
+    pub create_body_template: String,
     // ---- 読み上げ ----
     pub speech_enabled: bool,
     pub command_path: String,
@@ -56,6 +72,7 @@ pub struct CommentSettings {
     pub display_ms: u64,
     pub aa_display_ms: u64,
     // ---- AAモード ----
+    pub aa_enabled: bool,
     pub aa_threshold_chars: usize,
     pub aa_patterns: String,
     pub aa_read_quoted_only: bool,
@@ -68,9 +85,21 @@ pub struct CommentSettings {
     pub desktop_y: f64,
     pub desktop_width: f64,
     pub desktop_height: f64,
+    /// マウスで動かして決めた位置・大きさ(物理ピクセル)。あればモニター・割合の
+    /// 指定より優先する。
+    pub desktop_rect: Option<DesktopRect>,
     /// 見た目の設定(フォント・色・縁など)。Rust側では中身を解釈せず、そのまま
     /// 字幕・レス一覧の画面に渡す(画面側が既定値を補う)。
     pub style: serde_json::Value,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Default for CommentSettings {
@@ -82,6 +111,15 @@ impl Default for CommentSettings {
             next_thread_keyword: String::new(),
             thread_warn_count: 975,
             start_on_launch: false,
+            start_res_no: 0,
+            initial_text: "スレッド読み込みを開始しました".into(),
+            icon_folder_bbs: String::new(),
+            auto_create_thread: false,
+            create_thread_count: 975,
+            create_title_template: "{next}".into(),
+            create_name: String::new(),
+            create_mail: String::new(),
+            create_body_template: "前スレ\n{prevUrl}".into(),
             speech_enabled: true,
             command_path: r"C:\tamiyasuex\vrx.exe".into(),
             command_args: "#Res#".into(),
@@ -101,8 +139,9 @@ impl Default for CommentSettings {
             ng_words: String::new(),
             display_ms: 3000,
             aa_display_ms: 6000,
+            aa_enabled: true,
             aa_threshold_chars: 300,
-            aa_patterns: ["Д", "(●)", "从", "∀", "( 人 )"].join("\n"),
+            aa_patterns: ["д", "（●）", "从", "）)ﾉヽ", "∀", "<●>", "（__人__）"].join("\n"),
             aa_read_quoted_only: true,
             aa_read_res_number: false,
             aa_fixed_reading: "アスキーアート".into(),
@@ -113,6 +152,7 @@ impl Default for CommentSettings {
             desktop_y: 0.70,
             desktop_width: 1.0,
             desktop_height: 0.22,
+            desktop_rect: None,
             style: serde_json::json!({}),
         }
     }
@@ -138,21 +178,24 @@ struct Post {
     body: String,
     /// ReaCast自身からのお知らせ(次スレ移動・スレ建て警告・テスト表示)
     system: bool,
+    /// 右のレス一覧に出すアイコン画像のURL(obs_bridgeが配信する)
+    icon: Option<String>,
 }
 
 impl Post {
-    fn from_raw(p: &source::RawPost) -> Self {
+    fn from_raw(p: &source::RawPost, icon: Option<String>) -> Self {
         Self {
             no: p.no,
             name: text::html_to_text(&p.name),
             date: p.date.clone(),
             body: text::html_to_text(&p.body_html),
             system: false,
+            icon,
         }
     }
 
     fn system(body: impl Into<String>) -> Self {
-        Self { no: 0, name: "ReaCast".into(), date: String::new(), body: body.into(), system: true }
+        Self { no: 0, name: "ReaCast".into(), date: String::new(), body: body.into(), system: true, icon: None }
     }
 
     fn to_json(&self, aa: bool) -> serde_json::Value {
@@ -163,6 +206,7 @@ impl Post {
             "body": self.body,
             "aa": aa,
             "system": self.system,
+            "icon": self.icon,
         })
     }
 }
@@ -184,6 +228,10 @@ impl Compiled {
     }
 }
 
+fn detect_aa(s: &CommentSettings, c: &Compiled, post: &Post) -> bool {
+    s.aa_enabled && !post.system && text::is_aa(&post.body, s.aa_threshold_chars, &c.aa_patterns)
+}
+
 struct State {
     settings: CommentSettings,
     compiled: Arc<Compiled>,
@@ -193,6 +241,10 @@ struct State {
     /// 今読んでいるスレッドの全レス(設定ウィンドウで過去のレスを遡る用)
     thread_posts: Vec<Post>,
     status: CommentStatus,
+    /// デスクトップ字幕をマウスで動かしている最中か
+    adjusting: bool,
+    /// テスト表示のために、取得していなくてもデスクトップ字幕を出しておく期限
+    desktop_hold_until: Option<std::time::Instant>,
 }
 
 pub struct CommentEngine {
@@ -212,6 +264,8 @@ impl CommentEngine {
                 queue: VecDeque::new(),
                 thread_posts: Vec::new(),
                 status: CommentStatus::default(),
+                adjusting: false,
+                desktop_hold_until: None,
             }),
             wake: Notify::new(),
         });
@@ -228,19 +282,74 @@ impl CommentEngine {
         self.state.lock().unwrap().status.clone()
     }
 
-    pub fn is_running(&self) -> bool {
-        self.state.lock().unwrap().status.running
-    }
-
     pub fn apply_settings(&self, settings: CommentSettings) {
         let compiled = Arc::new(Compiled::from(&settings));
         let style = settings.style.clone();
+        let icon_folder = settings.icon_folder_bbs.clone();
         {
             let mut st = self.state.lock().unwrap();
             st.settings = settings;
             st.compiled = compiled;
         }
-        self.bridge().set_comment_style(style);
+        let bridge = self.bridge();
+        bridge.set_comment_style(style);
+        bridge.set_icon_folder(&icon_folder);
+    }
+
+    /// デスクトップ字幕のウィンドウを今出しておくべきか(ONで、かつ取得中・
+    /// 位置調整中・テスト表示の直後のいずれか)。
+    pub fn desktop_wanted(&self) -> bool {
+        let st = self.state.lock().unwrap();
+        let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
+        st.settings.desktop_enabled && (st.status.running || st.adjusting || held)
+    }
+
+    pub fn adjusting(&self) -> bool {
+        self.state.lock().unwrap().adjusting
+    }
+
+    pub fn set_adjusting(&self, on: bool) {
+        self.state.lock().unwrap().adjusting = on;
+    }
+
+    pub fn hold_desktop(&self, dur: Duration) {
+        self.state.lock().unwrap().desktop_hold_until = Some(std::time::Instant::now() + dur);
+    }
+
+    fn pick_icon(&self) -> Option<String> {
+        use rand::Rng;
+        let n = self.bridge().icon_count();
+        (n > 0).then(|| format!("/icons/bbs/{}", rand::thread_rng().gen_range(0..n)))
+    }
+
+    /// 次スレのタイトルと>>1の本文を、設定のテンプレートから作る。
+    pub fn next_thread_draft(&self) -> Result<(String, String), String> {
+        let (s, status) = {
+            let st = self.state.lock().unwrap();
+            (st.settings.clone(), st.status.clone())
+        };
+        let cur_title = status.thread_title.ok_or("先に取得を開始してください(今のスレッドのタイトルが必要です)")?;
+        let tmpl = if s.create_title_template.trim().is_empty() { "{next}" } else { s.create_title_template.as_str() };
+        let next = text::increment_last_number(&cur_title);
+        if (tmpl.contains("{next}") || tmpl.contains("{n}")) && next.is_none() {
+            return Err(format!(
+                "今のタイトル「{cur_title}」に数字が無いため、次のタイトルを自動で決められません(タイトルの設定を変えてください)"
+            ));
+        }
+        let next = next.unwrap_or_default();
+        let title = tmpl.replace("{next}", &next).replace("{n}", &text::last_number(&next).unwrap_or_default());
+        let body = s
+            .create_body_template
+            .replace("{prevUrl}", status.thread_url.as_deref().unwrap_or(""))
+            .replace("{prevTitle}", &cur_title)
+            .replace("{title}", &title);
+        if title.trim().is_empty() {
+            return Err("次スレのタイトルが空です".into());
+        }
+        if body.trim().is_empty() {
+            return Err(">>1の本文が空です".into());
+        }
+        Ok((title, body))
     }
 
     pub fn start(self: &Arc<Self>, url: &str) -> Result<(), String> {
@@ -256,6 +365,10 @@ impl CommentEngine {
         };
         self.emit_status();
         self.emit_thread_reset();
+        let initial = self.settings().initial_text;
+        if !initial.trim().is_empty() {
+            self.bridge().push_comment(Post::system(initial).to_json(false));
+        }
         let me = self.clone();
         tauri::async_runtime::spawn(async move { me.run_fetch(run_id, board, key).await });
         Ok(())
@@ -278,14 +391,13 @@ impl CommentEngine {
         let _ = self.app.emit("comments:posts", serde_json::json!({ "reset": true, "posts": [] }));
     }
 
-    /// 設定画面の「テスト表示」用。順番待ちの先頭に割り込ませる。
     /// 今のスレッドの全レス(設定ウィンドウの「スレッドのレス」タブ用)
     pub fn thread_posts_json(&self) -> serde_json::Value {
         let st = self.state.lock().unwrap();
         let posts: Vec<serde_json::Value> = st
             .thread_posts
             .iter()
-            .map(|p| p.to_json(text::is_aa(&p.body, st.settings.aa_threshold_chars, &st.compiled.aa_patterns)))
+            .map(|p| p.to_json(detect_aa(&st.settings, &st.compiled, p)))
             .collect();
         serde_json::json!({ "posts": posts })
     }
@@ -311,10 +423,10 @@ impl CommentEngine {
                 st.thread_posts.clear();
             }
             st.thread_posts.extend(posts.iter().cloned());
-            let (threshold, compiled) = (st.settings.aa_threshold_chars, st.compiled.clone());
+            let (settings, compiled) = (st.settings.clone(), st.compiled.clone());
             posts
                 .iter()
-                .map(|p| p.to_json(text::is_aa(&p.body, threshold, &compiled.aa_patterns)))
+                .map(|p| p.to_json(detect_aa(&settings, &compiled, p)))
                 .collect::<Vec<_>>()
         };
         if reset || !json.is_empty() {
@@ -322,6 +434,7 @@ impl CommentEngine {
         }
     }
 
+    /// 設定画面の「テスト表示」用。順番待ちの先頭に割り込ませる。
     pub fn test(&self, body: &str) {
         let mut post = Post::system(body);
         post.no = 1;
@@ -395,13 +508,14 @@ impl CommentEngine {
         let mut reader = ThreadReader::new(ThreadRef { board: board.clone(), key });
         let mut first = true;
         let mut warned = false;
+        let mut created = false;
         loop {
             if !self.is_current(run_id) {
                 return;
             }
             match reader.poll(&client).await {
                 Ok(raw) => {
-                    let posts: Vec<Post> = raw.iter().map(Post::from_raw).collect();
+                    let posts: Vec<Post> = raw.iter().map(|p| Post::from_raw(p, self.pick_icon())).collect();
                     self.record_posts(run_id, &posts, false);
                     if first {
                         // 起動時点で既にあったレスは読み上げない(右のレス一覧にだけ載せる)
@@ -409,10 +523,14 @@ impl CommentEngine {
                         let compiled = self.state.lock().unwrap().compiled.clone();
                         let settings = self.settings();
                         let skip = posts.len().saturating_sub(INITIAL_HISTORY);
-                        for p in posts.iter().skip(skip) {
+                        let shown: Vec<&Post> = if settings.start_res_no > 0 {
+                            posts.iter().filter(|p| p.no >= settings.start_res_no).collect()
+                        } else {
+                            posts.iter().skip(skip).collect()
+                        };
+                        for p in shown {
                             if !text::contains_ng(&p.name, &p.body, &compiled.ng_words) {
-                                let aa = text::is_aa(&p.body, settings.aa_threshold_chars, &compiled.aa_patterns);
-                                self.bridge().push_comment(p.to_json(aa));
+                                self.bridge().push_comment(p.to_json(detect_aa(&settings, &compiled, p)));
                             }
                         }
                     } else {
@@ -427,7 +545,47 @@ impl CommentEngine {
                     });
 
                     let settings = self.settings();
-                    if !warned && settings.thread_warn_count > 0 && reader.last_no >= settings.thread_warn_count && reader.last_no < 1000 {
+                    if settings.auto_create_thread
+                        && !created
+                        && settings.create_thread_count > 0
+                        && reader.last_no >= settings.create_thread_count
+                        && reader.last_no < 1000
+                    {
+                        // 次スレを1回だけ建てる(既に誰かが建てていれば建てない)
+                        created = true;
+                        warned = true;
+                        let msg = match source::list_threads(&client, &board).await {
+                            Ok(list) => match source::pick_next(&list, &reader.thread.key, &settings.next_thread_keyword) {
+                                Some(t) => format!("次スレ「{}」は既に建っています", t.title),
+                                None => match self.next_thread_draft() {
+                                    Ok((title, body)) => match source::create_thread(
+                                        &client,
+                                        &board,
+                                        &title,
+                                        &settings.create_name,
+                                        &settings.create_mail,
+                                        &body,
+                                    )
+                                    .await
+                                    {
+                                        Ok(()) => format!("次スレ「{title}」を建てました"),
+                                        Err(e) => e,
+                                    },
+                                    Err(e) => e,
+                                },
+                            },
+                            Err(e) => e,
+                        };
+                        self.update_status(run_id, |s| s.warning = Some(msg.clone()));
+                        self.enqueue(run_id, vec![Post::system(msg)]);
+                    }
+
+                    if !settings.auto_create_thread
+                        && !warned
+                        && settings.thread_warn_count > 0
+                        && reader.last_no >= settings.thread_warn_count
+                        && reader.last_no < 1000
+                    {
                         warned = true;
                         let msg = format!("レスが{}を超えました。次スレを立ててください", settings.thread_warn_count);
                         self.update_status(run_id, |s| s.warning = Some(msg.clone()));
@@ -442,6 +600,7 @@ impl CommentEngine {
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
                                     self.record_posts(run_id, &[], true);
                                     warned = false;
+                                    created = false;
                                     self.update_status(run_id, |s| s.warning = None);
                                     self.enqueue(run_id, vec![Post::system(format!("次スレ「{}」に移動しました", next.title))]);
                                     continue;
@@ -478,7 +637,7 @@ impl CommentEngine {
             if !post.system && text::contains_ng(&post.name, &post.body, &compiled.ng_words) {
                 continue;
             }
-            let aa = !post.system && text::is_aa(&post.body, settings.aa_threshold_chars, &compiled.aa_patterns);
+            let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
             bridge.show_subtitle(
                 post.to_json(aa),
@@ -617,9 +776,97 @@ pub fn comments_replay(engine: Engine, no: u32) -> Result<(), String> {
     engine.replay(no)
 }
 
-#[tauri::command]
-pub fn comments_test(engine: Engine, text: String) {
+/// テスト表示。取得していなくてもデスクトップ字幕で確認できるよう、表示が
+/// 終わるまでの間だけ字幕ウィンドウを作っておく。
+#[tauri::command(async)]
+pub fn comments_test(app: AppHandle, engine: Engine, text: String) {
+    let hold = Duration::from_millis(engine.settings().display_ms.max(1000) + 4000);
+    let created = app.get_webview_window("subtitle").is_none();
+    engine.hold_desktop(hold);
+    crate::sync_subtitle_window(&app);
+    if created && app.get_webview_window("subtitle").is_some() {
+        // 作った直後は画面の読み込みが終わっていないので、少し待ってから表示する
+        // (読み込みが遅れても、繋いできた時点で表示中の字幕は送り直される)
+        std::thread::sleep(Duration::from_millis(600));
+    }
     engine.test(&text);
+    std::thread::spawn(move || {
+        std::thread::sleep(hold + Duration::from_millis(200));
+        crate::sync_subtitle_window(&app);
+    });
+}
+
+/// 次スレのタイトルと>>1の本文を確認する(実際には建てない)。
+#[tauri::command]
+pub fn comments_preview_next_thread(engine: Engine) -> Result<serde_json::Value, String> {
+    let (title, body) = engine.next_thread_draft()?;
+    Ok(serde_json::json!({ "title": title, "body": body }))
+}
+
+#[tauri::command]
+pub fn comments_desktop_adjusting(engine: Engine) -> bool {
+    engine.adjusting()
+}
+
+/// デスクトップ字幕をマウスで動かすモードの開始/終了。終了した時点の
+/// ウィンドウの位置・大きさを保存する。
+#[tauri::command(async)]
+pub fn comments_desktop_adjust(
+    app: AppHandle,
+    engine: Engine,
+    store: tauri::State<ConfigStore>,
+    on: bool,
+) -> Result<(), String> {
+    if !on {
+        if let Some(win) = app.get_webview_window("subtitle") {
+            if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
+                let mut s = engine.settings();
+                s.desktop_rect = Some(DesktopRect { x: pos.x, y: pos.y, width: size.width, height: size.height });
+                save_settings(&store, &s)?;
+                engine.apply_settings(s.clone());
+                let _ = app.emit("comments:settings", &s);
+            }
+        }
+    }
+    engine.set_adjusting(on);
+    crate::sync_subtitle_window(&app);
+    let _ = app.emit("subtitle:adjust", on);
+    Ok(())
+}
+
+/// デスクトップ字幕の位置を、モニター・割合の指定(既定の位置)に戻す。
+#[tauri::command(async)]
+pub fn comments_desktop_reset(app: AppHandle, engine: Engine, store: tauri::State<ConfigStore>) -> Result<(), String> {
+    let mut s = engine.settings();
+    s.desktop_rect = None;
+    save_settings(&store, &s)?;
+    engine.apply_settings(s.clone());
+    let _ = app.emit("comments:settings", &s);
+    crate::sync_subtitle_window(&app);
+    Ok(())
+}
+
+/// 読み上げソフト(exe)を選ぶダイアログ。
+#[tauri::command(async)]
+pub fn comments_pick_exe(app: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    app.dialog()
+        .file()
+        .set_title("読み上げソフトを選択")
+        .add_filter("実行ファイル", &["exe"])
+        .blocking_pick_file()
+        .map(|p| p.to_string())
+}
+
+/// アイコン画像のフォルダを選ぶダイアログ。
+#[tauri::command(async)]
+pub fn comments_pick_folder(app: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    app.dialog()
+        .file()
+        .set_title("アイコン画像のフォルダを選択")
+        .blocking_pick_folder()
+        .map(|p| p.to_string())
 }
 
 #[cfg(test)]
@@ -627,7 +874,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None }
     }
 
     #[test]

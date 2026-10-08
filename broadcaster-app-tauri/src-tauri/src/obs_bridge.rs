@@ -91,6 +91,8 @@ pub struct ObsBridge {
 
 #[derive(Default)]
 struct CommentBridgeState {
+    /// 右のレス一覧のアイコンに使う画像ファイル(設定のフォルダの中身)
+    icon_files: Vec<std::path::PathBuf>,
     style: Option<serde_json::Value>,
     history: VecDeque<serde_json::Value>,
     /// 今表示中の字幕と、それが消える時刻
@@ -150,6 +152,28 @@ impl ObsBridge {
     /// 変更された時に呼ぶ(IDの配列を丸ごと置き換える)。
     pub fn set_no_combo_growth_ids(&self, ids: Vec<String>) {
         self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
+    }
+
+    /// コメント機能: アイコン画像のフォルダを設定する(中の画像を一覧にしておき、
+    /// /icons/bbs/{番号}で配信する)。
+    pub fn set_icon_folder(&self, folder: &str) {
+        let mut files: Vec<std::path::PathBuf> = if folder.trim().is_empty() {
+            Vec::new()
+        } else {
+            std::fs::read_dir(folder.trim())
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok().map(|e| e.path()))
+                        .filter(|p| icon_content_type(p).is_some())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        files.sort();
+        self.comments.lock().unwrap().icon_files = files;
+    }
+
+    pub fn icon_count(&self) -> usize {
+        self.comments.lock().unwrap().icon_files.len()
     }
 
     /// コメント機能: 字幕・レス一覧の見た目の設定を配信する。
@@ -222,13 +246,24 @@ pub fn start(
         comments: comments.clone(),
     };
 
-    tauri::async_runtime::spawn(run_http_server());
+    tauri::async_runtime::spawn(run_http_server(comments.clone()));
     tauri::async_runtime::spawn(run_ws_server(tx, settings, comments));
 
     bridge
 }
 
-async fn run_http_server() {
+fn icon_content_type(p: &std::path::Path) -> Option<&'static str> {
+    match p.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        _ => None,
+    }
+}
+
+async fn run_http_server(comments: Arc<Mutex<CommentBridgeState>>) {
     let listener = match TcpListener::bind(("127.0.0.1", OBS_HTTP_PORT)).await {
         Ok(l) => l,
         Err(e) => {
@@ -242,11 +277,11 @@ async fn run_http_server() {
         let Ok((socket, _)) = listener.accept().await else {
             continue;
         };
-        tauri::async_runtime::spawn(handle_http_connection(socket));
+        tauri::async_runtime::spawn(handle_http_connection(socket, comments.clone()));
     }
 }
 
-async fn handle_http_connection(mut socket: TcpStream) {
+async fn handle_http_connection(mut socket: TcpStream, comments: Arc<Mutex<CommentBridgeState>>) {
     let mut buf = [0u8; 2048];
     // GETリクエストの1行目(パス)だけ分かれば十分なので、最初に読めた分だけ見る
     // (このサーバーにボディ付きのリクエストが来ることは想定していない)。
@@ -260,6 +295,40 @@ async fn handle_http_connection(mut socket: TcpStream) {
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("/");
+
+    // アイコン画像(設定したフォルダの中の画像を、番号で指定して返す。
+    // フォルダの外のファイルは一覧に入らないので読まれない)
+    if let Some(idx) = path.strip_prefix("/icons/bbs/").and_then(|s| s.parse::<usize>().ok()) {
+        let file = comments.lock().ok().and_then(|c| c.icon_files.get(idx).cloned());
+        let data = match &file {
+            Some(f) => tokio::fs::read(f).await.ok(),
+            None => None,
+        };
+        let header = match (&file, &data) {
+            (Some(f), Some(d)) => format!(
+                "HTTP/1.1 200 OK
+Content-Type: {}
+Content-Length: {}
+Cache-Control: max-age=3600
+Connection: close
+
+",
+                icon_content_type(f).unwrap_or("application/octet-stream"),
+                d.len()
+            ),
+            _ => "HTTP/1.1 404 Not Found
+Content-Length: 0
+Connection: close
+
+".to_string(),
+        };
+        let _ = socket.write_all(header.as_bytes()).await;
+        if let Some(d) = data {
+            let _ = socket.write_all(&d).await;
+        }
+        let _ = socket.shutdown().await;
+        return;
+    }
 
     let (content_type, body): (&str, &str) = match path {
         "/" | "/overlay.html" => ("text/html; charset=utf-8", OVERLAY_HTML),

@@ -213,27 +213,37 @@ fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 /// デスクトップ字幕ウィンドウ(コメント機能)の本来の位置・サイズ。
 fn subtitle_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
     let s = app.state::<Arc<comments::CommentEngine>>().settings();
+    // マウスで動かして決めた位置があればそれを使う
+    if let Some(r) = s.desktop_rect {
+        return (PhysicalPosition::new(r.x, r.y), PhysicalSize::new(r.width.max(50), r.height.max(30)));
+    }
     let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, s.desktop_monitor_id.as_deref());
     let region = RegionSpec::clamped(s.desktop_x, s.desktop_y, s.desktop_width, s.desktop_height);
     apply_overlay_region(monitor_pos, monitor_size, Some(region))
 }
 
 /// デスクトップ字幕ウィンドウを、設定と取得状態に合わせて作る/閉じる/動かす。
-/// 「デスクトップに字幕を表示する」がONで、かつコメントの取得中の間だけ
-/// ウィンドウを作る(使っていない間はWebViewを1つも増やさない=軽さ優先)。
+/// 「デスクトップに字幕を表示する」がONで、かつコメントの取得中(または位置の
+/// 調整中・テスト表示の直後)の間だけウィンドウを作る(使っていない間は
+/// WebViewを1つも増やさない=軽さ優先)。
 /// ウィンドウを作るので、メインスレッド以外(async指定のコマンド等)から呼ぶこと。
 pub(crate) fn sync_subtitle_window(app: &tauri::AppHandle) {
     let engine = app.state::<Arc<comments::CommentEngine>>();
-    let wanted = engine.settings().desktop_enabled && engine.is_running();
+    let wanted = engine.desktop_wanted();
+    let adjusting = engine.adjusting();
     let existing = app.get_webview_window("subtitle");
     match (wanted, existing) {
         (false, Some(win)) => {
             let _ = win.destroy();
         }
         (true, Some(win)) => {
-            let (pos, size) = subtitle_target_geometry(app);
-            let _ = win.set_position(tauri::Position::Physical(pos));
-            let _ = win.set_size(tauri::Size::Physical(size));
+            // 位置の調整中はマウスで掴めるようにし、それ以外はクリックを透過する
+            let _ = win.set_ignore_cursor_events(!adjusting);
+            if !adjusting {
+                let (pos, size) = subtitle_target_geometry(app);
+                let _ = win.set_position(tauri::Position::Physical(pos));
+                let _ = win.set_size(tauri::Size::Physical(size));
+            }
         }
         (true, None) => {
             if let Err(e) = create_subtitle_window(app) {
@@ -255,19 +265,26 @@ fn create_subtitle_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .resizable(false)
+        // 位置の調整中に右下を掴んで大きさを変えられるようにする(枠なしなので、
+        // 普段はOSの枠からは大きさを変えられない)
+        .resizable(true)
         .shadow(false)
         .visible(true)
         .focused(false)
         .build()?;
     win.set_position(tauri::Position::Physical(pos))?;
     win.set_size(tauri::Size::Physical(size))?;
-    let _ = win.set_ignore_cursor_events(true);
+    let adjusting = app.state::<Arc<comments::CommentEngine>>().adjusting();
+    let _ = win.set_ignore_cursor_events(!adjusting);
     Ok(())
 }
 
 /// デスクトップ字幕ウィンドウのずれを直す(realign_overlay_windowと同じ理由)。
 fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
+    // マウスで動かしている最中は戻さない
+    if app.state::<Arc<comments::CommentEngine>>().adjusting() {
+        return;
+    }
     let (pos, size) = subtitle_target_geometry(app);
     let (Ok(cur_pos), Ok(cur_size)) = (win.outer_position(), win.outer_size()) else {
         return;
@@ -901,6 +918,8 @@ fn emit_overlay_reaction(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // コメント機能の「参照」ボタン(読み上げソフト・アイコンのフォルダを選ぶ)用
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // 多重起動防止。2回目の起動を検知したら、既存のコントロールパネルを
             // 前面に出すだけにする(オーバーレイ・接続が重複するのを防ぐ)。
@@ -1107,6 +1126,12 @@ pub fn run() {
             comments::comments_test,
             comments::comments_get_thread,
             comments::comments_replay,
+            comments::comments_preview_next_thread,
+            comments::comments_desktop_adjusting,
+            comments::comments_desktop_adjust,
+            comments::comments_desktop_reset,
+            comments::comments_pick_exe,
+            comments::comments_pick_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

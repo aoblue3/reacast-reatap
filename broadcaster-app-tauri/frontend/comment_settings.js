@@ -56,18 +56,39 @@ function writeField(el, value) {
 function renderFields() {
   for (const el of fields) writeField(el, getPath(settings, el.dataset.key));
   monitorSelect.value = settings.desktopMonitorId || '';
+  const r = settings.desktopRect;
+  document.getElementById('desktopRectInfo').textContent = r
+    ? `マウスで決めた位置: ${r.x}, ${r.y}(${r.width}×${r.height})`
+    : '既定の位置(下の設定)';
   renderPreview();
 }
 
+/** 字幕のプレビュー。実際の字幕と同じく下端揃えで、文字揃え・位置の微調整・
+ * 見出し(番号・名前・時刻)も反映する。 */
 function renderPreview() {
   const s = C.mergeStyle(settings.style).subtitle;
-  const p = document.getElementById('preview');
+  const box = document.getElementById('preview');
+  const p = document.getElementById('previewText');
   p.style.fontFamily = C.cssFontFamily(s.fontFamily);
   p.style.fontSize = `${Math.min(80, Number(s.fontSize) || 30)}px`;
   p.style.fontWeight = s.bold ? 'bold' : 'normal';
   p.style.fontStyle = s.italic ? 'italic' : 'normal';
   p.style.color = s.color;
   p.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+  p.style.textAlign = s.align || 'center';
+  p.style.writingMode = s.vertical ? 'vertical-rl' : '';
+  p.style.transform = `translate(${Number(s.offsetX) || 0}px, ${Number(s.offsetY) || 0}px)`;
+  box.style.justifyContent = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+  const sample = { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:00', body: 'プレビュー 123 ABC\n2行目のテキスト' };
+  const head = C.resHeader(sample, { showResNumber: s.showResNumber, showName: s.showName, showDate: s.showTime });
+  p.textContent = '';
+  if (head) {
+    const h = document.createElement('span');
+    h.className = 'res-head';
+    h.textContent = s.showResNumber ? head.replace(/^\d+/, `レス${sample.no}`) : head;
+    p.appendChild(h);
+  }
+  p.appendChild(document.createTextNode(sample.body));
 }
 
 function scheduleSave() {
@@ -131,6 +152,57 @@ for (const btn of document.querySelectorAll('[data-copy]')) {
     }
   });
 }
+
+// ---- 参照ボタン ----
+document.getElementById('pickExeBtn').addEventListener('click', async () => {
+  const path = await invoke('comments_pick_exe').catch(() => null);
+  if (!path) return;
+  settings.commandPath = path;
+  renderFields();
+  scheduleSave();
+});
+document.getElementById('pickIconFolderBtn').addEventListener('click', async () => {
+  const path = await invoke('comments_pick_folder').catch(() => null);
+  if (!path) return;
+  settings.iconFolderBbs = path;
+  renderFields();
+  scheduleSave();
+});
+
+// ---- デスクトップ字幕の位置調整 ----
+const adjustBtn = document.getElementById('adjustDesktopBtn');
+let adjusting = false;
+function renderAdjust() {
+  adjustBtn.textContent = adjusting ? '位置の調整を終了(保存)' : 'マウスで位置を調整する';
+}
+adjustBtn.addEventListener('click', async () => {
+  if (!settings.desktopEnabled && !adjusting) {
+    showStatusError('「デスクトップに字幕を表示する」をONにしてください');
+    return;
+  }
+  try {
+    await invoke('comments_desktop_adjust', { on: !adjusting });
+  } catch (e) {
+    showStatusError(String(e));
+  }
+});
+document.getElementById('resetDesktopBtn').addEventListener('click', () => {
+  invoke('comments_desktop_reset').catch((e) => showStatusError(String(e)));
+});
+
+// ---- 次スレの確認 ----
+document.getElementById('previewThreadBtn').addEventListener('click', async () => {
+  const out = document.getElementById('threadPreview');
+  try {
+    // 入力途中の設定も反映してから確認する
+    clearTimeout(saveTimer);
+    await invoke('comments_save_settings', { settings });
+    const d = await invoke('comments_preview_next_thread');
+    out.textContent = `タイトル: ${d.title}\n\n${d.body}`;
+  } catch (e) {
+    out.textContent = String(e);
+  }
+});
 
 // ---- 表示するモニター ----
 monitorSelect.addEventListener('change', () => {
@@ -260,6 +332,18 @@ document.getElementById('testBtn').addEventListener('click', () => {
   renderFields();
   renderStatus(await invoke('comments_status'));
   listen('comments:status', (e) => renderStatus(e.payload));
+  // マウスで位置を決めた時など、Rust側で設定が変わった時に表示し直す
+  listen('comments:settings', (e) => {
+    settings = e.payload;
+    settings.style = C.mergeStyle(settings.style);
+    renderFields();
+  });
+  adjusting = await invoke('comments_desktop_adjusting');
+  renderAdjust();
+  listen('subtitle:adjust', (e) => {
+    adjusting = !!e.payload;
+    renderAdjust();
+  });
   const thread = await invoke('comments_get_thread');
   appendPosts(thread.posts || []);
   threadListEl.scrollTop = threadListEl.scrollHeight;

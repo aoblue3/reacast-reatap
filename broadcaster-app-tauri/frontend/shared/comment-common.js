@@ -26,6 +26,8 @@
       vertical: false,
       align: 'center',
       showResNumber: true,
+      showName: false,
+      showTime: false,
       offsetX: 0,
       offsetY: 0,
     },
@@ -39,6 +41,9 @@
       shrinkToHeight: true,
     },
     list: {
+      // 'chat'=チャット風(レスを積み重ねる) / 'speechcast'=SpeechCast風(最新の1件だけ)
+      displayType: 'chat',
+      speechcastSeconds: 2.5,
       fontFamily: 'BIZ UDゴシック',
       fontSize: 22,
       nameColor: '#7dff7d',
@@ -47,7 +52,16 @@
       outlineColor: '#000000',
       maxItems: 30,
       newestFirst: true,
+      showResNumber: true,
+      showName: true,
       showDate: false,
+      wrap: true,
+      separateLines: true,
+      // 'none'=表示しない / 'chat'=レス一覧に画像のサムネイルを表示する
+      thumbnails: 'none',
+      hideImageUrl: false,
+      showIcon: false,
+      iconSize: 40,
     },
   };
 
@@ -95,5 +109,29 @@
     ws.addEventListener('error', () => ws.close());
   }
 
-  window.CommentCommon = { DEFAULT_STYLE, mergeStyle, outlineShadow, cssFontFamily, connectBridge };
+  /** 本文に含まれる画像のURL(サムネイル表示用)。 */
+  const IMAGE_URL_RE = /https?:\/\/[^\s"'<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s"'<>]*)?(?=$|[\s"'<>])/gi;
+  function findImageUrls(text) {
+    return String(text || '').match(IMAGE_URL_RE) || [];
+  }
+
+  /** レスの見出し(番号・名前・時刻)を、表示設定に合わせて組み立てる。 */
+  function resHeader(res, opts) {
+    const parts = [];
+    if (opts.showResNumber && res.no > 0 && !res.system) parts.push(String(res.no));
+    if (opts.showName && res.name) parts.push(res.name);
+    if (opts.showDate && res.date) parts.push(res.date);
+    return parts.join(' ');
+  }
+
+  window.CommentCommon = {
+    DEFAULT_STYLE,
+    mergeStyle,
+    outlineShadow,
+    cssFontFamily,
+    connectBridge,
+    findImageUrls,
+    IMAGE_URL_RE,
+    resHeader,
+  };
 })();

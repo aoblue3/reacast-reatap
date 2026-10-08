@@ -41,11 +41,62 @@
     line-height: 1.1;
   }
   #box.vertical { writing-mode: vertical-rl; }
-  .res-no { display: block; font-size: 0.75em; }
+  .res-head { display: block; font-size: 0.75em; }
+
+  /* デスクトップ字幕の位置調整モード(ReaCastの設定画面から切り替える) */
+  #adjust {
+    display: none;
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    border: 3px dashed #ffd23f;
+    background: rgba(20, 22, 30, 0.35);
+    cursor: move;
+    font-family: 'Yu Gothic UI', sans-serif;
+    color: #fff;
+  }
+  body.adjusting #adjust { display: block; }
+  #adjust .msg {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 8px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+  #adjust button {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    font: inherit;
+    font-size: 14px;
+    padding: 4px 14px;
+    border: none;
+    border-radius: 4px;
+    background: #3b6df0;
+    color: #fff;
+    cursor: pointer;
+  }
+  #adjust .grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 22px;
+    height: 22px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #ffd23f 50%);
+  }
 </style>
 </head>
 <body>
   <div id="stage"><div id="box"></div></div>
+  <div id="adjust">
+    <div class="msg">ドラッグで移動 / 右下の角をドラッグで大きさを変更</div>
+    <button id="adjustDone">完了</button>
+    <div class="grip" id="grip"></div>
+  </div>
   <script src="shared/comment-common.js"></script>
   <script>
     'use strict';
@@ -90,11 +141,23 @@
     function setContent(res, body) {
       box.textContent = '';
       const sub = style.subtitle;
-      if (!res.aa && sub.showResNumber && res.no > 0 && !res.system) {
-        const no = document.createElement('span');
-        no.className = 'res-no';
-        no.textContent = `レス${res.no}`;
-        box.appendChild(no);
+      if (!res.aa) {
+        const head = C.resHeader(
+          { ...res, no: res.no > 0 ? res.no : 0 },
+          {
+            showResNumber: sub.showResNumber,
+            showName: sub.showName,
+            showDate: sub.showTime,
+          }
+        );
+        // 番号は「レス69」の形にする(名前・時刻はそのまま)
+        const label = sub.showResNumber && res.no > 0 && !res.system ? head.replace(/^\d+/, `レス${res.no}`) : head;
+        if (label) {
+          const el = document.createElement('span');
+          el.className = 'res-head';
+          el.textContent = label;
+          box.appendChild(el);
+        }
       }
       box.appendChild(document.createTextNode(body));
     }
@@ -131,6 +194,41 @@
       clearInterval(typeTimer);
       box.classList.remove('visible');
       current = null;
+      if (adjusting) showSample();
+    }
+
+    // ---- デスクトップ字幕の位置調整(ReaCastの中で開かれた時だけ) ----
+    let adjusting = false;
+    function showSample() {
+      current = { no: 123, name: '名無しさん', date: '', body: '字幕の表示位置サンプル 123 ABC', aa: false };
+      applyBoxStyle(false);
+      setContent(current, current.body);
+      fitToStage(false);
+      box.classList.add('visible');
+    }
+    function setAdjusting(on) {
+      adjusting = !!on;
+      document.body.classList.toggle('adjusting', adjusting);
+      if (adjusting) showSample();
+      else hide();
+    }
+    const tauri = window.__TAURI__;
+    if (tauri && tauri.core) {
+      const win = tauri.window.getCurrentWindow();
+      document.getElementById('adjust').addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.target.closest('button') || e.target.id === 'grip') return;
+        win.startDragging();
+      });
+      document.getElementById('grip').addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        win.startResizeDragging('SouthEast');
+      });
+      document.getElementById('adjustDone').addEventListener('click', () => {
+        tauri.core.invoke('comments_desktop_adjust', { on: false });
+      });
+      tauri.event.listen('subtitle:adjust', (e) => setAdjusting(e.payload));
+      tauri.core.invoke('comments_desktop_adjusting').then(setAdjusting).catch(() => {});
     }
 
     C.connectBridge((msg) => {
@@ -138,6 +236,7 @@
         style = C.mergeStyle(msg.style);
         if (current) {
           applyBoxStyle(current.aa);
+          setContent(current, String(current.body || ''));
           fitToStage(current.aa);
         }
       } else if (msg.type === 'subtitle' && msg.res) {

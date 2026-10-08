@@ -31,7 +31,7 @@ tauri-plugin-single-instance = "2"
 rand = "0.8"
 # OBSの「ブラウザ」ソース向けに、ローカル限定のHTTP+WebSocketブリッジを
 # 立てるために使う(obs_bridge.rs参照)。
-tokio = { version = "1", features = ["net", "sync", "io-util", "time"] }
+tokio = { version = "1", features = ["net", "sync", "io-util", "time", "fs"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 # 単体exeのままの自動アップデート機能用(updater.rs参照)。
@@ -42,6 +42,8 @@ sha2 = "0.10"
 # 「正規表現/読み」)の適用にregexを使う。
 encoding_rs = "0.8"
 regex = "1"
+# コメント機能の「参照」ボタン(ファイル・フォルダ選択ダイアログ)用
+tauri-plugin-dialog = "2"
 
 # 自動アップデートの差し替え処理(updater.rs参照)で、PowerShell等の
 # スクリプトエンジンを使わずネイティブに「旧プロセスの終了待ち」を行うために使う。

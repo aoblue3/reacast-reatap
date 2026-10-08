@@ -304,6 +304,79 @@ pub fn pick_next(threads: &[ThreadInfo], current_key: &str, keyword: &str) -> Op
         .cloned()
 }
 
+/// 次スレを建てる(2ch互換の掲示板のみ。`/test/bbs.cgi`にShift_JISのフォームで
+/// POSTする、ブラウザの「スレッド作成」ボタンと同じ送り方)。
+pub async fn create_thread(
+    client: &reqwest::Client,
+    board: &Board,
+    title: &str,
+    name: &str,
+    mail: &str,
+    body: &str,
+) -> Result<(), String> {
+    let Board::Nch { origin, board } = board else {
+        return Err("スレッドの自動作成は、今のところ2ちゃんねる互換の掲示板(jpnkn等)だけに対応しています".into());
+    };
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let form = [
+        ("bbs", board.as_str()),
+        ("subject", title),
+        ("FROM", name),
+        ("mail", mail),
+        ("MESSAGE", body),
+        ("time", &time.to_string()),
+        ("submit", "スレッド作成"),
+    ]
+    .iter()
+    .map(|(k, v)| format!("{k}={}", sjis_form_encode(v)))
+    .collect::<Vec<_>>()
+    .join("&");
+    let resp = client
+        .post(format!("{origin}/test/bbs.cgi"))
+        .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(reqwest::header::REFERER, format!("{origin}/{board}/"))
+        .body(form)
+        .send()
+        .await
+        .map_err(|e| format!("スレッドの作成に失敗しました: {e}"))?;
+    let status = resp.status();
+    let bytes = resp.bytes().await.map_err(|e| format!("スレッドの作成に失敗しました: {e}"))?;
+    let html = decode(SHIFT_JIS, &bytes);
+    check_post_result(status.is_success(), &html)
+}
+
+/// bbs.cgiの応答から成功/失敗を判定する(2ch互換の掲示板は、成功時に
+/// タイトルが「書きこみました」のページを返す)。
+fn check_post_result(http_ok: bool, html: &str) -> Result<(), String> {
+    let title = html
+        .find("<title>")
+        .and_then(|i| html[i + 7..].find("</title>").map(|j| html[i + 7..i + 7 + j].trim().to_string()))
+        .unwrap_or_default();
+    if http_ok && (title.contains("書きこみました") || title.contains("書き込みました")) {
+        return Ok(());
+    }
+    let detail = super::text::html_to_text(&html.replace('\n', " "));
+    let detail: String = detail.chars().take(120).collect();
+    Err(format!("スレッドの作成に失敗しました: {}", if title.is_empty() { detail } else { title }))
+}
+
+/// Shift_JISにしてからパーセントエンコードする(2ch互換のbbs.cgiの送り方)。
+fn sjis_form_encode(s: &str) -> String {
+    let (bytes, _, _) = SHIFT_JIS.encode(s);
+    let mut out = String::with_capacity(bytes.len() * 3);
+    for &b in bytes.iter() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'*' => out.push(b as char),
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 fn decode(enc: &'static Encoding, bytes: &[u8]) -> String {
     enc.decode(bytes).0.into_owned()
 }
@@ -367,6 +440,16 @@ mod tests {
                 posts.last().map(|p| super::super::text::html_to_text(&p.body_html))
             );
         });
+    }
+
+    #[test]
+    fn sjis_form_encoding_and_post_result() {
+        assert_eq!(sjis_form_encode("540"), "540");
+        assert_eq!(sjis_form_encode("あ a&"), "%82%A0+a%26");
+        assert!(check_post_result(true, "<html><title>書きこみました。</title></html>").is_ok());
+        let err = check_post_result(true, "<html><title>ＥＲＲＯＲ！</title><body>スレ立てすぎです</body></html>");
+        assert!(err.unwrap_err().contains("ＥＲＲＯＲ"));
+        assert!(check_post_result(false, "<title>書きこみました</title>").is_err());
     }
 
     #[test]

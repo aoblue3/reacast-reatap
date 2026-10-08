@@ -231,9 +231,67 @@ pub fn fill_tokens(arg: &str, v: &TokenValues) -> String {
     .into_owned()
 }
 
+/// タイトルの最後に出てくる数字を1増やす(「539」→「540」、「雑談 part9」→
+/// 「雑談 part10」、「009」→「010」は桁数を保つ)。全角数字にも対応する。
+/// 数字が無ければNone。
+pub fn increment_last_number(title: &str) -> Option<String> {
+    let chars: Vec<char> = title.chars().collect();
+    let is_digit = |c: char| c.is_ascii_digit() || ('０'..='９').contains(&c);
+    let end = chars.iter().rposition(|&c| is_digit(c))? + 1;
+    let mut start = end;
+    while start > 0 && is_digit(chars[start - 1]) {
+        start -= 1;
+    }
+    let fullwidth = chars[start] >= '０';
+    let digits: String = chars[start..end]
+        .iter()
+        .map(|&c| if c >= '０' { char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap() } else { c })
+        .collect();
+    let n: u128 = digits.parse().ok()?;
+    let next = format!("{:0width$}", n + 1, width = digits.len());
+    let next: String = if fullwidth {
+        next.chars().map(|c| char::from_u32(c as u32 - '0' as u32 + '０' as u32).unwrap()).collect()
+    } else {
+        next
+    };
+    let mut out: String = chars[..start].iter().collect();
+    out.push_str(&next);
+    out.extend(&chars[end..]);
+    Some(out)
+}
+
+/// タイトルの最後に出てくる数字(全角も含む)だけを取り出す。
+pub fn last_number(title: &str) -> Option<String> {
+    let is_digit = |c: char| c.is_ascii_digit() || ('０'..='９').contains(&c);
+    let chars: Vec<char> = title.chars().collect();
+    let end = chars.iter().rposition(|&c| is_digit(c))? + 1;
+    let mut start = end;
+    while start > 0 && is_digit(chars[start - 1]) {
+        start -= 1;
+    }
+    Some(chars[start..end].iter().collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_last_number() {
+        assert_eq!(last_number("雑談 part10").as_deref(), Some("10"));
+        assert_eq!(last_number("配信スレ★１３").as_deref(), Some("１３"));
+        assert_eq!(last_number("なし"), None);
+    }
+
+    #[test]
+    fn increments_last_number_in_title() {
+        assert_eq!(increment_last_number("539").as_deref(), Some("540"));
+        assert_eq!(increment_last_number("雑談 part9").as_deref(), Some("雑談 part10"));
+        assert_eq!(increment_last_number("2026年 配信スレ 009").as_deref(), Some("2026年 配信スレ 010"));
+        assert_eq!(increment_last_number("配信スレ★１２").as_deref(), Some("配信スレ★１３"));
+        assert_eq!(increment_last_number("Part3 (避難所)").as_deref(), Some("Part4 (避難所)"));
+        assert_eq!(increment_last_number("数字なし"), None);
+    }
 
     #[test]
     fn html_to_text_handles_br_tags_and_entities() {

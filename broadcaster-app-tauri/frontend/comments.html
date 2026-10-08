@@ -24,13 +24,24 @@
   /* 新しいレスを下に追加する設定の時は、下端に寄せる */
   #list.bottom { justify-content: flex-end; }
   .item {
+    display: flex;
+    gap: 0.4em;
+    align-items: flex-start;
     margin: 0 0 0.45em;
     animation: item-in 220ms ease-out;
     flex: 0 0 auto;
   }
+  .item.fade-out { transition: opacity 300ms linear; opacity: 0; }
+  .icon { flex: 0 0 auto; object-fit: cover; border-radius: 6px; }
+  .content { min-width: 0; flex: 1 1 auto; }
   .head { font-size: 0.8em; font-weight: bold; }
+  .content.inline .head { display: inline; margin-right: 0.5em; }
+  .content.inline .body { display: inline; }
   .body { white-space: pre-wrap; word-break: break-word; }
+  #list.nowrap .body, #list.nowrap .head { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
   .item.aa .body { white-space: pre; font-size: 0.6em; line-height: 1.1; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .thumbs img { max-width: 100%; max-height: 6em; border-radius: 4px; }
   @keyframes item-in {
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: none; }
@@ -46,32 +57,66 @@
     const listEl = document.getElementById('list');
     let style = C.mergeStyle(null);
     let items = [];
+    let speechcastTimer = null;
 
     function applyListStyle() {
       const s = style.list;
       listEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
       listEl.style.fontSize = `${Number(s.fontSize) || 20}px`;
       listEl.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
-      listEl.classList.toggle('bottom', !s.newestFirst);
+      listEl.classList.toggle('bottom', s.displayType === 'speechcast' || !s.newestFirst);
+      listEl.classList.toggle('nowrap', !s.wrap);
     }
 
     function buildItem(res) {
       const s = style.list;
       const el = document.createElement('div');
       el.className = 'item' + (res.aa ? ' aa' : '');
-      const head = document.createElement('div');
-      head.className = 'head';
-      head.style.color = s.nameColor;
-      const parts = [];
-      if (res.no > 0 && !res.system) parts.push(String(res.no));
-      parts.push(res.name || '');
-      if (s.showDate && res.date) parts.push(res.date);
-      head.textContent = parts.join(' ');
-      const body = document.createElement('div');
-      body.className = 'body';
-      body.style.color = s.bodyColor;
-      body.textContent = res.body || '';
-      el.append(head, body);
+
+      if (s.showIcon && res.icon) {
+        const img = document.createElement('img');
+        img.className = 'icon';
+        img.src = res.icon;
+        const size = Math.max(12, Number(s.iconSize) || 40);
+        img.style.width = img.style.height = `${size}px`;
+        img.onerror = () => img.remove();
+        el.appendChild(img);
+      }
+
+      const content = document.createElement('div');
+      content.className = 'content' + (s.separateLines ? '' : ' inline');
+      const headText = res.system ? res.name || '' : C.resHeader(res, s);
+      if (headText) {
+        const head = document.createElement('div');
+        head.className = 'head';
+        head.style.color = s.nameColor;
+        head.textContent = headText;
+        content.appendChild(head);
+      }
+
+      const images = s.thumbnails === 'chat' && !res.aa ? C.findImageUrls(res.body) : [];
+      let bodyText = String(res.body || '');
+      if (images.length && s.hideImageUrl) bodyText = bodyText.replace(C.IMAGE_URL_RE, '').trim();
+      if (bodyText) {
+        const body = document.createElement('div');
+        body.className = 'body';
+        body.style.color = s.bodyColor;
+        body.textContent = bodyText;
+        content.appendChild(body);
+      }
+      if (images.length) {
+        const thumbs = document.createElement('div');
+        thumbs.className = 'thumbs';
+        for (const url of images.slice(0, 4)) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.referrerPolicy = 'no-referrer';
+          img.onerror = () => img.remove();
+          thumbs.appendChild(img);
+        }
+        content.appendChild(thumbs);
+      }
+      el.appendChild(content);
       return el;
     }
 
@@ -81,7 +126,9 @@
 
     function render() {
       applyListStyle();
+      clearTimeout(speechcastTimer);
       listEl.textContent = '';
+      if (style.list.displayType === 'speechcast') return; // SpeechCast風は新着だけを出す
       const shown = items.slice(-maxItems());
       const ordered = style.list.newestFirst ? shown.slice().reverse() : shown;
       for (const res of ordered) {
@@ -95,6 +142,18 @@
       items.push(res);
       if (items.length > 100) items = items.slice(-100);
       const el = buildItem(res);
+      if (style.list.displayType === 'speechcast') {
+        // SpeechCast風: 最新の1件だけを、指定した秒数だけ表示する
+        clearTimeout(speechcastTimer);
+        listEl.textContent = '';
+        listEl.appendChild(el);
+        const ms = Math.max(300, (Number(style.list.speechcastSeconds) || 2.5) * 1000);
+        speechcastTimer = setTimeout(() => {
+          el.classList.add('fade-out');
+          setTimeout(() => el.remove(), 320);
+        }, ms);
+        return;
+      }
       if (style.list.newestFirst) listEl.prepend(el);
       else listEl.appendChild(el);
       while (listEl.children.length > maxItems()) {

@@ -91,9 +91,17 @@
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
     border-radius: 6px;
     padding: 18px 10px;
-    text-align: center;
-    min-height: 60px;
+    min-height: 90px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
   }
+  #previewText { white-space: pre-wrap; line-height: 1.3; max-width: 100%; }
+  #previewText .res-head { display: block; font-size: 0.75em; }
+  .path-row { display: flex; gap: 6px; }
+  .path-row input { flex: 1; }
+  .radio-row { display: flex; gap: 14px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -112,6 +120,7 @@
     <button data-tab="speech">読み上げ</button>
     <button data-tab="subtitle">字幕</button>
     <button data-tab="aa">AAモード</button>
+    <button data-tab="create">次スレ作成</button>
     <button data-tab="words">NGワード・読み方</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="output">表示先(OBS・デスクトップ)</button>
@@ -125,6 +134,8 @@
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
       <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
       <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
+      <div class="field"><label>開始レス番号</label><div><input type="number" min="0" data-key="startResNo" /><span class="unit">開始時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら直近の5件</span></div></div>
+      <div class="field"><label>初期表示テキスト</label><div><input type="text" class="wide" data-key="initialText" /><span class="unit">開始時に右のレス一覧に表示します(空欄なら表示しません)</span></div></div>
       <h3>テスト表示</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button></div>
       <div class="hint">順番待ちの先頭に割り込んで表示・読み上げます(取得を開始していなくても使えます)。</div>
@@ -137,7 +148,7 @@
 
     <section data-tab="speech">
       <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
-      <div class="field"><label>読み上げソフト(コマンドライン引渡し)</label><div><input type="text" class="wide" data-key="commandPath" /></div></div>
+      <div class="field"><label>読み上げソフト(コマンドライン引渡し)</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
       <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
       <div class="hint">#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。既定の「#Res#」なら、vrx.exe(民安★TALK)には本文だけが渡り、レス番号や名前は読み上げません。本文はシェルを通さずそのまま1つの引数として渡します。</div>
       <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
@@ -159,7 +170,11 @@
         <label><input type="checkbox" data-key="style.subtitle.vertical" /> 縦書き</label>
       </div></div>
       <div class="field"><label>字幕を瞬間表示する</label><div><input type="checkbox" data-key="style.subtitle.instant" /><span class="unit">OFFにすると1文字ずつ表示します</span></div></div>
-      <div class="field"><label>レス番号を表示する</label><div><input type="checkbox" data-key="style.subtitle.showResNumber" /></div></div>
+      <div class="field"><label>見出しに表示するもの</label><div class="inline">
+        <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
+        <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
+        <label><input type="checkbox" data-key="style.subtitle.showTime" /> 時刻</label>
+      </div></div>
       <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
       <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
         <div class="arrows">
@@ -169,10 +184,12 @@
         </div>
         <span class="unit">X <input type="number" data-key="style.subtitle.offsetX" /> Y <input type="number" data-key="style.subtitle.offsetY" /> px</span>
       </div></div>
-      <div id="preview">プレビュー 123 ABC</div>
+      <div id="preview"><div id="previewText"></div></div>
+      <div class="hint">プレビューは字幕と同じく下端に揃えて表示します(文字揃え・位置の微調整も反映されます)。実際の大きさで確かめたい時は「取得」タブの「テスト表示」を使ってください。</div>
     </section>
 
     <section data-tab="aa">
+      <div class="field"><label>AAモードを有効にする</label><div><input type="checkbox" data-key="aaEnabled" /><span class="unit">条件に合うレスを専用のフォントで表示します</span></div></div>
       <div class="field"><label>AAモードで字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="aaDisplayMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.aa.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.aa.fontSize" /><span class="unit">px</span></div></div>
@@ -190,6 +207,20 @@
       <textarea data-key="aaPatterns" style="margin-top:6px"></textarea>
     </section>
 
+    <section data-tab="create">
+      <div class="hint">指定したレス数に達したら、同じ板に次スレを自動で建てます(取得中のスレッドと同じ掲示板に建てます。今のところjpnkn等の2ちゃんねる互換の掲示板のみ)。既に次スレが建っている場合は建てません。1000を超えた後は「取得」タブの設定どおり次スレへ自動で移ります。</div>
+      <div class="field"><label>次スレを自動で建てる</label><div><input type="checkbox" data-key="autoCreateThread" /></div></div>
+      <div class="field"><label>建てるレス数</label><div><input type="number" min="1" max="999" data-key="createThreadCount" /></div></div>
+      <div class="field"><label>次スレのタイトル</label><div><input type="text" class="wide" data-key="createTitleTemplate" /></div></div>
+      <div class="hint">{next} = 今のタイトルの最後の数字を1増やしたもの(「539」→「540」、「雑談 part9」→「雑談 part10」)、{n} = その数字だけ。例: 「配信スレ{n}」</div>
+      <div class="field"><label>名前 / メール</label><div class="inline"><input type="text" data-key="createName" placeholder="空欄なら名無し" /><input type="text" data-key="createMail" placeholder="sage等" /></div></div>
+      <h3>&gt;&gt;1のテンプレート</h3>
+      <textarea data-key="createBodyTemplate"></textarea>
+      <div class="hint">{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル</div>
+      <div class="inline"><button class="secondary" id="previewThreadBtn">タイトルと本文を確認(建てません)</button></div>
+      <pre id="threadPreview" class="hint" style="white-space: pre-wrap; background:#15161a; padding:8px; border-radius:6px; min-height:2em"></pre>
+    </section>
+
     <section data-tab="words">
       <h3>NGワード(1行に1つ。名前か本文に含まれるレスは表示も読み上げもしません)</h3>
       <textarea data-key="ngWords"></textarea>
@@ -199,13 +230,28 @@
     </section>
 
     <section data-tab="list">
+      <div class="field"><label>表示タイプ</label><div><select data-key="style.list.displayType"><option value="chat">チャット風(レスを積み重ねる)</option><option value="speechcast">SpeechCast風(最新の1件だけ)</option></select></div></div>
+      <div class="field"><label>レス表示秒数(SpeechCast風のみ)</label><div><input type="number" min="0.5" step="0.5" data-key="style.list.speechcastSeconds" /><span class="unit">秒</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>番号・名前の色 / 本文の色</label><div class="inline"><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.bodyColor" /></div></div>
       <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
-      <div class="field"><label>書き込み日時を表示する</label><div><input type="checkbox" data-key="style.list.showDate" /></div></div>
+      <div class="field"><label>見出しに表示するもの</label><div class="inline">
+        <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
+        <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
+        <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
+      </div></div>
+      <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
+      <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
+      <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
+        <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">レス一覧に表示</option></select>
+        <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
+      </div></div>
+      <h3>アイコン</h3>
+      <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
+      <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" id="pickIconFolderBtn">参照...</button></div></div>
       <div class="hint">右のレス一覧には、字幕に表示されたのと同じタイミングでレスが追加されます(字幕・読み上げとずれません)。</div>
     </section>
 
@@ -217,6 +263,13 @@
 
       <h3>デスクトップ字幕(配信者のPCの画面に、読み上げ中のレスを表示)</h3>
       <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
+      <div class="field"><label>表示位置</label><div class="inline">
+        <button id="adjustDesktopBtn">マウスで位置を調整する</button>
+        <button class="secondary" id="resetDesktopBtn">既定の位置に戻す</button>
+        <span class="unit" id="desktopRectInfo"></span>
+      </div></div>
+      <div class="hint">「マウスで位置を調整する」を押すと字幕の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。字幕は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません(DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられません。ボーダーレスウィンドウ設定にしてください)。</div>
+      <h3>既定の位置(マウスで位置を決めていない時に使います)</h3>
       <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
       <div class="field"><label>表示範囲(モニターに対する割合)</label><div class="inline">
         左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
