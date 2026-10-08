@@ -79,6 +79,7 @@ function renderPreview() {
   p.style.writingMode = s.vertical ? 'vertical-rl' : '';
   p.style.transform = `translate(${Number(s.offsetX) || 0}px, ${Number(s.offsetY) || 0}px)`;
   box.style.justifyContent = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+  box.style.alignItems = s.valign === 'bottom' ? 'flex-end' : 'flex-start';
   const sample = { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:00', body: 'プレビュー 123 ABC\n2行目のテキスト' };
   const head = C.resHeader(sample, { showResNumber: s.showResNumber, showName: s.showName, showDate: s.showTime });
   p.textContent = '';

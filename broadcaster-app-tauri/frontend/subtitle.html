@@ -12,13 +12,13 @@
     background: transparent;
     overflow: hidden;
   }
-  /* 字幕は表示領域の下端に揃える(OBSでもデスクトップ字幕でも、ソース/
-     ウィンドウの大きさで表示範囲を決める) */
+  /* 字幕は既定で表示領域の上端から下へ出す(設定「縦の位置」で下端揃えにもできる。
+     OBSでもデスクトップ字幕でも、ソース/ウィンドウの大きさで表示範囲を決める) */
   #stage {
     position: fixed;
     inset: 0;
     display: flex;
-    align-items: flex-end;
+    align-items: flex-start;
     justify-content: center;
     pointer-events: none;
   }
@@ -138,6 +138,9 @@
       // 出す)。箱を中央に置いたままだと、短い文や1文字ずつ表示している途中で
       // 真ん中から左右に広がっていくように見えてしまうため。
       stage.style.justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+      // 縦: 上端から下へ(既定)。下端揃えだと行数が増えるほど上に伸び、1行目
+      // (レス番号)の位置がレスごとに上下にずれて見えるため。
+      stage.style.alignItems = sub.valign === 'bottom' ? 'flex-end' : 'flex-start';
       box.style.transform = `translate(${Number(sub.offsetX) || 0}px, ${Number(sub.offsetY) || 0}px)`;
       box.classList.toggle('aa', !!aa);
       box.classList.toggle('vertical', !aa && !!sub.vertical);
