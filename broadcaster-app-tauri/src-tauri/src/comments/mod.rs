@@ -108,8 +108,9 @@ impl Default for CommentSettings {
             aa_fixed_reading: "アスキーアート".into(),
             desktop_enabled: true,
             desktop_monitor_id: None,
+            // 画面の一番下だとタスクバーに重なるので、少し上(70%〜92%)を既定にする
             desktop_x: 0.0,
-            desktop_y: 0.78,
+            desktop_y: 0.70,
             desktop_width: 1.0,
             desktop_height: 0.22,
             style: serde_json::json!({}),
