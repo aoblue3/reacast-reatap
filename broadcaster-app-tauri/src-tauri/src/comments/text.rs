@@ -260,6 +260,20 @@ pub fn increment_last_number(title: &str) -> Option<String> {
     Some(out)
 }
 
+/// 本文の最初のアンカー(>>12、＞＞１２、≫12。>>12-15なら12)のレス番号。
+pub fn first_anchor(body: &str) -> Option<u32> {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(?:>>|＞＞|≫)\s*([0-9０-９]{1,4})").unwrap());
+    let digits: String = re
+        .captures(body)?
+        .get(1)?
+        .as_str()
+        .chars()
+        .map(|c| if c >= '０' { char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap_or(c) } else { c })
+        .collect();
+    digits.parse().ok().filter(|&n| n > 0)
+}
+
 /// タイトルの最後に出てくる数字(全角も含む)だけを取り出す。
 pub fn last_number(title: &str) -> Option<String> {
     let is_digit = |c: char| c.is_ascii_digit() || ('０'..='９').contains(&c);
@@ -275,6 +289,16 @@ pub fn last_number(title: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_first_anchor() {
+        assert_eq!(first_anchor(">>12 それな"), Some(12));
+        assert_eq!(first_anchor("＞＞１２３ 全角"), Some(123));
+        assert_eq!(first_anchor("≫5"), Some(5));
+        assert_eq!(first_anchor("前半 >>12-15 範囲"), Some(12));
+        assert_eq!(first_anchor("アンカーなし 12"), None);
+        assert_eq!(first_anchor(">>0"), None);
+    }
 
     #[test]
     fn extracts_last_number() {

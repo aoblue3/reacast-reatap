@@ -57,6 +57,8 @@
   }
   #box.vertical { writing-mode: vertical-rl; }
   .res-head { display: block; font-size: 0.75em; }
+  /* アンカー先のレス(新しいレスの前に、斜体で先に表示する)。カスタムCSSでは #box.quoted */
+  #box.quoted { transform-origin: left bottom; }
 
   /* デスクトップ字幕の位置調整モード(ReaCastの設定画面から切り替える) */
   #adjust {
@@ -122,6 +124,8 @@
     let hideTimer = null;
     let typeTimer = null;
     let current = null;
+    // アンカー先のレスを先に表示している最中か(斜体で表示する)
+    let quotedMode = false;
 
     function applyBoxStyle(aa) {
       const s = aa ? style.aa : style.subtitle;
@@ -129,8 +133,9 @@
       box.style.fontFamily = C.cssFontFamily(s.fontFamily);
       box.style.fontSize = `${Number(s.fontSize) || 30}px`;
       box.style.fontWeight = aa ? 'normal' : sub.bold ? 'bold' : 'normal';
-      box.style.fontStyle = !aa && sub.italic ? 'italic' : 'normal';
-      box.style.color = s.color;
+      box.style.fontStyle = (!aa && sub.italic) || quotedMode ? 'italic' : 'normal';
+      box.style.color = quotedMode && !aa ? sub.quoteColor || s.color : s.color;
+      box.classList.toggle('quoted', quotedMode);
       box.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
       const align = aa ? 'left' : sub.align || 'center';
       box.style.textAlign = align;
@@ -192,6 +197,7 @@
       clearTimeout(hideTimer);
       clearInterval(typeTimer);
       current = res;
+      quotedMode = !!res.quoted;
       applyBoxStyle(res.aa);
       const body = String(res.body || '');
       const typewriter = style.subtitle.appear === 'typewriter' && !res.aa && !replay && body.length > 1;
@@ -230,6 +236,7 @@
     let adjusting = false;
     function showSample() {
       current = { no: 123, name: '名無しさん', date: '', body: '字幕の表示位置サンプル 123 ABC', aa: false };
+      quotedMode = false;
       applyBoxStyle(false);
       setContent(current, current.body);
       fitToStage(false);

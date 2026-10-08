@@ -34,6 +34,8 @@
       showTime: false,
       offsetX: 0,
       offsetY: 0,
+      // アンカー先のレスを先に表示する時の文字色(斜体で表示する)
+      quoteColor: '#d6d6d6',
       customCss: '',
     },
     aa: {

@@ -82,6 +82,9 @@ pub struct CommentSettings {
     pub display_max_ms: u64,
     /// 字幕を出し終わるまで次のレスを待つ(ターボ中は待たない)
     pub wait_for_display: bool,
+    /// 下の字幕で、>>番号のアンカーが付いたレスの前に、アンカー先のレスを先に表示する
+    pub anchor_preview: bool,
+    pub anchor_preview_ms: u64,
     pub aa_display_ms: u64,
     // ---- AAモード ----
     pub aa_enabled: bool,
@@ -157,6 +160,8 @@ impl Default for CommentSettings {
             display_per_char_ms: 80,
             display_max_ms: 12000,
             wait_for_display: true,
+            anchor_preview: true,
+            anchor_preview_ms: 2500,
             aa_display_ms: 6000,
             aa_enabled: true,
             aa_threshold_chars: 300,
@@ -286,6 +291,8 @@ struct State {
     compiled: Arc<Compiled>,
     /// start/stopのたびに増やす。古い取得タスクはこれが変わったら終了する。
     run_id: u64,
+    /// 掲示板の読み込み先を手動で切り替えるたびに増やす(古い掲示板の取得タスクを止める)
+    bbs_gen: u64,
     queue: VecDeque<Post>,
     /// 今読んでいるスレッドの全レス(設定ウィンドウで過去のレスを遡る用)
     thread_posts: Vec<Post>,
@@ -310,6 +317,7 @@ impl CommentEngine {
                 compiled: Arc::new(Compiled::from(&settings)),
                 settings,
                 run_id: 0,
+                bbs_gen: 0,
                 queue: VecDeque::new(),
                 thread_posts: Vec::new(),
                 status: CommentStatus::default(),
@@ -451,7 +459,8 @@ impl CommentEngine {
         }
         if let Some((board, key)) = bbs {
             let me = self.clone();
-            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, board, key).await });
+            let gen = self.state.lock().unwrap().bbs_gen;
+            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, key).await });
         }
         if let Some(target) = youtube {
             let me = self.clone();
@@ -754,15 +763,46 @@ impl CommentEngine {
         self.wake.notify_one();
     }
 
-    async fn run_fetch(self: Arc<Self>, run_id: u64, board: Board, key: Option<String>) {
+    /// 掲示板の読み込み先を、指定したスレッドに切り替える(取得中のみ。YouTube・
+    /// Twitchの取得や右のレス一覧はそのまま続ける)。保存してある取得先のURLは
+    /// 変えないので、次に開始し直すとまた自動で現行スレを選ぶ。
+    pub fn switch_thread(self: &Arc<Self>, url: &str) -> Result<(), String> {
+        let (board, key) = source::parse_url(url)?;
+        let key = key.ok_or("スレッドのURLを指定してください")?;
+        let (run_id, gen) = {
+            let mut st = self.state.lock().unwrap();
+            if !st.status.running {
+                return Err("取得を開始してから切り替えてください".into());
+            }
+            st.bbs_gen += 1;
+            st.thread_posts.clear();
+            st.status.thread_title = None;
+            st.status.thread_url = None;
+            st.status.last_no = 0;
+            st.status.warning = None;
+            (st.run_id, st.bbs_gen)
+        };
+        self.emit_thread_reset();
+        self.emit_status();
+        let me = self.clone();
+        tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, Some(key)).await });
+        Ok(())
+    }
+
+    fn is_bbs_current(&self, run_id: u64, gen: u64) -> bool {
+        let st = self.state.lock().unwrap();
+        st.run_id == run_id && st.bbs_gen == gen
+    }
+
+    async fn run_fetch(self: Arc<Self>, run_id: u64, gen: u64, board: Board, key: Option<String>) {
         let client = source::http_client();
         let poll_interval = |me: &Self| Duration::from_millis(me.settings().poll_interval_ms.max(1000));
 
-        // 板のURLが入力された場合は、一番新しいスレッドを選ぶ
+        // 板のURLが入力された場合は、今使っている(現行の)スレッドを選ぶ
         let key = match key {
             Some(k) => k,
             None => loop {
-                if !self.is_current(run_id) {
+                if !self.is_bbs_current(run_id, gen) {
                     return;
                 }
                 match source::list_threads(&client, &board).await {
@@ -781,10 +821,15 @@ impl CommentEngine {
         let mut warned = false;
         let mut created = false;
         loop {
-            if !self.is_current(run_id) {
+            if !self.is_bbs_current(run_id, gen) {
                 return;
             }
-            match reader.poll(&client).await {
+            let polled = reader.poll(&client).await;
+            // 取得している間に手動で別のスレッドへ切り替えられていたら、結果を捨てる
+            if !self.is_bbs_current(run_id, gen) {
+                return;
+            }
+            match polled {
                 Ok(raw) => {
                     let posts: Vec<Post> = raw.iter().map(|p| Post::from_raw(p, self.pick_icon("bbs"))).collect();
                     self.record_posts(run_id, &posts, false);
@@ -911,6 +956,24 @@ impl CommentEngine {
             }
             let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
+
+            // >>番号が付いたレスなら、アンカー先のレスを先に(斜体で)下の字幕に出す。
+            // 溜まっている時(ターボ中)は追いつくのを優先して省く。
+            if settings.anchor_preview && post.source == "bbs" && backlog < settings.turbo_threshold.max(1) {
+                let quoted = text::first_anchor(&post.body).and_then(|n| {
+                    let st = self.state.lock().unwrap();
+                    st.thread_posts.iter().find(|p| p.no == n && n != post.no).cloned()
+                });
+                if let Some(q) = quoted {
+                    let q_aa = detect_aa(&settings, &compiled, &q);
+                    let mut json = q.to_json(q_aa);
+                    json["quoted"] = serde_json::json!(true);
+                    let ms = settings.anchor_preview_ms.max(300);
+                    bridge.show_subtitle(json, ms);
+                    tokio::time::sleep(Duration::from_millis(ms)).await;
+                }
+            }
+
             let shown_ms = display_duration(&post, aa, &settings);
             bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
@@ -1154,6 +1217,35 @@ pub async fn comments_check_twitch(channel: String) -> serde_json::Value {
         (true, n) => format!("接続できました(8秒の間に{n}件以上のコメントを受信)"),
     };
     serde_json::json!({ "ok": joined, "message": message, "channel": channel, "samples": samples })
+}
+
+/// 板のスレッド一覧(手動でスレッドを選ぶ用)。urlは板かスレッドのURL。
+#[tauri::command]
+pub async fn comments_list_threads(engine: Engine<'_>, url: String) -> Result<serde_json::Value, String> {
+    let (board, _) = source::parse_url(&url)?;
+    let list = source::list_threads(&source::http_client(), &board).await?;
+    let current = engine.status().thread_url;
+    let mut items: Vec<serde_json::Value> = list
+        .iter()
+        .map(|t| {
+            let read_url = ThreadRef { board: board.clone(), key: t.key.clone() }.read_url();
+            serde_json::json!({
+                "key": t.key,
+                "title": t.title,
+                "count": t.count,
+                "url": read_url,
+                "current": current.as_deref() == Some(read_url.as_str()),
+            })
+        })
+        .collect();
+    items.sort_by_key(|v| std::cmp::Reverse(v["key"].as_str().and_then(|k| k.parse::<u64>().ok()).unwrap_or(0)));
+    Ok(serde_json::json!({ "threads": items }))
+}
+
+/// 掲示板の読み込み先を、選んだスレッドに切り替える。
+#[tauri::command]
+pub fn comments_switch_thread(engine: Engine, url: String) -> Result<(), String> {
+    engine.switch_thread(&url)
 }
 
 /// 次スレのタイトルと>>1の本文を確認する(実際には建てない)。

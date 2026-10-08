@@ -308,6 +308,49 @@ document.getElementById('checkTwitchBtn').addEventListener('click', async (e) =>
   }
 });
 
+// ---- スレッドを手動で選ぶ ----
+const threadPicker = document.getElementById('threadPicker');
+document.getElementById('listThreadsBtn').addEventListener('click', async (e) => {
+  const url = document.getElementById('threadUrl').value.trim();
+  if (!url) return showStatusError('掲示板のURLを入力してください');
+  e.target.disabled = true;
+  threadPicker.style.display = '';
+  threadPicker.textContent = '読み込んでいます…';
+  try {
+    const { threads } = await invoke('comments_list_threads', { url });
+    threadPicker.textContent = '';
+    for (const t of threads) {
+      const row = document.createElement('div');
+      row.className = 'post';
+      const head = document.createElement('div');
+      head.className = 'post-head';
+      const title = document.createElement('span');
+      title.textContent = `${t.title}(${t.count})${t.current ? ' ← 読み込み中' : ''}`;
+      if (t.count >= 1000) title.style.color = '#8d909c';
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = 'このスレッドを読む';
+      btn.disabled = t.current;
+      btn.addEventListener('click', async () => {
+        try {
+          await invoke('comments_switch_thread', { url: t.url });
+          threadPicker.style.display = 'none';
+        } catch (err) {
+          showStatusError(String(err));
+        }
+      });
+      head.append(title, btn);
+      row.appendChild(head);
+      threadPicker.appendChild(row);
+    }
+    if (!threads.length) threadPicker.textContent = 'スレッドが見つかりませんでした';
+  } catch (err) {
+    threadPicker.textContent = String(err);
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
 // ---- 表示するモニター ----
 monitorSelect.addEventListener('change', () => {
   settings.desktopMonitorId = monitorSelect.value || null;
