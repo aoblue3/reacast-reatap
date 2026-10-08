@@ -70,6 +70,12 @@ pub struct CommentSettings {
     pub ng_words: String,
     // ---- 字幕 ----
     pub display_ms: u64,
+    /// 長いレスほど長く表示する: 1文字あたりに足す時間(0で長さに関係なく一定)
+    pub display_per_char_ms: u64,
+    /// 文字数で延ばした場合の表示時間の上限
+    pub display_max_ms: u64,
+    /// 字幕を出し終わるまで次のレスを待つ(ターボ中は待たない)
+    pub wait_for_display: bool,
     pub aa_display_ms: u64,
     // ---- AAモード ----
     pub aa_enabled: bool,
@@ -138,6 +144,9 @@ impl Default for CommentSettings {
             .join("\n"),
             ng_words: String::new(),
             display_ms: 3000,
+            display_per_char_ms: 80,
+            display_max_ms: 12000,
+            wait_for_display: true,
             aa_display_ms: 6000,
             aa_enabled: true,
             aa_threshold_chars: 300,
@@ -639,10 +648,8 @@ impl CommentEngine {
             }
             let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
-            bridge.show_subtitle(
-                post.to_json(aa),
-                if aa { settings.aa_display_ms } else { settings.display_ms },
-            );
+            let shown_ms = display_duration(&post, aa, &settings);
+            bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
 
             if settings.speech_enabled && !settings.command_path.trim().is_empty() {
@@ -652,13 +659,36 @@ impl CommentEngine {
                 }
             }
 
-            let interval = if backlog >= settings.turbo_threshold.max(1) {
-                settings.turbo_interval_ms
-            } else {
-                settings.read_interval_ms
-            };
+            let interval = next_interval(backlog, shown_ms, &settings);
             tokio::time::sleep(Duration::from_millis(interval)).await;
         }
+    }
+}
+
+/// 字幕を表示しておく時間。通常のレスは文字数に応じて延ばす(上限あり)。
+/// AAは「AAモードで字幕が消える時間」で固定。
+fn display_duration(post: &Post, aa: bool, s: &CommentSettings) -> u64 {
+    if aa {
+        return s.aa_display_ms;
+    }
+    let chars = post.body.chars().filter(|c| !c.is_whitespace()).count() as u64;
+    let extended = s.display_ms.saturating_add(chars.saturating_mul(s.display_per_char_ms));
+    if s.display_per_char_ms == 0 {
+        s.display_ms
+    } else {
+        extended.min(s.display_max_ms.max(s.display_ms))
+    }
+}
+
+/// 次のレスを出すまでの間隔。溜まっている時(ターボ)は短い間隔で追いつくことを
+/// 優先し、そうでなければ読み上げ間隔と(設定がONなら)字幕の表示時間の長い方。
+fn next_interval(backlog: usize, shown_ms: u64, s: &CommentSettings) -> u64 {
+    if backlog >= s.turbo_threshold.max(1) {
+        s.turbo_interval_ms
+    } else if s.wait_for_display {
+        s.read_interval_ms.max(shown_ms)
+    } else {
+        s.read_interval_ms
     }
 }
 
@@ -892,6 +922,25 @@ mod tests {
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
         // お知らせにはレス番号を付けない
         assert_eq!(speech_text(&Post::system("次スレです"), false, &s, &c), "次スレで");
+    }
+
+    #[test]
+    fn long_posts_stay_longer_and_hold_the_queue() {
+        let s = CommentSettings::default(); // 3000ms + 80ms/文字、上限12000ms
+        assert_eq!(display_duration(&post(1, "おつ"), false, &s), 3160);
+        assert_eq!(display_duration(&post(1, &"あ".repeat(50)), false, &s), 7000);
+        assert_eq!(display_duration(&post(1, &"あ".repeat(500)), false, &s), 12000);
+        assert_eq!(display_duration(&post(1, &"あ".repeat(500)), true, &s), 6000);
+        // 普段は表示し終わるまで待つ(短いレスは読み上げ間隔3000ms)
+        assert_eq!(next_interval(0, 3160, &s), 3160);
+        assert_eq!(next_interval(0, 1000, &s), 3000);
+        // 溜まっている時はターボ間隔
+        assert_eq!(next_interval(3, 12000, &s), 400);
+        let mut s2 = s.clone();
+        s2.wait_for_display = false;
+        s2.display_per_char_ms = 0;
+        assert_eq!(display_duration(&post(1, &"あ".repeat(50)), false, &s2), 3000);
+        assert_eq!(next_interval(0, 7000, &s2), 3000);
     }
 
     #[test]

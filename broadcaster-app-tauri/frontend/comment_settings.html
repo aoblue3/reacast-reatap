@@ -160,6 +160,9 @@
 
     <section data-tab="subtitle">
       <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>長いレスは長く表示する</label><div class="inline">1文字あたり <input type="number" min="0" step="10" data-key="displayPerCharMs" /> ミリ秒足す、最長 <input type="number" min="1000" step="500" data-key="displayMaxMs" /> ミリ秒</div></div>
+      <div class="hint">例: 既定(80ミリ秒・最長12000)なら、10文字で約3.8秒、50文字で7秒、100文字で11秒、113文字以上は12秒表示します。0にすると長さに関係なく「字幕が消える時間」で消えます。</div>
+      <div class="field"><label>字幕を出し終わるまで次のレスを待つ</label><div><input type="checkbox" data-key="waitForDisplay" /><span class="unit">長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
