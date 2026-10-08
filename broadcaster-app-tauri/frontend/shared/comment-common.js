@@ -22,7 +22,9 @@
       color: '#ffffff',
       outlineWidth: 3,
       outlineColor: '#1b1f7a',
-      instant: true,
+      // 字幕の出し方: 'instant'=瞬間表示 / 'typewriter'=1文字ずつ / 'fade'=フェードイン /
+      // 'slide-left'=左からスライド / 'slide-up'=下からスライド
+      appear: 'instant',
       vertical: false,
       align: 'center',
       showResNumber: true,
@@ -41,9 +43,6 @@
       shrinkToHeight: true,
     },
     list: {
-      // 'chat'=チャット風(レスを積み重ねる) / 'speechcast'=SpeechCast風(最新の1件だけ)
-      displayType: 'chat',
-      speechcastSeconds: 2.5,
       fontFamily: 'BIZ UDゴシック',
       fontSize: 22,
       nameColor: '#7dff7d',
@@ -52,6 +51,9 @@
       outlineColor: '#000000',
       maxItems: 30,
       newestFirst: true,
+      // 行間(文字の大きさに対する倍率)と、レスとレスの間の空き(px)
+      lineHeight: 1.3,
+      itemGap: 10,
       showResNumber: true,
       showName: true,
       showDate: false,
@@ -71,6 +73,9 @@
     for (const key of Object.keys(DEFAULT_STYLE)) {
       out[key] = { ...DEFAULT_STYLE[key], ...(s[key] && typeof s[key] === 'object' ? s[key] : {}) };
     }
+    // 以前の「瞬間表示する」チェックボックス(instant)だけが保存されている設定からの引き継ぎ
+    const sub = s.subtitle || {};
+    if (sub.appear === undefined && sub.instant === false) out.subtitle.appear = 'typewriter';
     return out;
   }
 

@@ -169,13 +169,19 @@
         <label><input type="checkbox" data-key="style.subtitle.italic" /> 斜体</label>
         <label><input type="checkbox" data-key="style.subtitle.vertical" /> 縦書き</label>
       </div></div>
-      <div class="field"><label>字幕を瞬間表示する</label><div><input type="checkbox" data-key="style.subtitle.instant" /><span class="unit">OFFにすると1文字ずつ表示します</span></div></div>
+      <div class="field"><label>字幕の出し方</label><div><select data-key="style.subtitle.appear">
+        <option value="instant">瞬間表示</option>
+        <option value="typewriter">1文字ずつ(左から右へ)</option>
+        <option value="fade">フェードイン</option>
+        <option value="slide-left">左からスライド</option>
+        <option value="slide-up">下からスライド</option>
+      </select></div></div>
       <div class="field"><label>見出しに表示するもの</label><div class="inline">
         <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
         <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
         <label><input type="checkbox" data-key="style.subtitle.showTime" /> 時刻</label>
       </div></div>
-      <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
+      <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
       <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
         <div class="arrows">
           <span></span><button class="secondary" data-nudge="0,-2">↑</button><span></span>
@@ -230,12 +236,12 @@
     </section>
 
     <section data-tab="list">
-      <div class="field"><label>表示タイプ</label><div><select data-key="style.list.displayType"><option value="chat">チャット風(レスを積み重ねる)</option><option value="speechcast">SpeechCast風(最新の1件だけ)</option></select></div></div>
-      <div class="field"><label>レス表示秒数(SpeechCast風のみ)</label><div><input type="number" min="0.5" step="0.5" data-key="style.list.speechcastSeconds" /><span class="unit">秒</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>番号・名前の色 / 本文の色</label><div class="inline"><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.bodyColor" /></div></div>
       <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
+      <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(文字の大きさに対して。既定1.3)</span></div></div>
+      <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
       <div class="field"><label>見出しに表示するもの</label><div class="inline">

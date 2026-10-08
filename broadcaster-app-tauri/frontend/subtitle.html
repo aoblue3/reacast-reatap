@@ -23,6 +23,7 @@
     pointer-events: none;
   }
   #box {
+    position: relative;
     max-width: 100%;
     max-height: 100%;
     box-sizing: border-box;
@@ -35,6 +36,20 @@
   }
   #box.visible { opacity: 1; }
   #box.instant { transition: none; }
+  /* 字幕の出し方(設定「字幕の出し方」) */
+  #box.appear-fade.visible { transition: opacity 350ms ease-out; }
+  #box.appear-slide-left.visible { animation: slide-left 320ms ease-out; }
+  #box.appear-slide-up.visible { animation: slide-up 320ms ease-out; }
+  /* 位置の微調整でtransformを使っているので、スライドはleft/topで動かす
+     (古いOBSのブラウザソースでも動くように、translateプロパティは使わない) */
+  @keyframes slide-left {
+    from { opacity: 0; left: -60px; }
+    to { opacity: 1; left: 0; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; top: 30px; }
+    to { opacity: 1; top: 0; }
+  }
   #box.aa {
     white-space: pre;
     word-break: normal;
@@ -102,6 +117,7 @@
     'use strict';
     const C = window.CommentCommon;
     const box = document.getElementById('box');
+    const stage = document.getElementById('stage');
     let style = C.mergeStyle(null);
     let hideTimer = null;
     let typeTimer = null;
@@ -116,11 +132,18 @@
       box.style.fontStyle = !aa && sub.italic ? 'italic' : 'normal';
       box.style.color = s.color;
       box.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
-      box.style.textAlign = aa ? 'left' : sub.align || 'center';
+      const align = aa ? 'left' : sub.align || 'center';
+      box.style.textAlign = align;
+      // 字幕の箱そのものも文字揃えの側に寄せる(文字揃え「左」なら表示範囲の左端から
+      // 出す)。箱を中央に置いたままだと、短い文や1文字ずつ表示している途中で
+      // 真ん中から左右に広がっていくように見えてしまうため。
+      stage.style.justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
       box.style.transform = `translate(${Number(sub.offsetX) || 0}px, ${Number(sub.offsetY) || 0}px)`;
       box.classList.toggle('aa', !!aa);
       box.classList.toggle('vertical', !aa && !!sub.vertical);
-      box.classList.toggle('instant', !!sub.instant);
+      const appear = sub.appear || 'instant';
+      box.classList.toggle('instant', appear === 'instant' || appear === 'typewriter');
+      for (const a of ['fade', 'slide-left', 'slide-up']) box.classList.toggle(`appear-${a}`, appear === a);
     }
 
     /** 表示領域に収まらない場合は文字を小さくする(AAは設定に従い、
@@ -168,7 +191,10 @@
       current = res;
       applyBoxStyle(res.aa);
       const body = String(res.body || '');
-      const typewriter = !style.subtitle.instant && !res.aa && !replay && body.length > 1;
+      const typewriter = style.subtitle.appear === 'typewriter' && !res.aa && !replay && body.length > 1;
+      // スライド等のアニメーションを毎回最初から再生し直す
+      box.classList.remove('visible');
+      void box.offsetWidth;
       if (!typewriter) {
         setContent(res, body);
         fitToStage(res.aa);
