@@ -30,7 +30,9 @@
 //! `http://127.0.0.1:18772/` を指定するだけでよい(ローカルファイルではなく
 //! URLとして指定する)。
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
@@ -41,6 +43,13 @@ pub const OBS_WS_PORT: u16 = 18771;
 const OVERLAY_HTML: &str = include_str!("../../frontend/overlay.html");
 const OVERLAY_JS: &str = include_str!("../../frontend/overlay.js");
 const EMOJI_SET_JS: &str = include_str!("../../frontend/shared/emoji-set.js");
+// コメント読み上げ・字幕機能(comments/参照)のOBS向け画面。
+const SUBTITLE_HTML: &str = include_str!("../../frontend/subtitle.html");
+const COMMENTS_HTML: &str = include_str!("../../frontend/comments.html");
+const COMMENT_COMMON_JS: &str = include_str!("../../frontend/shared/comment-common.js");
+
+/// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
+const COMMENT_HISTORY_MAX: usize = 100;
 
 /// 設定パネルの「表示関連」設定のうち、Taur本体のオーバーレイとOBS側の両方に
 /// 反映する必要があるもの一式(絵文字の大きさ・透明度・連打で大きくなる仕様の
@@ -76,6 +85,39 @@ pub struct ObsBridge {
     // 時などに、繋いだ直後の1回だけこの値を直接読んで送るために使う
     // (handle_ws_connection参照)。
     settings: Arc<Mutex<BridgeSettings>>,
+    // コメント機能の現在の状態(settingsと同じく、後から繋いだクライアント用)。
+    comments: Arc<Mutex<CommentBridgeState>>,
+}
+
+#[derive(Default)]
+struct CommentBridgeState {
+    style: Option<serde_json::Value>,
+    history: VecDeque<serde_json::Value>,
+    /// 今表示中の字幕と、それが消える時刻
+    subtitle: Option<(serde_json::Value, Instant)>,
+}
+
+impl CommentBridgeState {
+    /// 繋いだ直後のクライアントに送るメッセージ一式
+    fn initial_messages(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(style) = &self.style {
+            out.push(serde_json::json!({ "type": "commentStyle", "style": style }).to_string());
+        }
+        let items: Vec<&serde_json::Value> = self.history.iter().collect();
+        out.push(serde_json::json!({ "type": "commentHistory", "items": items }).to_string());
+        if let Some((res, until)) = &self.subtitle {
+            let now = Instant::now();
+            if *until > now {
+                let remaining = (*until - now).as_millis() as u64;
+                out.push(
+                    serde_json::json!({ "type": "subtitle", "res": res, "durationMs": remaining, "replay": true })
+                        .to_string(),
+                );
+            }
+        }
+        out
+    }
 }
 
 impl ObsBridge {
@@ -110,6 +152,39 @@ impl ObsBridge {
         self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
     }
 
+    /// コメント機能: 字幕・レス一覧の見た目の設定を配信する。
+    pub fn set_comment_style(&self, style: serde_json::Value) {
+        self.comments.lock().unwrap().style = Some(style.clone());
+        let _ = self.tx.send(serde_json::json!({ "type": "commentStyle", "style": style }).to_string());
+    }
+
+    /// コメント機能: 字幕を表示する(duration_ms後に画面側で消える)。
+    pub fn show_subtitle(&self, res: serde_json::Value, duration_ms: u64) {
+        self.comments.lock().unwrap().subtitle =
+            Some((res.clone(), Instant::now() + Duration::from_millis(duration_ms)));
+        let _ = self.tx.send(
+            serde_json::json!({ "type": "subtitle", "res": res, "durationMs": duration_ms }).to_string(),
+        );
+    }
+
+    /// コメント機能: 右のレス一覧に1件追加する。
+    pub fn push_comment(&self, res: serde_json::Value) {
+        {
+            let mut c = self.comments.lock().unwrap();
+            c.history.push_back(res.clone());
+            while c.history.len() > COMMENT_HISTORY_MAX {
+                c.history.pop_front();
+            }
+        }
+        let _ = self.tx.send(serde_json::json!({ "type": "comment", "res": res }).to_string());
+    }
+
+    /// コメント機能: 取得を止めた時に字幕を消す。
+    pub fn clear_subtitle(&self) {
+        self.comments.lock().unwrap().subtitle = None;
+        let _ = self.tx.send(serde_json::json!({ "type": "subtitleClear" }).to_string());
+    }
+
     fn update_and_broadcast(&self, apply: impl FnOnce(&mut BridgeSettings)) {
         let payload = {
             let mut s = self.settings.lock().unwrap();
@@ -140,13 +215,15 @@ pub fn start(
         combo_growth_enabled: initial_combo_growth_enabled,
         no_combo_growth_ids: initial_no_combo_growth_ids,
     }));
+    let comments = Arc::new(Mutex::new(CommentBridgeState::default()));
     let bridge = ObsBridge {
         tx: tx.clone(),
         settings: settings.clone(),
+        comments: comments.clone(),
     };
 
     tauri::async_runtime::spawn(run_http_server());
-    tauri::async_runtime::spawn(run_ws_server(tx, settings));
+    tauri::async_runtime::spawn(run_ws_server(tx, settings, comments));
 
     bridge
 }
@@ -188,6 +265,9 @@ async fn handle_http_connection(mut socket: TcpStream) {
         "/" | "/overlay.html" => ("text/html; charset=utf-8", OVERLAY_HTML),
         "/overlay.js" => ("text/javascript; charset=utf-8", OVERLAY_JS),
         "/shared/emoji-set.js" => ("text/javascript; charset=utf-8", EMOJI_SET_JS),
+        "/subtitle.html" => ("text/html; charset=utf-8", SUBTITLE_HTML),
+        "/comments.html" => ("text/html; charset=utf-8", COMMENTS_HTML),
+        "/shared/comment-common.js" => ("text/javascript; charset=utf-8", COMMENT_COMMON_JS),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {
@@ -203,7 +283,11 @@ async fn handle_http_connection(mut socket: TcpStream) {
     let _ = socket.shutdown().await;
 }
 
-async fn run_ws_server(tx: broadcast::Sender<String>, settings: Arc<Mutex<BridgeSettings>>) {
+async fn run_ws_server(
+    tx: broadcast::Sender<String>,
+    settings: Arc<Mutex<BridgeSettings>>,
+    comments: Arc<Mutex<CommentBridgeState>>,
+) {
     let listener = match TcpListener::bind(("127.0.0.1", OBS_WS_PORT)).await {
         Ok(l) => l,
         Err(e) => {
@@ -224,7 +308,8 @@ async fn run_ws_server(tx: broadcast::Sender<String>, settings: Arc<Mutex<Bridge
             combo_growth_enabled: true,
             no_combo_growth_ids: Vec::new(),
         });
-        tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_settings));
+        let initial_comments = comments.lock().map(|c| c.initial_messages()).unwrap_or_default();
+        tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_settings, initial_comments));
     }
 }
 
@@ -232,6 +317,7 @@ async fn handle_ws_connection(
     socket: TcpStream,
     mut rx: broadcast::Receiver<String>,
     initial_settings: BridgeSettings,
+    initial_comments: Vec<String>,
 ) {
     let ws_stream = match tokio_tungstenite::accept_async(socket).await {
         Ok(s) => s,
@@ -251,6 +337,11 @@ async fn handle_ws_connection(
         .is_err()
     {
         return;
+    }
+    for msg in initial_comments {
+        if write.send(tokio_tungstenite::tungstenite::Message::Text(msg)).await.is_err() {
+            return;
+        }
     }
     loop {
         match rx.recv().await {

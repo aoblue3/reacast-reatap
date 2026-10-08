@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaCast - コメント読み上げ・字幕</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif;
+    font-size: 13px;
+    background: #1c1d22;
+    color: #e6e6ea;
+  }
+  header {
+    padding: 10px 14px;
+    background: #24262d;
+    border-bottom: 1px solid #33353d;
+  }
+  .url-row { display: flex; gap: 6px; }
+  .url-row input { flex: 1; }
+  #status { margin-top: 6px; font-size: 12px; color: #a9acb8; min-height: 1.4em; }
+  #status .ok { color: #7dff9a; }
+  #status .ng { color: #ff8a8a; }
+  #status .warn { color: #ffd36b; }
+  nav { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 14px 0; }
+  nav button {
+    background: #2b2d35;
+    color: #c9cbd4;
+    border: 1px solid #3a3d47;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  nav button.active { background: #34373f; color: #fff; }
+  main { padding: 12px 14px 24px; border-top: 1px solid #3a3d47; }
+  section { display: none; }
+  section.active { display: block; }
+  .field { display: grid; grid-template-columns: 220px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
+  .field > label:first-child { color: #c4c6cf; }
+  .hint { color: #8d909c; font-size: 12px; margin: 2px 0 10px; line-height: 1.5; }
+  input[type=text], input[type=number], textarea, select {
+    background: #15161a;
+    color: #e6e6ea;
+    border: 1px solid #3a3d47;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  input[type=number] { width: 110px; }
+  input[type=text].wide { width: 100%; }
+  textarea { width: 100%; min-height: 150px; font-family: 'MS Gothic', monospace; }
+  input[type=color] { width: 48px; height: 26px; padding: 0; border: 1px solid #3a3d47; background: none; }
+  button {
+    background: #3b6df0;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button.secondary { background: #3a3d47; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .unit { color: #8d909c; margin-left: 4px; }
+  .inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .arrows { display: grid; grid-template-columns: repeat(3, 32px); gap: 2px; }
+  .arrows button { padding: 4px 0; }
+  .copy-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .copy-row code { background: #15161a; padding: 4px 6px; border-radius: 4px; flex: 1; }
+  h3 { font-size: 13px; margin: 16px 0 8px; color: #fff; }
+  #preview {
+    margin-top: 12px;
+    background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
+    border-radius: 6px;
+    padding: 18px 10px;
+    text-align: center;
+    min-height: 60px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="url-row">
+      <input id="threadUrl" type="text" data-key="threadUrl" placeholder="スレッド(または板)のURL 例: https://bbs.jpnkn.com/test/read.cgi/ao33/1791357173/" />
+      <button id="startBtn">開始</button>
+      <button id="stopBtn" class="secondary">停止</button>
+    </div>
+    <div id="status">停止中</div>
+  </header>
+
+  <nav id="tabs">
+    <button data-tab="fetch" class="active">取得</button>
+    <button data-tab="speech">読み上げ</button>
+    <button data-tab="subtitle">字幕</button>
+    <button data-tab="aa">AAモード</button>
+    <button data-tab="words">NGワード・読み方</button>
+    <button data-tab="list">右のレス一覧</button>
+    <button data-tab="output">表示先(OBS・デスクトップ)</button>
+  </nav>
+
+  <main>
+    <section data-tab="fetch" class="active">
+      <div class="hint">jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/ao33/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
+      <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
+      <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
+      <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
+      <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
+      <h3>テスト表示</h3>
+      <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button></div>
+      <div class="hint">順番待ちの先頭に割り込んで表示・読み上げます(取得を開始していなくても使えます)。</div>
+    </section>
+
+    <section data-tab="speech">
+      <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
+      <div class="field"><label>読み上げソフト(コマンドライン引渡し)</label><div><input type="text" class="wide" data-key="commandPath" /></div></div>
+      <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
+      <div class="hint">#Res#(本文)・#No#(番号)・#Name#(名前)・#Time#(時間)が置き換わります。SpeechCastMeと同じく、vrx.exe(民安★TALK)なら「#Res#」のままで使えます。本文はシェルを通さずそのまま1つの引数として渡します。</div>
+      <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>レス読み上げ間隔(ターボモード)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>ターボを開始するレス件数</label><div><input type="number" min="1" data-key="turboThreshold" /><span class="unit">順番待ちがこの件数以上溜まったら短い間隔にします</span></div></div>
+      <div class="field"><label>レス番号を読み上げる</label><div><input type="checkbox" data-key="readResNumber" /></div></div>
+      <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
+    </section>
+
+    <section data-tab="subtitle">
+      <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
+      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
+      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
+      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.subtitle.outlineWidth" /><span class="unit">px</span></div></div>
+      <div class="field"><label>太字 / 斜体 / 縦書き</label><div class="inline">
+        <label><input type="checkbox" data-key="style.subtitle.bold" /> 太字</label>
+        <label><input type="checkbox" data-key="style.subtitle.italic" /> 斜体</label>
+        <label><input type="checkbox" data-key="style.subtitle.vertical" /> 縦書き</label>
+      </div></div>
+      <div class="field"><label>字幕を瞬間表示する</label><div><input type="checkbox" data-key="style.subtitle.instant" /><span class="unit">OFFにすると1文字ずつ表示します</span></div></div>
+      <div class="field"><label>レス番号を表示する</label><div><input type="checkbox" data-key="style.subtitle.showResNumber" /></div></div>
+      <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
+      <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
+        <div class="arrows">
+          <span></span><button class="secondary" data-nudge="0,-2">↑</button><span></span>
+          <button class="secondary" data-nudge="-2,0">←</button><button class="secondary" data-nudge="reset">○</button><button class="secondary" data-nudge="2,0">→</button>
+          <span></span><button class="secondary" data-nudge="0,2">↓</button><span></span>
+        </div>
+        <span class="unit">X <input type="number" data-key="style.subtitle.offsetX" /> Y <input type="number" data-key="style.subtitle.offsetY" /> px</span>
+      </div></div>
+      <div id="preview">プレビュー 123 ABC</div>
+    </section>
+
+    <section data-tab="aa">
+      <div class="field"><label>AAモードで字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="aaDisplayMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.aa.fontFamily" /></div></div>
+      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.aa.fontSize" /><span class="unit">px</span></div></div>
+      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.aa.color" /><input type="color" data-key="style.aa.outlineColor" /></div></div>
+      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.aa.outlineWidth" /><span class="unit">px</span></div></div>
+      <div class="field"><label>字幕枠に合わせて縮小する</label><div class="inline">
+        <label><input type="checkbox" data-key="style.aa.shrinkToWidth" /> 幅に合わせる</label>
+        <label><input type="checkbox" data-key="style.aa.shrinkToHeight" /> 高さに合わせる</label>
+      </div></div>
+      <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
+      <div class="field"><label>レス番号を読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
+      <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
+      <h3>AAモードになる条件</h3>
+      <div class="inline"><input type="number" min="0" data-key="aaThresholdChars" /><span>文字以上(0で文字数では判定しない)、または下記の文字列を含む場合(1行に1つ)</span></div>
+      <textarea data-key="aaPatterns" style="margin-top:6px"></textarea>
+    </section>
+
+    <section data-tab="words">
+      <h3>NGワード(1行に1つ。名前か本文に含まれるレスは表示も読み上げもしません)</h3>
+      <textarea data-key="ngWords"></textarea>
+      <h3>読み方(1行に「単語/読み方」。単語部分には正規表現が使えます)</h3>
+      <textarea data-key="readingRules" style="min-height: 220px"></textarea>
+      <div class="hint">SpeechCastMeの「読み方」の内容をそのまま貼り付けて使えます(¥はバックスラッシュとして扱います)。</div>
+    </section>
+
+    <section data-tab="list">
+      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
+      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
+      <div class="field"><label>番号・名前の色 / 本文の色</label><div class="inline"><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.bodyColor" /></div></div>
+      <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
+      <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
+      <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
+      <div class="field"><label>書き込み日時を表示する</label><div><input type="checkbox" data-key="style.list.showDate" /></div></div>
+      <div class="hint">右のレス一覧には、字幕に表示されたのと同じタイミングでレスが追加されます(字幕・読み上げとずれません)。</div>
+    </section>
+
+    <section data-tab="output">
+      <h3>OBSのブラウザソース</h3>
+      <div class="hint">OBSで「ブラウザ」ソースを追加し、URLに下記を指定してください(ReaCastの起動中だけ表示されます)。幅・高さは配信画面に合わせて調整してください(字幕は指定した範囲の下端に表示します)。</div>
+      <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
+
+      <h3>デスクトップ字幕(配信者のPCの画面に、読み上げ中のレスを表示)</h3>
+      <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
+      <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
+      <div class="field"><label>表示範囲(モニターに対する割合)</label><div class="inline">
+        左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
+        上 <input type="number" min="0" max="95" data-key="desktopY" data-percent />%
+        幅 <input type="number" min="5" max="100" data-key="desktopWidth" data-percent />%
+        高さ <input type="number" min="5" max="100" data-key="desktopHeight" data-percent />%
+      </div></div>
+      <div class="hint">字幕のフォント・色・位置の微調整は「字幕」タブの設定がそのまま使われます。デスクトップ字幕はクリックを透過するので、下のウィンドウの操作を邪魔しません。</div>
+    </section>
+  </main>
+
+  <datalist id="fontList">
+    <option value="BIZ UDゴシック"></option>
+    <option value="BIZ UDPゴシック"></option>
+    <option value="BIZ UD明朝"></option>
+    <option value="メイリオ"></option>
+    <option value="Meiryo UI"></option>
+    <option value="游ゴシック"></option>
+    <option value="Yu Gothic UI"></option>
+    <option value="MS UI Gothic"></option>
+    <option value="ＭＳ Ｐゴシック"></option>
+    <option value="ＭＳ ゴシック"></option>
+    <option value="UD デジタル 教科書体 N-B"></option>
+  </datalist>
+
+  <script src="shared/comment-common.js"></script>
+  <script src="comment_settings.js"></script>
+</body>
+</html>

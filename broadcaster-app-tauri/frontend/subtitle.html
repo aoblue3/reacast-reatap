@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaCast 字幕</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  /* 字幕は表示領域の下端に揃える(OBSでもデスクトップ字幕でも、ソース/
+     ウィンドウの大きさで表示範囲を決める) */
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+  }
+  #box {
+    max-width: 100%;
+    max-height: 100%;
+    box-sizing: border-box;
+    padding: 0.15em 0.4em;
+    line-height: 1.3;
+    white-space: pre-wrap;
+    word-break: break-word;
+    opacity: 0;
+    transition: opacity 120ms linear;
+  }
+  #box.visible { opacity: 1; }
+  #box.instant { transition: none; }
+  #box.aa {
+    white-space: pre;
+    word-break: normal;
+    line-height: 1.1;
+  }
+  #box.vertical { writing-mode: vertical-rl; }
+  .res-no { display: block; font-size: 0.75em; }
+</style>
+</head>
+<body>
+  <div id="stage"><div id="box"></div></div>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    const C = window.CommentCommon;
+    const box = document.getElementById('box');
+    let style = C.mergeStyle(null);
+    let hideTimer = null;
+    let typeTimer = null;
+    let current = null;
+
+    function applyBoxStyle(aa) {
+      const s = aa ? style.aa : style.subtitle;
+      const sub = style.subtitle;
+      box.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      box.style.fontSize = `${Number(s.fontSize) || 30}px`;
+      box.style.fontWeight = aa ? 'normal' : sub.bold ? 'bold' : 'normal';
+      box.style.fontStyle = !aa && sub.italic ? 'italic' : 'normal';
+      box.style.color = s.color;
+      box.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      box.style.textAlign = aa ? 'left' : sub.align || 'center';
+      box.style.transform = `translate(${Number(sub.offsetX) || 0}px, ${Number(sub.offsetY) || 0}px)`;
+      box.classList.toggle('aa', !!aa);
+      box.classList.toggle('vertical', !aa && !!sub.vertical);
+      box.classList.toggle('instant', !!sub.instant);
+    }
+
+    /** 表示領域に収まらない場合は文字を小さくする(AAは設定に従い、
+     * 通常の字幕は高さだけ常に収める)。 */
+    function fitToStage(aa) {
+      const base = Number((aa ? style.aa : style.subtitle).fontSize) || 30;
+      box.style.fontSize = `${base}px`;
+      const fitW = aa ? style.aa.shrinkToWidth : false;
+      const fitH = aa ? style.aa.shrinkToHeight : true;
+      const availW = window.innerWidth;
+      const availH = window.innerHeight;
+      let scale = 1;
+      if (fitW && box.scrollWidth > availW) scale = Math.min(scale, availW / box.scrollWidth);
+      if (fitH && box.scrollHeight > availH) scale = Math.min(scale, availH / box.scrollHeight);
+      if (scale < 1) box.style.fontSize = `${Math.max(6, Math.floor(base * scale))}px`;
+    }
+
+    function setContent(res, body) {
+      box.textContent = '';
+      const sub = style.subtitle;
+      if (!res.aa && sub.showResNumber && res.no > 0 && !res.system) {
+        const no = document.createElement('span');
+        no.className = 'res-no';
+        no.textContent = `レス${res.no}`;
+        box.appendChild(no);
+      }
+      box.appendChild(document.createTextNode(body));
+    }
+
+    function show(res, durationMs, replay) {
+      clearTimeout(hideTimer);
+      clearInterval(typeTimer);
+      current = res;
+      applyBoxStyle(res.aa);
+      const body = String(res.body || '');
+      const typewriter = !style.subtitle.instant && !res.aa && !replay && body.length > 1;
+      if (!typewriter) {
+        setContent(res, body);
+        fitToStage(res.aa);
+      } else {
+        // 「瞬間表示」OFF: 1文字ずつ表示する(全体で最大1.2秒、字幕を出す時間の半分まで)
+        const chars = Array.from(body);
+        const totalMs = Math.min(1200, Math.max(200, durationMs / 2));
+        const stepMs = Math.max(16, totalMs / chars.length);
+        let shown = 0;
+        setContent(res, '');
+        typeTimer = setInterval(() => {
+          shown = Math.min(chars.length, shown + Math.max(1, Math.round(16 / stepMs)));
+          setContent(res, chars.slice(0, shown).join(''));
+          fitToStage(false);
+          if (shown >= chars.length) clearInterval(typeTimer);
+        }, stepMs);
+      }
+      box.classList.add('visible');
+      hideTimer = setTimeout(hide, Math.max(300, Number(durationMs) || 3000));
+    }
+
+    function hide() {
+      clearInterval(typeTimer);
+      box.classList.remove('visible');
+      current = null;
+    }
+
+    C.connectBridge((msg) => {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        if (current) {
+          applyBoxStyle(current.aa);
+          fitToStage(current.aa);
+        }
+      } else if (msg.type === 'subtitle' && msg.res) {
+        show(msg.res, msg.durationMs, !!msg.replay);
+      } else if (msg.type === 'subtitleClear') {
+        hide();
+      }
+    });
+    window.addEventListener('resize', () => {
+      if (current) fitToStage(current.aa);
+    });
+  </script>
+</body>
+</html>

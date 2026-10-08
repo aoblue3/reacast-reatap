@@ -1,10 +1,11 @@
+mod comments;
 mod config_store;
 mod connect_code;
 mod obs_bridge;
 pub mod updater;
 
 use config_store::ConfigStore;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -207,6 +208,101 @@ fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
         let _ = win.set_position(tauri::Position::Physical(pos));
         let _ = win.set_size(tauri::Size::Physical(size));
     }
+}
+
+/// デスクトップ字幕ウィンドウ(コメント機能)の本来の位置・サイズ。
+fn subtitle_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
+    let s = app.state::<Arc<comments::CommentEngine>>().settings();
+    let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, s.desktop_monitor_id.as_deref());
+    let region = RegionSpec::clamped(s.desktop_x, s.desktop_y, s.desktop_width, s.desktop_height);
+    apply_overlay_region(monitor_pos, monitor_size, Some(region))
+}
+
+/// デスクトップ字幕ウィンドウを、設定と取得状態に合わせて作る/閉じる/動かす。
+/// 「デスクトップに字幕を表示する」がONで、かつコメントの取得中の間だけ
+/// ウィンドウを作る(使っていない間はWebViewを1つも増やさない=軽さ優先)。
+/// ウィンドウを作るので、メインスレッド以外(async指定のコマンド等)から呼ぶこと。
+pub(crate) fn sync_subtitle_window(app: &tauri::AppHandle) {
+    let engine = app.state::<Arc<comments::CommentEngine>>();
+    let wanted = engine.settings().desktop_enabled && engine.is_running();
+    let existing = app.get_webview_window("subtitle");
+    match (wanted, existing) {
+        (false, Some(win)) => {
+            let _ = win.destroy();
+        }
+        (true, Some(win)) => {
+            let (pos, size) = subtitle_target_geometry(app);
+            let _ = win.set_position(tauri::Position::Physical(pos));
+            let _ = win.set_size(tauri::Size::Physical(size));
+        }
+        (true, None) => {
+            if let Err(e) = create_subtitle_window(app) {
+                log::warn!("デスクトップ字幕ウィンドウの作成に失敗しました: {e}");
+            }
+        }
+        (false, None) => {}
+    }
+}
+
+fn create_subtitle_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let (pos, size) = subtitle_target_geometry(app);
+    // 字幕の画面(subtitle.html)はOBSのブラウザソースと同じファイル。Tauriの中で
+    // 開かれた時も、OBSと同じくobs_bridgeのWebSocketから字幕を受け取る
+    // (表示のタイミングをOBS側と完全に揃えるため)。
+    let win = WebviewWindowBuilder::new(app, "subtitle", WebviewUrl::App("subtitle.html".into()))
+        .title("ReaCast 字幕")
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(true)
+        .focused(false)
+        .build()?;
+    win.set_position(tauri::Position::Physical(pos))?;
+    win.set_size(tauri::Size::Physical(size))?;
+    let _ = win.set_ignore_cursor_events(true);
+    Ok(())
+}
+
+/// デスクトップ字幕ウィンドウのずれを直す(realign_overlay_windowと同じ理由)。
+fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
+    let (pos, size) = subtitle_target_geometry(app);
+    let (Ok(cur_pos), Ok(cur_size)) = (win.outer_position(), win.outer_size()) else {
+        return;
+    };
+    const TOLERANCE_PX: i64 = 2;
+    let off = |a: i64, b: i64| (a - b).abs() > TOLERANCE_PX;
+    if off(cur_pos.x.into(), pos.x.into())
+        || off(cur_pos.y.into(), pos.y.into())
+        || off(cur_size.width.into(), size.width.into())
+        || off(cur_size.height.into(), size.height.into())
+    {
+        let _ = win.set_position(tauri::Position::Physical(pos));
+        let _ = win.set_size(tauri::Size::Physical(size));
+    }
+}
+
+/// コメント読み上げ・字幕の設定ウィンドウを開く(開いていれば前面に出す)。
+#[tauri::command(async)]
+fn open_comment_settings(app: tauri::AppHandle) -> Result<(), String> {
+    open_comment_settings_window(&app).map_err(|e| e.to_string())
+}
+
+fn open_comment_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(win) = app.get_webview_window("commentSettings") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App("comment_settings.html".into()))
+        .title("ReaCast - コメント読み上げ・字幕")
+        .inner_size(760.0, 820.0)
+        .min_inner_size(520.0, 400.0)
+        .build()?;
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -465,6 +561,14 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                     realign_overlay_window(&reassert_handle, &win);
                 }
                 let _ = win.set_always_on_top(true);
+                // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
+                // 最前面ウィンドウに隠される)で、2秒おきに位置と最前面を直す
+                if !bursting {
+                    if let Some(sub) = reassert_handle.get_webview_window("subtitle") {
+                        realign_subtitle_window(&reassert_handle, &sub);
+                        let _ = sub.set_always_on_top(true);
+                    }
+                }
             }
             // オーバーレイウィンドウが無くなっている(アプリ終了中など)場合は
             // このスレッドも静かに終了する。
@@ -862,6 +966,21 @@ pub fn run() {
             // ため、ウィンドウを作る前に必ず管理下に置いておく。
             app.manage(TopmostReasserter::new());
 
+            // コメント読み上げ・字幕機能。設定を読み込み、見た目の設定をOBS向けの
+            // 画面に配っておく(取得自体は「開始」を押すか、起動時に自動開始が
+            // ONの場合だけ始まる)。
+            let comment_settings = comments::load_settings(&app.state::<ConfigStore>());
+            let engine = comments::CommentEngine::new(app.handle().clone(), comment_settings.clone());
+            engine.apply_settings(comment_settings.clone());
+            app.manage(engine.clone());
+            if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
+                if engine.start(&comment_settings.thread_url).is_ok() {
+                    let h = app.handle().clone();
+                    // setup()はメインスレッドで動くので、字幕ウィンドウの作成は別スレッドから
+                    std::thread::spawn(move || sync_subtitle_window(&h));
+                }
+            }
+
             let handle = app.handle().clone();
             create_overlay_window(&handle)?;
             create_control_window(&handle)?;
@@ -872,6 +991,13 @@ pub fn run() {
             // (viewer-app-tauri/src-tauri/src/lib.rsの同種の実装を踏襲)。
             let open_item =
                 MenuItem::with_id(&handle, "open", "コントロールパネルを開く", true, None::<&str>)?;
+            let comments_item = MenuItem::with_id(
+                &handle,
+                "comments",
+                "コメント読み上げ・字幕の設定を開く",
+                true,
+                None::<&str>,
+            )?;
             let minimize_item = MenuItem::with_id(
                 &handle,
                 "minimize",
@@ -887,7 +1013,8 @@ pub fn run() {
                 None::<&str>,
             )?;
 
-            let tray_menu = Menu::with_items(&handle, &[&open_item, &minimize_item, &quit_item])?;
+            let tray_menu =
+                Menu::with_items(&handle, &[&open_item, &comments_item, &minimize_item, &quit_item])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
@@ -906,6 +1033,12 @@ pub fn run() {
                     match id {
                         "quit" => {
                             app.exit(0);
+                        }
+                        "comments" => {
+                            let app = app.clone();
+                            std::thread::spawn(move || {
+                                let _ = open_comment_settings_window(&app);
+                            });
                         }
                         "minimize" => {
                             if let Some(w) = app.get_webview_window("control") {
@@ -965,6 +1098,13 @@ pub fn run() {
             open_region_picker,
             updater::check_for_update,
             updater::download_and_apply_update,
+            open_comment_settings,
+            comments::comments_get_settings,
+            comments::comments_save_settings,
+            comments::comments_status,
+            comments::comments_start,
+            comments::comments_stop,
+            comments::comments_test,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

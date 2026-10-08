@@ -11,6 +11,10 @@
  * アドレスは視聴者アプリのビルド時に埋め込む前提)。
  */
 const invoke = window.__TAURI__.core.invoke;
+
+document.getElementById('openCommentSettingsBtn').addEventListener('click', () => {
+  invoke('open_comment_settings').catch(() => {});
+});
 const listen = window.__TAURI__.event.listen;
 
 const connStatusEl = document.getElementById('connStatus');

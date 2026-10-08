@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>ReaCast レス一覧</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  #list {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  /* 新しいレスを下に追加する設定の時は、下端に寄せる */
+  #list.bottom { justify-content: flex-end; }
+  .item {
+    margin: 0 0 0.45em;
+    animation: item-in 220ms ease-out;
+    flex: 0 0 auto;
+  }
+  .head { font-size: 0.8em; font-weight: bold; }
+  .body { white-space: pre-wrap; word-break: break-word; }
+  .item.aa .body { white-space: pre; font-size: 0.6em; line-height: 1.1; }
+  @keyframes item-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="list"></div>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    const C = window.CommentCommon;
+    const listEl = document.getElementById('list');
+    let style = C.mergeStyle(null);
+    let items = [];
+
+    function applyListStyle() {
+      const s = style.list;
+      listEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      listEl.style.fontSize = `${Number(s.fontSize) || 20}px`;
+      listEl.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      listEl.classList.toggle('bottom', !s.newestFirst);
+    }
+
+    function buildItem(res) {
+      const s = style.list;
+      const el = document.createElement('div');
+      el.className = 'item' + (res.aa ? ' aa' : '');
+      const head = document.createElement('div');
+      head.className = 'head';
+      head.style.color = s.nameColor;
+      const parts = [];
+      if (res.no > 0 && !res.system) parts.push(String(res.no));
+      parts.push(res.name || '');
+      if (s.showDate && res.date) parts.push(res.date);
+      head.textContent = parts.join(' ');
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.style.color = s.bodyColor;
+      body.textContent = res.body || '';
+      el.append(head, body);
+      return el;
+    }
+
+    function maxItems() {
+      return Math.max(1, Math.min(100, Number(style.list.maxItems) || 30));
+    }
+
+    function render() {
+      applyListStyle();
+      listEl.textContent = '';
+      const shown = items.slice(-maxItems());
+      const ordered = style.list.newestFirst ? shown.slice().reverse() : shown;
+      for (const res of ordered) {
+        const el = buildItem(res);
+        el.style.animation = 'none';
+        listEl.appendChild(el);
+      }
+    }
+
+    function add(res) {
+      items.push(res);
+      if (items.length > 100) items = items.slice(-100);
+      const el = buildItem(res);
+      if (style.list.newestFirst) listEl.prepend(el);
+      else listEl.appendChild(el);
+      while (listEl.children.length > maxItems()) {
+        (style.list.newestFirst ? listEl.lastElementChild : listEl.firstElementChild).remove();
+      }
+    }
+
+    C.connectBridge((msg) => {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        render();
+      } else if (msg.type === 'commentHistory') {
+        items = Array.isArray(msg.items) ? msg.items.slice(-100) : [];
+        render();
+      } else if (msg.type === 'comment' && msg.res) {
+        add(msg.res);
+      }
+    });
+    applyListStyle();
+  </script>
+</body>
+</html>
