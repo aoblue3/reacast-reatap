@@ -64,6 +64,8 @@ const resetOrderBtn = document.getElementById('resetOrderBtn');
 /* ------------------------- 状態 ------------------------- */
 let relayClient = null;
 let isJoined = false; // 中継サーバーへのjoinが完了していて、今リアクションを送れるか
+// 配信者がReaCastでOFFにしているリアクション(中継サーバーから届く)。灰色にして押せなくする。
+let broadcasterDisabledIds = new Set();
 let currentPassphrase = '';
 let lastSentAt = 0;
 let mutedUntil = 0;
@@ -291,6 +293,7 @@ resetOrderBtn.addEventListener('click', () => {
 /* ------------------------- リアクションボタンの描画 ------------------------- */
 
 function onClickEmoji(emojiId) {
+  if (broadcasterDisabledIds.has(emojiId)) return;
   const now = Date.now();
   if (now < mutedUntil) return;
   if (now - lastSentAt < DEBOUNCE_MS) return;
@@ -329,6 +332,11 @@ function renderGrid() {
       }
     }
     btn.title = emoji.label;
+    if (broadcasterDisabledIds.has(emoji.id)) {
+      btn.classList.add('off-by-broadcaster');
+      btn.disabled = true;
+      btn.title = `${emoji.label}(配信者がOFFにしています)`;
+    }
     btn.addEventListener('click', () => onClickEmoji(emoji.id));
     gridEl.appendChild(btn);
   }
@@ -461,6 +469,7 @@ function startConnect(rawPassphrase) {
   const client = new window.RelayClient({ url, hello: { type: 'join', passphrase } });
   relayClient = client;
   isJoined = false;
+  broadcasterDisabledIds = new Set();
   // 古いクライアント(startConnectで作り直す前のもの)から遅れて届いたイベントで
   // 今の状態を上書きしないよう、各ハンドラは今のクライアントの時だけ動かす。
   const isCurrent = () => relayClient === client;
@@ -500,6 +509,12 @@ function startConnect(rawPassphrase) {
         relayClient = null;
       }
     }
+  });
+
+  client.on('type:disabledReactions', (m) => {
+    if (!isCurrent()) return;
+    broadcasterDisabledIds = new Set(Array.isArray(m.ids) ? m.ids : []);
+    renderGrid();
   });
 
   client.on('type:muted', (m) => {

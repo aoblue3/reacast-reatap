@@ -30,8 +30,17 @@ function connect(options) {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, options);
     ws._queue = [];
     ws._waiters = [];
+    // disabledReactions(join直後や配信者の変更時に届く)は他のテストの
+    // メッセージ順を崩さないよう別の受け口に振り分ける(nextDisabledReactions参照)
+    ws._disabled = [];
+    ws._disabledWaiters = [];
     ws.on('message', (raw) => {
       const msg = JSON.parse(raw.toString('utf8'));
+      if (msg.type === 'disabledReactions') {
+        if (ws._disabledWaiters.length) ws._disabledWaiters.shift()(msg);
+        else ws._disabled.push(msg);
+        return;
+      }
       if (ws._waiters.length) {
         ws._waiters.shift()(msg);
       } else {
@@ -41,6 +50,11 @@ function connect(options) {
     ws.once('open', () => resolve(ws));
     ws.once('error', reject);
   });
+}
+
+function nextDisabledReactions(ws) {
+  if (ws._disabled.length) return Promise.resolve(ws._disabled.shift());
+  return new Promise((resolve) => ws._disabledWaiters.push(resolve));
 }
 
 function nextMessage(ws) {
@@ -294,6 +308,38 @@ async function run() {
     exe2.close();
     webBroadcaster.close();
     console.log('OK: exe版は同じIPから複数接続できる');
+
+    // --- 14b. 配信者がOFFにしたリアクションの一覧が視聴者に中継される ---
+    const offPassphrase = `off-${crypto.randomBytes(3).toString('hex')}`;
+    const offBroadcaster = await connect();
+    send(offBroadcaster, {
+      type: 'register',
+      roomId: crypto.randomBytes(5).toString('hex'),
+      broadcasterToken: crypto.randomBytes(24).toString('hex'),
+      passphrase: offPassphrase,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    assert.strictEqual((await nextMessage(offBroadcaster)).type, 'registered');
+    send(offBroadcaster, { type: 'disabledReactions', ids: ['poop', 'bomb', 'poop'] });
+    const offViewer = await connect();
+    send(offViewer, { type: 'join', passphrase: offPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(offViewer)).type, 'joined');
+    assert.deepStrictEqual((await nextDisabledReactions(offViewer)).ids, ['poop', 'bomb']);
+    console.log('OK: join直後に、配信者がOFFにしているリアクションの一覧が届く(重複は除く)');
+
+    send(offBroadcaster, { type: 'disabledReactions', ids: [] });
+    assert.deepStrictEqual((await nextDisabledReactions(offViewer)).ids, []);
+    console.log('OK: 配信者が一覧を変更すると、接続中の視聴者にもすぐ届く');
+
+    send(offViewer, { type: 'disabledReactions', ids: ['clap'] });
+    assert.strictEqual((await nextMessage(offViewer)).code, 'not_registered');
+    send(offBroadcaster, { type: 'disabledReactions', ids: ['bad id!'] });
+    let offErr;
+    do { offErr = await nextMessage(offBroadcaster); } while (offErr.type !== 'error');
+    assert.strictEqual(offErr.code, 'invalid_params');
+    console.log('OK: 視聴者からの送信や不正なIDは拒否される');
+    offViewer.close();
+    offBroadcaster.close();
 
     // --- 15. 生存確認(ping)に応答する接続は切られない ---
     const alive = await connect();

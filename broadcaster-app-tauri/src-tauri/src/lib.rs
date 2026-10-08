@@ -171,6 +171,44 @@ fn apply_overlay_region(
     (PhysicalPosition::new(x, y), PhysicalSize::new(width, height))
 }
 
+/// 今の設定(表示モニター・表示範囲)から、オーバーレイウィンドウが本来
+/// あるべき位置・サイズを計算する。
+fn overlay_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
+    let store = app.state::<ConfigStore>();
+    let saved_monitor_id = store
+        .get("overlayMonitorId")
+        .and_then(|v| v.as_str().map(String::from));
+    let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, saved_monitor_id.as_deref());
+    apply_overlay_region(monitor_pos, monitor_size, read_overlay_region(&store))
+}
+
+/// オーバーレイウィンドウが本来の位置・サイズからずれていたら戻す。
+///
+/// 経緯: マルチモニター環境でPCがスリープすると、その間にモニターの電源が
+/// 切れて「接続が外れた」扱いになり、Windowsがそのモニター上のウィンドウを
+/// 別のモニターへ移したり位置をずらしたりする。オーバーレイの位置・サイズは
+/// 起動時と設定変更時にしか合わせていなかったため、スリープ明けにオーバーレイが
+/// ずれたまま戻らず、「アプリは操作できるのに正面のモニターに絵文字が出ない
+/// (モニターの端に何かチラチラ見えるだけ)」という報告があった(トリプル
+/// モニター環境、1〜2日起動しっぱなしの時に発生)。最前面の取り直しと同じ
+/// スレッドから定期的に呼び、ずれていれば設定どおりの場所へ戻す。
+fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
+    let (pos, size) = overlay_target_geometry(app);
+    let (Ok(cur_pos), Ok(cur_size)) = (win.outer_position(), win.outer_size()) else {
+        return;
+    };
+    // Windows側の丸め等でわずかにずれるだけなら何もしない(毎回動かし直さない)。
+    const TOLERANCE_PX: i64 = 2;
+    let off = |a: i64, b: i64| (a - b).abs() > TOLERANCE_PX;
+    let moved = off(cur_pos.x.into(), pos.x.into()) || off(cur_pos.y.into(), pos.y.into());
+    let resized = off(cur_size.width.into(), size.width.into())
+        || off(cur_size.height.into(), size.height.into());
+    if moved || resized {
+        let _ = win.set_position(tauri::Position::Physical(pos));
+        let _ = win.set_size(tauri::Size::Physical(size));
+    }
+}
+
 #[derive(serde::Serialize)]
 struct MonitorInfo {
     id: String,
@@ -408,6 +446,8 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // (上部の定義・emit_overlay_reaction参照)により150ms間隔に切り替わる。
     // アニメーション再生中に「常に最前面」設定のゲーム側が自分を再主張してくる
     // 競争に負けにくくするための対策。
+    // 2秒おきの通常時には、ついでにオーバーレイの位置・サイズのずれも直す
+    // (realign_overlay_window参照。150ms間隔のバースト中はやらない)。
     let reassert_handle = app.clone();
     std::thread::spawn(move || loop {
         let bursting = reassert_handle
@@ -421,6 +461,9 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         });
         match reassert_handle.get_webview_window("overlay") {
             Some(win) => {
+                if !bursting {
+                    realign_overlay_window(&reassert_handle, &win);
+                }
                 let _ = win.set_always_on_top(true);
             }
             // オーバーレイウィンドウが無くなっている(アプリ終了中など)場合は

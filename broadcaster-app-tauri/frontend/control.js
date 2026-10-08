@@ -228,6 +228,18 @@ function isReactionEnabled(emojiId) {
 
 async function persistDisabledReactionIds() {
   await invoke('cfg_set', { key: 'disabledReactionIds', value: disabledReactionIds });
+  sendDisabledReactions();
+}
+
+/** OFFにしているリアクションの一覧を中継サーバー経由で視聴者に知らせる
+ * (視聴者側のボタンを灰色にして押せなくするため。以前はOFFにしたリアクションも
+ * 視聴者側では普通に押せてしまい、押しても配信画面に何も出ないので「送れない」と
+ * 勘違いされることがあった)。未接続なら何もしない(繋がった時点で
+ * type:registeredのハンドラから改めて送る)。古い中継サーバーはこのメッセージを
+ * 知らずunknown_typeエラーを返すが、下のtype:errorハンドラは無視する。 */
+function sendDisabledReactions() {
+  if (!relayClient) return;
+  relayClient.send({ type: 'disabledReactions', ids: disabledReactionIds });
 }
 
 /** 1個分のリアクションチップ要素を作る(クリックでON/OFF切り替え)。 */
@@ -687,6 +699,7 @@ async function connectRelay(creds, relayAddress, passphrase) {
   relayClient.on('type:registered', () => {
     state.relayConnected = true;
     push();
+    sendDisabledReactions();
   });
   relayClient.on('type:viewerCount', (m) => {
     state.viewerCount = m.count;

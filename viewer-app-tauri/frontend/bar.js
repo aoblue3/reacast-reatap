@@ -48,6 +48,8 @@ let lastSentAt = 0;
 let mutedUntil = 0;
 let muteTimer = null;
 let relayClient = null;
+// 配信者がReaCastでOFFにしているリアクション(中継サーバーから届く)。灰色にして押せなくする。
+let broadcasterDisabledIds = new Set();
 let pollTimer = null;
 
 // プロファイル個別設定(既定値。init()で読み込んだ内容やprofile-settings-changed
@@ -149,6 +151,8 @@ function applyBarAppearance(scale, bgAlpha) {
 let lastTargetRawHandle = 0;
 
 function onClickEmoji(emojiId) {
+  // ホットキー経由(下のreatap:hotkey参照)でもここを通るので、ここで弾けば両方止まる
+  if (broadcasterDisabledIds.has(emojiId)) return;
   const now = Date.now();
   if (now < mutedUntil) return;
   if (now - lastSentAt < DEBOUNCE_MS) return;
@@ -216,6 +220,10 @@ function renderButtons() {
     btn.addEventListener('click', () => onClickEmoji(emoji.id));
     const hotkey = hotkeyMap[emoji.id];
     btn.title = hotkey ? `${emoji.label}(${formatHotkeyLabel(hotkey)})` : emoji.label;
+    if (broadcasterDisabledIds.has(emoji.id)) {
+      btn.classList.add('off-by-broadcaster');
+      btn.title = `${emoji.label}(配信者がOFFにしています)`;
+    }
     if (hotkey) {
       const badge = document.createElement('span');
       badge.className = 'hk-badge';
@@ -271,6 +279,11 @@ function connectRelay(relayHost, relayPort) {
   relayClient = new window.RelayClient({
     url: `ws://${relayHost}:${relayPort}`,
     hello: { type: 'join', passphrase: profile.passphrase },
+  });
+  broadcasterDisabledIds = new Set();
+  relayClient.on('type:disabledReactions', (m) => {
+    broadcasterDisabledIds = new Set(Array.isArray(m.ids) ? m.ids : []);
+    renderButtons();
   });
   relayClient.on('type:muted', (m) => {
     mutedUntil = m.untilMs;

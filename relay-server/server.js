@@ -17,12 +17,18 @@
  *   C->S register  {type:'register', roomId, broadcasterToken, passphrase, protocolVersion}
  *   C->S join      {type:'join', passphrase, protocolVersion}
  *   C->S reaction  {type:'reaction', emoji}                (join済み視聴者のみ)
+ *   C->S disabledReactions {type:'disabledReactions', ids:[emojiId...]}  (配信者のみ。配信者がOFFにしているリアクション)
  *   S->C ok        {type:'registered', roomId} / {type:'joined', roomId}
  *   S->C passphrase_ok {type:'passphrase_ok', passphrase}   (配信者のみ。合言葉の登録/変更が成功した通知)
  *   S->C error     {type:'error', code, message}
  *   S->C reaction  {type:'reaction', emoji, viewerId, ts}  (配信者のみ受信)
  *   S->C muted     {type:'muted', untilMs}
  *   S->C viewerCount {type:'viewerCount', count}           (配信者のみ、参考情報)
+ *   S->C disabledReactions {type:'disabledReactions', ids}  (視聴者のみ。join直後と、配信者が変更した時)
+ *
+ * disabledReactionsは後から追加したメッセージ。古い視聴者アプリは知らないtypeを
+ * 無視するだけ、古い中継サーバーは配信者にunknown_typeエラーを返すだけ(配信者
+ * アプリ側は無視する)なので、protocolVersionは上げていない。
  *
  * 合言葉について: 以前は「中継サーバーのアドレス+部屋ID+視聴者トークン」を
  * 暗号化して長い接続コードとして配布していたが、手入力しづらいという要望を受け、
@@ -60,6 +66,7 @@ const RATE_STATE_CLEANUP_INTERVAL_MS = 60_000; // IP別レート状態の掃除�
 const RATE_STATE_MAX_IDLE_MS = 10 * 60_000; // このぶん操作が無いIP別レート状態は掃除してよい
 const MAX_MESSAGE_BYTES = 2048; // 1メッセージの最大サイズ(不正・過大なデータを弾く)
 const ALLOWED_EMOJI_ID_RE = /^[a-zA-Z0-9_-]{1,32}$/; // 絵文字IDの形式チェック
+const MAX_DISABLED_REACTIONS = 200; // disabledReactionsで受け付けるIDの最大数
 const ROOM_ID_RE = /^[0-9a-f]{10}$/; // 5byte hex
 const BROADCASTER_TOKEN_RE = /^[0-9a-f]{48}$/; // 24byte hex
 const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // 英数字で開始、3〜32文字(- _ 可)
@@ -411,6 +418,8 @@ class RelayServer {
         return this._handleRegister(ws, msg);
       case 'join':
         return this._handleJoin(ws, msg);
+      case 'disabledReactions':
+        return this._handleDisabledReactions(ws, msg);
       case 'reaction':
         return this._handleReaction(ws, msg);
       default:
@@ -438,6 +447,9 @@ class RelayServer {
       room = {
         broadcasterToken,
         passphrase: null,
+        // 配信者がOFFにしているリアクションのID一覧(視聴者側でボタンを灰色に
+        // するために中継する。中継サーバー自身はこれで転送を止めたりはしない)
+        disabledReactions: [],
         broadcasterConn: null,
         viewerConns: new Set(),
         createdAt: Date.now(),
@@ -533,10 +545,31 @@ class RelayServer {
     ws._viewerId = `v_${Math.random().toString(36).slice(2, 10)}`;
 
     this._send(ws, { type: 'joined', roomId });
+    this._send(ws, { type: 'disabledReactions', ids: room.disabledReactions });
     if (room.broadcasterConn) {
       this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
     }
     this.logger.log(`[relay] room ${roomId}: viewer joined (${room.viewerConns.size} total)`);
+  }
+
+  _handleDisabledReactions(ws, msg) {
+    if (ws._role !== 'broadcaster' || !ws._roomId) {
+      return this._send(ws, { type: 'error', code: 'not_registered', message: '先にregisterしてください' });
+    }
+    const ids = msg.ids;
+    if (
+      !Array.isArray(ids) ||
+      ids.length > MAX_DISABLED_REACTIONS ||
+      !ids.every((id) => typeof id === 'string' && ALLOWED_EMOJI_ID_RE.test(id))
+    ) {
+      return this._send(ws, { type: 'error', code: 'invalid_params', message: 'idsが不正です' });
+    }
+    const room = this.rooms.get(ws._roomId);
+    if (!room) return;
+    room.disabledReactions = [...new Set(ids)];
+    for (const viewer of room.viewerConns) {
+      this._send(viewer, { type: 'disabledReactions', ids: room.disabledReactions });
+    }
   }
 
   _handleReaction(ws, msg) {

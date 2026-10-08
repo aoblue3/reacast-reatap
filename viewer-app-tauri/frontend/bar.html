@@ -153,6 +153,13 @@
     cursor: not-allowed;
     filter: grayscale(1);
   }
+  /* 配信者がReaCastでOFFにしているリアクション(押しても配信画面に出ない) */
+  .emoji-btn.off-by-broadcaster {
+    opacity: 0.25;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+  .emoji-btn.off-by-broadcaster:active { transform: none; }
   #muteNotice {
     text-align: center;
     font-size: 11px;
