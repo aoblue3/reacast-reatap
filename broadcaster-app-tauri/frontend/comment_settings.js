@@ -183,10 +183,47 @@ document.getElementById('pickExeBtn').addEventListener('click', async () => {
   renderFields();
   scheduleSave();
 });
-document.getElementById('pickIconFolderBtn').addEventListener('click', async () => {
-  const path = await invoke('comments_pick_folder').catch(() => null);
-  if (!path) return;
-  settings.iconFolderBbs = path;
+for (const btn of document.querySelectorAll('[data-pick-folder]')) {
+  btn.addEventListener('click', async () => {
+    const path = await invoke('comments_pick_folder').catch(() => null);
+    if (!path) return;
+    settings[btn.dataset.pickFolder] = path;
+    renderFields();
+    scheduleSave();
+  });
+}
+
+// ---- 右のレス一覧のプリセット ----
+// デザインに関わる項目だけを置き換える(フォント・件数・表示順などはそのまま)
+const LIST_PRESETS = {
+  default: {},
+  yellowLine: {
+    headFontSize: 14, headBold: true, numberColor: '#ff6060', nameColor: '#60c0ff', dateColor: '#bbbbbb',
+    bodyColor: '#ffffff', bodyBold: false, outlineWidth: 2, outlineColor: '#000000',
+    itemBgColor: '#000000', itemBgOpacity: 50, itemPadding: 6, itemRadius: 6,
+    customCss: '.item { border-left: 4px solid #ffd23f; }',
+  },
+  bubble: {
+    headFontSize: 13, headBold: true, numberColor: '#e05a00', nameColor: '#555555', dateColor: '#888888',
+    bodyColor: '#222222', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#ffffff', itemBgOpacity: 90, itemPadding: 8, itemRadius: 14,
+    customCss: '.item { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }',
+  },
+  neon: {
+    headFontSize: 14, headBold: true, numberColor: '#3cf2ff', nameColor: '#ff4fd8', dateColor: '#9a9ab8',
+    bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#120a24', itemBgOpacity: 60, itemPadding: 6, itemRadius: 4,
+    customCss: '.body { text-shadow: 0 0 6px #3cf2ff, 0 0 12px #3cf2ff; }\n.item { border: 1px solid rgba(60, 242, 255, 0.4); }',
+  },
+};
+const PRESET_KEYS = [
+  'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
+  'outlineWidth', 'outlineColor', 'itemBgColor', 'itemBgOpacity', 'itemPadding', 'itemRadius', 'customCss',
+];
+document.getElementById('applyPresetBtn').addEventListener('click', () => {
+  const preset = LIST_PRESETS[document.getElementById('listPreset').value] || {};
+  const defaults = C.DEFAULT_STYLE.list;
+  for (const k of PRESET_KEYS) settings.style.list[k] = k in preset ? preset[k] : defaults[k];
   renderFields();
   scheduleSave();
 });
@@ -271,20 +308,26 @@ function renderStatus(s) {
     return;
   }
   add('取得中', 'ok');
-  if (s.threadTitle) add(` 「${s.threadTitle}」`);
-  add(` レス${s.lastNo}`);
+  if (s.threadUrl) {
+    if (s.threadTitle) add(` 「${s.threadTitle}」`);
+    add(` レス${s.lastNo}`);
+  }
   if (s.queueLen > 0) add(` / 順番待ち${s.queueLen}件`);
   if (s.warning) add(` ${s.warning}`, 'warn');
   if (s.error) add(` ${s.error}`, 'ng');
+  for (const src of s.sources || []) {
+    statusEl.appendChild(document.createElement('br'));
+    add(`${src.label}: `);
+    add(src.message, src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : 'warn');
+  }
 }
 
 startBtn.addEventListener('click', async () => {
   const url = document.getElementById('threadUrl').value.trim();
-  if (!url) {
-    showStatusError('スレッドのURLを入力してください');
-    return;
-  }
   try {
+    // 入力途中のYouTube・Twitchの設定も保存してから開始する
+    clearTimeout(saveTimer);
+    await invoke('comments_save_settings', { settings });
     await invoke('comments_start', { url });
     settings.threadUrl = url;
   } catch (e) {

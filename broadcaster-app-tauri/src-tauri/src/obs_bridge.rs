@@ -92,8 +92,8 @@ pub struct ObsBridge {
 
 #[derive(Default)]
 struct CommentBridgeState {
-    /// 右のレス一覧のアイコンに使う画像ファイル(設定のフォルダの中身)
-    icon_files: Vec<std::path::PathBuf>,
+    /// 右のレス一覧のアイコンに使う画像ファイル(取得元ごとの、設定のフォルダの中身)
+    icon_files: std::collections::HashMap<String, Vec<std::path::PathBuf>>,
     style: Option<serde_json::Value>,
     history: VecDeque<serde_json::Value>,
     /// 今表示中の字幕と、それが消える時刻
@@ -155,9 +155,9 @@ impl ObsBridge {
         self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
     }
 
-    /// コメント機能: アイコン画像のフォルダを設定する(中の画像を一覧にしておき、
-    /// /icons/bbs/{番号}で配信する)。
-    pub fn set_icon_folder(&self, folder: &str) {
+    /// コメント機能: 取得元(bbs/youtube/twitch)ごとのアイコン画像のフォルダを設定する
+    /// (中の画像を一覧にしておき、/icons/{取得元}/{番号}で配信する)。
+    pub fn set_icon_folder(&self, source: &str, folder: &str) {
         let mut files: Vec<std::path::PathBuf> = if folder.trim().is_empty() {
             Vec::new()
         } else {
@@ -170,11 +170,11 @@ impl ObsBridge {
                 .unwrap_or_default()
         };
         files.sort();
-        self.comments.lock().unwrap().icon_files = files;
+        self.comments.lock().unwrap().icon_files.insert(source.to_string(), files);
     }
 
-    pub fn icon_count(&self) -> usize {
-        self.comments.lock().unwrap().icon_files.len()
+    pub fn icon_count(&self, source: &str) -> usize {
+        self.comments.lock().unwrap().icon_files.get(source).map(|f| f.len()).unwrap_or(0)
     }
 
     /// コメント機能: 字幕・レス一覧の見た目の設定を配信する。
@@ -305,8 +305,12 @@ async fn handle_http_connection(mut socket: TcpStream, comments: Arc<Mutex<Comme
 
     // アイコン画像(設定したフォルダの中の画像を、番号で指定して返す。
     // フォルダの外のファイルは一覧に入らないので読まれない)
-    if let Some(idx) = path.strip_prefix("/icons/bbs/").and_then(|s| s.parse::<usize>().ok()) {
-        let file = comments.lock().ok().and_then(|c| c.icon_files.get(idx).cloned());
+    let icon = path
+        .strip_prefix("/icons/")
+        .and_then(|s| s.split_once('/'))
+        .and_then(|(src, n)| n.parse::<usize>().ok().map(|n| (src.to_string(), n)));
+    if let Some((src, idx)) = icon {
+        let file = comments.lock().ok().and_then(|c| c.icon_files.get(&src).and_then(|f| f.get(idx)).cloned());
         let data = match &file {
             Some(f) => tokio::fs::read(f).await.ok(),
             None => None,

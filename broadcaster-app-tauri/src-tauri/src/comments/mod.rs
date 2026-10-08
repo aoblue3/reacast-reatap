@@ -11,6 +11,8 @@
 //! 受けずに動き続けるようにするため。
 
 pub mod source;
+pub mod twitch;
+pub mod youtube;
 pub mod text;
 
 use crate::config_store::ConfigStore;
@@ -43,6 +45,13 @@ pub struct CommentSettings {
     pub initial_text: String,
     /// 右のレス一覧に出すアイコン画像のフォルダ(掲示板のレス用。中の画像からランダムに選ぶ)
     pub icon_folder_bbs: String,
+    pub icon_folder_youtube: String,
+    pub icon_folder_twitch: String,
+    // ---- 配信サイトのコメント(空欄なら取得しない) ----
+    /// YouTubeの配信URL・動画ID・チャンネルURL・@ハンドル
+    pub youtube_target: String,
+    /// Twitchのチャンネル名(またはURL)
+    pub twitch_channel: String,
     // ---- 次スレの自動作成 ----
     pub auto_create_thread: bool,
     /// このレス番号に達したら次スレを建てる
@@ -117,6 +126,10 @@ impl Default for CommentSettings {
             start_res_no: 0,
             initial_text: "スレッド読み込みを開始しました".into(),
             icon_folder_bbs: String::new(),
+            icon_folder_youtube: String::new(),
+            icon_folder_twitch: String::new(),
+            youtube_target: String::new(),
+            twitch_channel: String::new(),
             auto_create_thread: false,
             create_thread_count: 975,
             create_title_template: "{next}".into(),
@@ -174,6 +187,19 @@ pub struct CommentStatus {
     pub queue_len: usize,
     pub error: Option<String>,
     pub warning: Option<String>,
+    /// 配信サイト(YouTube・Twitch)ごとの状態
+    pub sources: Vec<SourceStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceStatus {
+    /// "youtube" | "twitch"
+    pub id: String,
+    pub label: String,
+    /// "ok"(取得中) | "wait"(配信待ち・再接続中) | "error"
+    pub state: String,
+    pub message: String,
 }
 
 #[derive(Clone)]
@@ -186,6 +212,8 @@ struct Post {
     system: bool,
     /// 右のレス一覧に出すアイコン画像のURL(obs_bridgeが配信する)
     icon: Option<String>,
+    /// 取得元: "bbs" | "youtube" | "twitch" | "system"
+    source: &'static str,
 }
 
 impl Post {
@@ -197,11 +225,25 @@ impl Post {
             body: text::html_to_text(&p.body_html),
             system: false,
             icon,
+            source: "bbs",
         }
     }
 
     fn system(body: impl Into<String>) -> Self {
-        Self { no: 0, name: "ReaCast".into(), date: String::new(), body: body.into(), system: true, icon: None }
+        Self {
+            no: 0,
+            name: "ReaCast".into(),
+            date: String::new(),
+            body: body.into(),
+            system: true,
+            icon: None,
+            source: "system",
+        }
+    }
+
+    /// 配信サイトのチャット(レス番号は無い)
+    fn chat(source: &'static str, name: String, body: String, icon: Option<String>) -> Self {
+        Self { no: 0, name, date: String::new(), body, system: false, icon, source }
     }
 
     fn to_json(&self, aa: bool) -> serde_json::Value {
@@ -213,6 +255,7 @@ impl Post {
             "aa": aa,
             "system": self.system,
             "icon": self.icon,
+            "source": self.source,
         })
     }
 }
@@ -291,7 +334,11 @@ impl CommentEngine {
     pub fn apply_settings(&self, settings: CommentSettings) {
         let compiled = Arc::new(Compiled::from(&settings));
         let style = settings.style.clone();
-        let icon_folder = settings.icon_folder_bbs.clone();
+        let icon_folders = [
+            ("bbs", settings.icon_folder_bbs.clone()),
+            ("youtube", settings.icon_folder_youtube.clone()),
+            ("twitch", settings.icon_folder_twitch.clone()),
+        ];
         {
             let mut st = self.state.lock().unwrap();
             st.settings = settings;
@@ -299,7 +346,9 @@ impl CommentEngine {
         }
         let bridge = self.bridge();
         bridge.set_comment_style(style);
-        bridge.set_icon_folder(&icon_folder);
+        for (source, folder) in &icon_folders {
+            bridge.set_icon_folder(source, folder);
+        }
     }
 
     /// デスクトップ字幕のウィンドウを今出しておくべきか(ONで、かつ取得中・
@@ -322,10 +371,10 @@ impl CommentEngine {
         self.state.lock().unwrap().desktop_hold_until = Some(std::time::Instant::now() + dur);
     }
 
-    fn pick_icon(&self) -> Option<String> {
+    fn pick_icon(&self, source: &str) -> Option<String> {
         use rand::Rng;
-        let n = self.bridge().icon_count();
-        (n > 0).then(|| format!("/icons/bbs/{}", rand::thread_rng().gen_range(0..n)))
+        let n = self.bridge().icon_count(source);
+        (n > 0).then(|| format!("/icons/{source}/{}", rand::thread_rng().gen_range(0..n)))
     }
 
     /// 次スレのタイトルと>>1の本文を、設定のテンプレートから作る。
@@ -358,15 +407,38 @@ impl CommentEngine {
         Ok((title, body))
     }
 
+    /// 取得を開始する。掲示板(urlが空なら取得しない)と、設定にあるYouTube・Twitchを
+    /// それぞれ別のタスクで同時に取得し、すべて同じ順番待ちの列に並べる。
     pub fn start(self: &Arc<Self>, url: &str) -> Result<(), String> {
-        let (board, key) = source::parse_url(url)?;
+        let settings = self.settings();
+        let bbs = if url.trim().is_empty() { None } else { Some(source::parse_url(url)?) };
+        let youtube = if settings.youtube_target.trim().is_empty() {
+            None
+        } else {
+            Some(youtube::parse_target(&settings.youtube_target)?)
+        };
+        let twitch = if settings.twitch_channel.trim().is_empty() {
+            None
+        } else {
+            Some(twitch::parse_channel(&settings.twitch_channel)?)
+        };
+        if bbs.is_none() && youtube.is_none() && twitch.is_none() {
+            return Err("掲示板のURL、YouTube、Twitchのどれかを指定してください".into());
+        }
+        let mut sources = Vec::new();
+        if youtube.is_some() {
+            sources.push(SourceStatus { id: "youtube".into(), label: "YouTube".into(), state: "wait".into(), message: "接続中…".into() });
+        }
+        if twitch.is_some() {
+            sources.push(SourceStatus { id: "twitch".into(), label: "Twitch".into(), state: "wait".into(), message: "接続中…".into() });
+        }
         let run_id = {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
             st.queue.clear();
             st.thread_posts.clear();
             st.settings.thread_url = url.trim().to_string();
-            st.status = CommentStatus { running: true, ..Default::default() };
+            st.status = CommentStatus { running: true, sources, ..Default::default() };
             st.run_id
         };
         self.emit_status();
@@ -377,9 +449,200 @@ impl CommentEngine {
         if !initial.trim().is_empty() {
             self.bridge().push_comment(Post::system(initial).to_json(false));
         }
-        let me = self.clone();
-        tauri::async_runtime::spawn(async move { me.run_fetch(run_id, board, key).await });
+        if let Some((board, key)) = bbs {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, board, key).await });
+        }
+        if let Some(target) = youtube {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_youtube(run_id, target).await });
+        }
+        if let Some(channel) = twitch {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_twitch(run_id, channel).await });
+        }
         Ok(())
+    }
+
+    fn update_source(&self, run_id: u64, id: &str, state: &str, message: impl Into<String>) {
+        let message = message.into();
+        self.update_status(run_id, |s| {
+            if let Some(src) = s.sources.iter_mut().find(|x| x.id == id) {
+                src.state = state.into();
+                src.message = message;
+            }
+        });
+    }
+
+    /// 停止されるまで待つ(1秒ごとに止められていないか確認する)。止められたらfalse。
+    async fn sleep_while_current(&self, run_id: u64, dur: Duration) -> bool {
+        let end = tokio::time::Instant::now() + dur;
+        while tokio::time::Instant::now() < end {
+            if !self.is_current(run_id) {
+                return false;
+            }
+            let left = end - tokio::time::Instant::now();
+            tokio::time::sleep(left.min(Duration::from_secs(1))).await;
+        }
+        self.is_current(run_id)
+    }
+
+    async fn run_youtube(self: Arc<Self>, run_id: u64, target: youtube::Target) {
+        let client = youtube::client();
+        'outer: while self.is_current(run_id) {
+            // 1. 動画IDを決める(チャンネルなら、配信が始まるまで待つ)
+            let video_id = match &target {
+                youtube::Target::Video(id) => id.clone(),
+                youtube::Target::Channel(url) => match youtube::get_text(&client, &format!("{url}/live")).await {
+                    Ok(html) => match youtube::extract_live_video_id(&html) {
+                        Some(id) => id,
+                        None => {
+                            self.update_source(run_id, "youtube", "wait", "配信が始まるのを待っています");
+                            if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                                return;
+                            }
+                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        self.update_source(run_id, "youtube", "error", e);
+                        if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                            return;
+                        }
+                        continue;
+                    }
+                },
+            };
+            // 2. チャット欄のページから、続きを取得するためのトークンを取り出す
+            let params = match youtube::get_text(&client, &format!("https://www.youtube.com/live_chat?is_popout=1&v={video_id}")).await {
+                Ok(html) => youtube::extract_chat_params(&html),
+                Err(e) => {
+                    self.update_source(run_id, "youtube", "error", e);
+                    None
+                }
+            };
+            let Some(params) = params else {
+                self.update_source(run_id, "youtube", "wait", "チャットを読み込めません(配信前・終了後、またはチャットが無効)");
+                if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                    return;
+                }
+                continue;
+            };
+            self.update_source(run_id, "youtube", "ok", format!("取得中(動画 {video_id})"));
+            // 3. 新着コメントを取り続ける(最初のページにある過去のコメントは読まない)
+            let mut continuation = params.continuation.clone();
+            let mut failures = 0;
+            loop {
+                if !self.is_current(run_id) {
+                    return;
+                }
+                match youtube::fetch_chat(&client, &params, &continuation).await {
+                    Ok(page) => {
+                        failures = 0;
+                        let posts: Vec<Post> = page
+                            .messages
+                            .into_iter()
+                            .map(|m| {
+                                let body = match m.amount {
+                                    Some(a) if m.text.is_empty() => a,
+                                    Some(a) => format!("{a} {}", m.text),
+                                    None => m.text,
+                                };
+                                Post::chat("youtube", m.author, body, self.pick_icon("youtube"))
+                            })
+                            .collect();
+                        self.enqueue(run_id, posts);
+                        match page.next {
+                            Some((c, timeout)) => {
+                                continuation = c;
+                                let wait = Duration::from_millis(timeout.clamp(1500, 5000));
+                                if !self.sleep_while_current(run_id, wait).await {
+                                    return;
+                                }
+                            }
+                            None => {
+                                self.update_source(run_id, "youtube", "wait", "配信が終了しました。次の配信を待っています");
+                                if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                                    return;
+                                }
+                                continue 'outer;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        failures += 1;
+                        self.update_source(run_id, "youtube", "error", e);
+                        if !self.sleep_while_current(run_id, Duration::from_secs(5)).await {
+                            return;
+                        }
+                        if failures >= 3 {
+                            continue 'outer; // 最初からやり直す
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn run_twitch(self: Arc<Self>, run_id: u64, channel: String) {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        while self.is_current(run_id) {
+            let conn = tokio_tungstenite::connect_async("wss://irc-ws.chat.twitch.tv:443").await;
+            let (mut write, mut read) = match conn {
+                Ok((ws, _)) => ws.split(),
+                Err(e) => {
+                    self.update_source(run_id, "twitch", "error", format!("Twitchへの接続に失敗しました: {e}"));
+                    if !self.sleep_while_current(run_id, Duration::from_secs(10)).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            let nick = format!("justinfan{}", rand::random::<u32>() % 90000 + 10000);
+            for line in [
+                "CAP REQ :twitch.tv/tags twitch.tv/commands".to_string(),
+                "PASS SCHMOOPIIE".to_string(),
+                format!("NICK {nick}"),
+                format!("JOIN #{channel}"),
+            ] {
+                let _ = write.send(Message::Text(line)).await;
+            }
+            self.update_source(run_id, "twitch", "ok", format!("取得中(#{channel})"));
+            loop {
+                if !self.is_current(run_id) {
+                    let _ = write.close().await;
+                    return;
+                }
+                // 1秒ごとに止められていないか確認しつつ読む
+                let msg = match tokio::time::timeout(Duration::from_secs(1), read.next()).await {
+                    Err(_) => continue,
+                    Ok(None) | Ok(Some(Err(_))) => break,
+                    Ok(Some(Ok(m))) => m,
+                };
+                let Message::Text(text) = msg else { continue };
+                let mut posts = Vec::new();
+                let mut reconnect = false;
+                for line in text.split("\r\n").filter(|l| !l.is_empty()) {
+                    if let Some(rest) = line.strip_prefix("PING") {
+                        let _ = write.send(Message::Text(format!("PONG{rest}"))).await;
+                    } else if line.contains(" RECONNECT") {
+                        // Twitch側からの「繋ぎ直してください」の合図
+                        reconnect = true;
+                    } else if let Some(m) = twitch::parse_privmsg(line) {
+                        posts.push(Post::chat("twitch", m.author, m.text, self.pick_icon("twitch")));
+                    }
+                }
+                self.enqueue(run_id, posts);
+                if reconnect {
+                    break;
+                }
+            }
+            self.update_source(run_id, "twitch", "wait", "接続が切れました。再接続しています");
+            if !self.sleep_while_current(run_id, Duration::from_secs(3)).await {
+                return;
+            }
+        }
     }
 
     pub fn stop(&self) {
@@ -523,7 +786,7 @@ impl CommentEngine {
             }
             match reader.poll(&client).await {
                 Ok(raw) => {
-                    let posts: Vec<Post> = raw.iter().map(|p| Post::from_raw(p, self.pick_icon())).collect();
+                    let posts: Vec<Post> = raw.iter().map(|p| Post::from_raw(p, self.pick_icon("bbs"))).collect();
                     self.record_posts(run_id, &posts, false);
                     if first {
                         // 起動時点で既にあったレスは読み上げない(右のレス一覧にだけ載せる)
@@ -835,7 +1098,7 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
     post.no = 1;
     post.name = name;
     post.date = "2026/10/08(木) 21:00:00.00 ID:test".into();
-    post.icon = engine.pick_icon();
+    post.icon = engine.pick_icon("bbs");
     engine.bridge().push_comment(post.to_json(false));
 }
 
@@ -917,7 +1180,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs" }
     }
 
     #[test]

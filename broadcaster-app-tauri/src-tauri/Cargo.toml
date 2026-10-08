@@ -32,7 +32,7 @@ rand = "0.8"
 # OBSの「ブラウザ」ソース向けに、ローカル限定のHTTP+WebSocketブリッジを
 # 立てるために使う(obs_bridge.rs参照)。
 tokio = { version = "1", features = ["net", "sync", "io-util", "time", "fs"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 # 単体exeのままの自動アップデート機能用(updater.rs参照)。
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

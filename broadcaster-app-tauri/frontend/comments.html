@@ -25,7 +25,8 @@
   #list.bottom { justify-content: flex-end; }
   /* カスタムCSSで使えるクラス:
      .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .name(名前)
-     .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ) */
+     .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ)
+     .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch(取得元ごと) */
   .item {
     display: flex;
     gap: 0.4em;
@@ -38,6 +39,9 @@
   .icon { flex: 0 0 auto; object-fit: cover; border-radius: 6px; }
   .content { min-width: 0; flex: 1 1 auto; }
   .head > span + span { margin-left: 0.4em; }
+  .head .src { font-size: 0.8em; padding: 0 0.35em; border-radius: 3px; color: #fff; text-shadow: none; }
+  .src-youtube .head .src { background: #e62117; }
+  .src-twitch .head .src { background: #9146ff; }
   .content.inline .head { display: inline; margin-right: 0.5em; }
   .content.inline .body { display: inline; }
   .body { white-space: pre-wrap; word-break: break-word; }
@@ -84,7 +88,8 @@
     function buildItem(res) {
       const s = style.list;
       const el = document.createElement('div');
-      el.className = 'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '');
+      el.className =
+        'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '') + (res.source ? ` src-${res.source}` : '');
       const bgOpacity = Number(s.itemBgOpacity) || 0;
       if (bgOpacity > 0) el.style.background = C.rgba(s.itemBgColor, bgOpacity);
       el.style.padding = `${Math.max(0, Number(s.itemPadding) || 0)}px`;
@@ -109,6 +114,8 @@
       if (res.system) {
         if (res.name) head.appendChild(span('name', res.name, s.nameColor));
       } else {
+        const label = { youtube: 'YouTube', twitch: 'Twitch' }[res.source];
+        if (s.showSource && label) head.appendChild(span('src', label));
         if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
         if (s.showName && res.name) head.appendChild(span('name', res.name, s.nameColor));
         if (s.showDate && res.date) head.appendChild(span('date', res.date, s.dateColor));

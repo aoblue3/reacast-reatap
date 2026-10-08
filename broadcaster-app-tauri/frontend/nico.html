@@ -53,19 +53,25 @@
       if (lanes.length !== n) lanes = Array.from({ length: n }, (_, i) => lanes[i] || null);
       let best = 0;
       let bestFree = Infinity;
+      const free = [];
       for (let i = 0; i < n; i++) {
         const prev = lanes[i];
-        if (!prev) return i;
+        if (!prev) {
+          free.push(i);
+          continue;
+        }
         const elapsed = now - prev.start;
         const entered = elapsed * prev.speed >= prev.width + 20;
         const remaining = durationMs - elapsed; // 前のコメントが出きるまでの時間
         const reachLeft = W / speed; // 新しいコメントの先頭が左端に着くまでの時間
-        if (entered && reachLeft >= remaining) return i;
-        if (remaining < bestFree) {
+        if (entered && reachLeft >= remaining) free.push(i);
+        else if (remaining < bestFree) {
           bestFree = remaining;
           best = i;
         }
       }
+      // 空いている行の中からランダムに選ぶ(上から順に使うと上に偏るため)
+      if (free.length) return free[Math.floor(Math.random() * free.length)];
       return best;
     }
 

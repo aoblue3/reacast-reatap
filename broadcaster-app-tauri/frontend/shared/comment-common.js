@@ -78,6 +78,8 @@
       hideImageUrl: false,
       showIcon: false,
       iconSize: 40,
+      // 配信サイトのコメントに「YouTube」「Twitch」の印を付ける
+      showSource: true,
       customCss: '',
     },
     // ニコ生風(右から左に流れる)

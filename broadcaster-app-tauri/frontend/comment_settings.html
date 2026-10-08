@@ -138,6 +138,11 @@
   <main>
     <section data-tab="fetch" class="active">
       <div class="hint">上の欄に、使いたい掲示板のスレッドのURLを入れて「開始」を押してください。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/ao33/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
+      <h3>配信サイトのコメント(空欄なら取得しません)</h3>
+      <div class="field"><label>YouTube Live</label><div><input type="text" class="wide" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル(配信が始まるのを待って自動で繋ぎます)" /></div></div>
+      <div class="field"><label>Twitch</label><div><input type="text" class="wide" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /></div></div>
+      <div class="hint">掲示板・YouTube・Twitchのコメントは、すべて同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げされます(同時配信でも表示が重なりません)。掲示板のURLを空欄にすれば、配信サイトのコメントだけを取得できます。どちらも非公式の方法で取得しているため、各サイトの仕様変更で取得できなくなることがあります。</div>
+      <h3>掲示板</h3>
       <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
@@ -251,6 +256,16 @@
     </section>
 
     <section data-tab="list">
+      <div class="field"><label>デザインのプリセット</label><div class="inline">
+        <select id="listPreset">
+          <option value="default">デフォルト</option>
+          <option value="yellowLine">黄色ライン(半透明の背景＋左端の黄色い線)</option>
+          <option value="bubble">吹き出し(白い角丸の背景)</option>
+          <option value="neon">ネオン(光る文字)</option>
+        </select>
+        <button class="secondary" id="applyPresetBtn">適用</button>
+      </div></div>
+      <div class="hint">プリセットを適用すると、色・背景・見出し・カスタムCSSがそのデザインに置き換わります(フォントや件数などはそのまま)。適用した後で、下の項目でさらに細かく調整できます。</div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
@@ -280,7 +295,10 @@
       </div></div>
       <h3>アイコン</h3>
       <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" id="pickIconFolderBtn">参照...</button></div></div>
+      <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" data-pick-folder="iconFolderBbs">参照...</button></div></div>
+      <div class="field"><label>アイコンのフォルダ(YouTube)</label><div class="path-row"><input type="text" data-key="iconFolderYoutube" /><button class="secondary" data-pick-folder="iconFolderYoutube">参照...</button></div></div>
+      <div class="field"><label>アイコンのフォルダ(Twitch)</label><div class="path-row"><input type="text" data-key="iconFolderTwitch" /><button class="secondary" data-pick-folder="iconFolderTwitch">参照...</button></div></div>
+      <div class="field"><label>取得元の印を付ける</label><div><input type="checkbox" data-key="style.list.showSource" /><span class="unit">YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します</span></div></div>
       <div class="hint">右のレス一覧には、字幕に表示されたのと同じタイミングでレスが追加されます(字幕・読み上げとずれません)。</div>
       <h3>カスタムCSS(上級者向け。unacastのように見た目を自由に変えられます)</h3>
       <textarea class="css" data-key="style.list.customCss" placeholder=".item { border-left: 4px solid #7dff7d; }&#10;.name { font-style: italic; }"></textarea>
