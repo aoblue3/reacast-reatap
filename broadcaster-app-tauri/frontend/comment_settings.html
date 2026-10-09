@@ -149,6 +149,7 @@
         <span class="unit">読み込んでいるスレッドが違う時に、板のスレッド一覧から手動で選んで切り替えられます(取得中のみ)</span>
       </div>
       <div id="threadPicker" style="display:none; max-height: 260px; overflow-y:auto; border:1px solid #3a3d47; border-radius:6px; margin-bottom:10px"></div>
+      <div class="field"><label>jpnknの即時通知を使う</label><div><input type="checkbox" data-key="jpnknFast" /><span class="unit">jpnknの板では、書き込まれた瞬間にレスを拾います(Fastインターフェース)。定期取得も取りこぼし対策として続けます</span></div></div>
       <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>

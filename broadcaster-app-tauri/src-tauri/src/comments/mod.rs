@@ -10,6 +10,7 @@
 //! コントロールパネル等の画面を隠していてもWebViewのタイマー抑制の影響を
 //! 受けずに動き続けるようにするため。
 
+pub mod jpnkn_fast;
 pub mod source;
 pub mod twitch;
 pub mod youtube;
@@ -39,6 +40,8 @@ pub struct CommentSettings {
     /// このレス番号に達したら一度だけ「次スレを立ててください」と知らせる(0で知らせない)
     pub thread_warn_count: u32,
     pub start_on_launch: bool,
+    /// jpnknの板では即時通知(Fastインターフェース)も使って、書き込まれた瞬間に拾う
+    pub jpnkn_fast: bool,
     /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
@@ -130,6 +133,7 @@ impl Default for CommentSettings {
             next_thread_keyword: String::new(),
             thread_warn_count: 975,
             start_on_launch: false,
+            jpnkn_fast: true,
             start_res_no: 0,
             initial_text: "スレッド読み込みを開始しました".into(),
             icon_folder_bbs: String::new(),
@@ -825,6 +829,33 @@ impl CommentEngine {
         let mut first = true;
         let mut warned = false;
         let mut created = false;
+        // 既に順番待ちに入れた(または開始時点で既にあった)レス番号。即時通知と
+        // 定期取得の両方から同じレスが届いても、1回しか読まないようにする
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+
+        // jpnknの板なら、即時通知(MQTT)も使う。通知で届いたレスはチャンネル経由で
+        // このループに渡す(定期取得は取りこぼし対策としてそのまま続ける)
+        let mut fast_rx = match (&board, self.settings().jpnkn_fast) {
+            (Board::Nch { origin, board: name }, true) if origin.contains("jpnkn.com") => {
+                let (tx, rx) = tokio::sync::mpsc::channel::<(String, source::RawPost)>(256);
+                self.update_status(run_id, |s| {
+                    if !s.sources.iter().any(|x| x.id == "jpnkn") {
+                        s.sources.insert(0, SourceStatus {
+                            id: "jpnkn".into(),
+                            label: "jpnkn即時通知".into(),
+                            state: "wait".into(),
+                            message: "接続中…".into(),
+                        });
+                    }
+                });
+                let me = self.clone();
+                let name = name.clone();
+                tauri::async_runtime::spawn(async move { me.run_jpnkn_fast(run_id, gen, name, tx).await });
+                Some(rx)
+            }
+            _ => None,
+        };
+
         loop {
             if !self.is_bbs_current(run_id, gen) {
                 return;
@@ -836,7 +867,11 @@ impl CommentEngine {
             }
             match polled {
                 Ok(raw) => {
-                    let posts: Vec<Post> = raw.iter().map(|p| Post::from_raw(p, self.pick_icon("bbs"))).collect();
+                    let posts: Vec<Post> = raw
+                        .iter()
+                        .filter(|p| seen.insert(p.no)) // 即時通知で既に読んだレスは除く
+                        .map(|p| Post::from_raw(p, self.pick_icon("bbs")))
+                        .collect();
                     self.record_posts(run_id, &posts, false);
                     if first {
                         // 起動時点で既にあったレスは読み上げない(右のレス一覧にだけ載せる)
@@ -921,6 +956,7 @@ impl CommentEngine {
                                     // 次スレのレスは1番から全部新着として扱う
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
                                     self.record_posts(run_id, &[], true);
+                                    seen.clear();
                                     warned = false;
                                     created = false;
                                     self.update_status(run_id, |s| s.warning = None);
@@ -936,8 +972,139 @@ impl CommentEngine {
                 }
                 Err(e) => self.update_status(run_id, |s| s.error = Some(e)),
             }
-            tokio::time::sleep(poll_interval(&self)).await;
+
+            // 次の定期取得まで待つ。その間に即時通知で届いたレスは、すぐ順番待ちに入れる
+            let deadline = tokio::time::Instant::now() + poll_interval(&self);
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep_until(deadline) => break,
+                    msg = recv_or_pending(&mut fast_rx) => {
+                        let Some((thread_key, raw)) = msg else {
+                            fast_rx = None; // 通知の接続タスクが終わった
+                            continue;
+                        };
+                        if !self.is_bbs_current(run_id, gen) {
+                            return;
+                        }
+                        // 今読んでいるスレッドへの、まだ読んでいない書き込みだけ
+                        if first || thread_key != reader.thread.key || !seen.insert(raw.no) {
+                            continue;
+                        }
+                        let post = Post::from_raw(&raw, self.pick_icon("bbs"));
+                        self.record_posts(run_id, std::slice::from_ref(&post), false);
+                        self.enqueue(run_id, vec![post]);
+                    }
+                }
+            }
         }
+    }
+
+    /// jpnknの即時通知(MQTT over WebSocket)に繋ぎ、板への書き込みをtxに送り続ける。
+    /// 切れたら繋ぎ直す。取得が止められる(または掲示板が切り替えられる)と終わる。
+    async fn run_jpnkn_fast(
+        self: Arc<Self>,
+        run_id: u64,
+        gen: u64,
+        board: String,
+        tx: tokio::sync::mpsc::Sender<(String, source::RawPost)>,
+    ) {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::Message;
+        let client = source::http_client();
+        while self.is_bbs_current(run_id, gen) {
+            // 接続先のサーバーを一覧から選ぶ(取れなければ既定のサーバー)
+            let servers = match client.get(jpnkn_fast::SERVER_LIST_URL).send().await {
+                Ok(r) => r.json::<serde_json::Value>().await.map(|v| jpnkn_fast::secure_servers(&v)).unwrap_or_default(),
+                Err(_) => Vec::new(),
+            };
+            let url = if servers.is_empty() {
+                "wss://a.mq.jpnkn.com:9091/mqtt".to_string()
+            } else {
+                servers[rand::random::<usize>() % servers.len()].clone()
+            };
+            let request = url.as_str().into_client_request().map(|mut r| {
+                r.headers_mut().insert("Sec-WebSocket-Protocol", "mqtt".parse().unwrap());
+                r
+            });
+            let conn = match request {
+                Ok(req) => tokio_tungstenite::connect_async(req).await.map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            let (mut write, mut read) = match conn {
+                Ok((ws, _)) => ws.split(),
+                Err(e) => {
+                    self.update_source(run_id, "jpnkn", "error", format!("即時通知に接続できません({e})。定期取得で続けます"));
+                    if !self.sleep_while_bbs_current(run_id, gen, Duration::from_secs(15)).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            let client_id = format!("reacast-{}", rand::random::<u32>());
+            let _ = write.send(Message::Binary(jpnkn_fast::connect_packet(&client_id))).await;
+            let mut buf: Vec<u8> = Vec::new();
+            let mut last_ping = tokio::time::Instant::now();
+            loop {
+                if !self.is_bbs_current(run_id, gen) {
+                    let _ = write.close().await;
+                    return;
+                }
+                if last_ping.elapsed() >= Duration::from_secs((jpnkn_fast::KEEPALIVE_SECS / 2) as u64) {
+                    last_ping = tokio::time::Instant::now();
+                    if write.send(Message::Binary(jpnkn_fast::pingreq_packet())).await.is_err() {
+                        break;
+                    }
+                }
+                let msg = match tokio::time::timeout(Duration::from_secs(1), read.next()).await {
+                    Err(_) => continue,
+                    Ok(None) | Ok(Some(Err(_))) => break,
+                    Ok(Some(Ok(m))) => m,
+                };
+                let data = match msg {
+                    Message::Binary(d) => d,
+                    Message::Close(_) => break,
+                    _ => continue,
+                };
+                buf.extend_from_slice(&data);
+                for p in jpnkn_fast::take_packets(&mut buf) {
+                    match p {
+                        jpnkn_fast::Incoming::ConnAck(0) => {
+                            let _ = write.send(Message::Binary(jpnkn_fast::subscribe_packet(&format!("bbs/{board}")))).await;
+                        }
+                        jpnkn_fast::Incoming::ConnAck(rc) => {
+                            self.update_source(run_id, "jpnkn", "error", format!("即時通知への接続が拒否されました(コード{rc})"));
+                        }
+                        jpnkn_fast::Incoming::SubAck => {
+                            self.update_source(run_id, "jpnkn", "ok", "接続中(書き込まれた瞬間に拾います)");
+                        }
+                        jpnkn_fast::Incoming::Publish { payload, .. } => {
+                            if let Some(item) = jpnkn_fast::parse_payload(&payload) {
+                                if tx.send(item).await.is_err() {
+                                    return; // 掲示板の取得ループが終わった
+                                }
+                            }
+                        }
+                        jpnkn_fast::Incoming::Other => {}
+                    }
+                }
+            }
+            self.update_source(run_id, "jpnkn", "wait", "即時通知が切れました。再接続しています(その間も定期取得で拾います)");
+            if !self.sleep_while_bbs_current(run_id, gen, Duration::from_secs(5)).await {
+                return;
+            }
+        }
+    }
+
+    async fn sleep_while_bbs_current(&self, run_id: u64, gen: u64, dur: Duration) -> bool {
+        let end = tokio::time::Instant::now() + dur;
+        while tokio::time::Instant::now() < end {
+            if !self.is_bbs_current(run_id, gen) {
+                return false;
+            }
+            tokio::time::sleep((end - tokio::time::Instant::now()).min(Duration::from_secs(1))).await;
+        }
+        self.is_bbs_current(run_id, gen)
     }
 
     async fn run_queue(self: Arc<Self>) {
@@ -994,6 +1161,14 @@ impl CommentEngine {
             let interval = next_interval(backlog, shown_ms, speech_ms, &settings);
             tokio::time::sleep(Duration::from_millis(interval)).await;
         }
+    }
+}
+
+/// 受信側があればそこから受け取り、無ければずっと待つ(tokio::select!用)。
+async fn recv_or_pending<T>(rx: &mut Option<tokio::sync::mpsc::Receiver<T>>) -> Option<T> {
+    match rx {
+        Some(r) => r.recv().await,
+        None => std::future::pending().await,
     }
 }
 
