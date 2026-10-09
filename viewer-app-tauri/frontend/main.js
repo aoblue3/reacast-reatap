@@ -1491,6 +1491,9 @@ async function init() {
   // アプリ本体の起動処理を待たせたくないので、awaitせず裏で確認する
   // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
   showAppVersion();
+  document.getElementById('openLogDirBtn').addEventListener('click', () => {
+    invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
+  });
   checkForUpdateOnStartup();
 }
 

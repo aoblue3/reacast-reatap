@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>reaction overlay</title>
 <style>
   html, body {
@@ -392,6 +394,7 @@
 </head>
 <body>
   <div id="stage"></div>
+  <script src="shared/error-log.js"></script>
   <script src="shared/emoji-set.js"></script>
   <script src="overlay.js"></script>
 </body>

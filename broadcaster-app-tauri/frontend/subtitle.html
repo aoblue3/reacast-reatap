@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaCast 字幕</title>
 <style>
   html, body {
@@ -114,6 +116,7 @@
     <button id="adjustDone">完了</button>
     <div class="grip" id="grip"></div>
   </div>
+  <script src="shared/error-log.js"></script>
   <script src="shared/comment-common.js"></script>
   <script>
     'use strict';

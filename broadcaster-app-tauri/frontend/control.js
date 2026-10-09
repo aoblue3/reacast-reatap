@@ -814,5 +814,8 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadHideLocalOverlay();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
   showAppVersion();
+  document.getElementById('openLogDirBtn').addEventListener('click', () => {
+    invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
+  });
   checkForUpdateOnStartup();
 })();

@@ -1,3 +1,4 @@
+mod applog;
 mod config_store;
 mod pcwmp;
 pub mod updater;
@@ -699,13 +700,10 @@ pub fn run() {
                 }
             }))?;
 
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // 不具合調査用のログファイル(配布版でも書く。applog.rs参照)
+            app.handle().plugin(applog::plugin())?;
+            applog::install_panic_hook();
+            applog::log_startup();
 
             // ホットキー(グローバルショートカット)機能。個々のキー割り当ての
             // 登録・解除はフロントエンド(main.js)側からJS API
@@ -838,6 +836,8 @@ pub fn run() {
             cancel_manual_pick,
             updater::check_for_update,
             updater::get_app_version,
+            applog::log_from_frontend,
+            applog::open_log_dir,
             updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())

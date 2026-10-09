@@ -48,6 +48,8 @@ const SUBTITLE_HTML: &str = include_str!("../../frontend/subtitle.html");
 const COMMENTS_HTML: &str = include_str!("../../frontend/comments.html");
 const NICO_HTML: &str = include_str!("../../frontend/nico.html");
 const COMMENT_COMMON_JS: &str = include_str!("../../frontend/shared/comment-common.js");
+// OBS上(Tauriの外)では何もしないが、読み込みが404にならないように配信する
+const ERROR_LOG_JS: &str = include_str!("../../frontend/shared/error-log.js");
 
 /// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 100;
@@ -349,6 +351,7 @@ Connection: close
         "/comments.html" => ("text/html; charset=utf-8", COMMENTS_HTML),
         "/nico.html" => ("text/html; charset=utf-8", NICO_HTML),
         "/shared/comment-common.js" => ("text/javascript; charset=utf-8", COMMENT_COMMON_JS),
+        "/shared/error-log.js" => ("text/javascript; charset=utf-8", ERROR_LOG_JS),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {

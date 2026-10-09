@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaCast ニコ生風コメント</title>
 <style>
   html, body {
@@ -24,6 +26,7 @@
 </head>
 <body>
   <div id="stage"></div>
+  <script src="shared/error-log.js"></script>
   <script src="shared/comment-common.js"></script>
   <script>
     'use strict';

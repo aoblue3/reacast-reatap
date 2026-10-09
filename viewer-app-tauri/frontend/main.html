@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaTap</title>
 <style>
   html, body {
@@ -329,6 +331,12 @@
       <label for="barIconBgAlphaInput">アイコン背景の濃さ: <span id="barIconBgAlphaValue"></span></label>
       <input type="range" id="barIconBgAlphaInput" min="0" max="1" step="0.05" style="width: 220px;" />
     </div>
+
+    <hr />
+
+    <h1>不具合が起きた時</h1>
+    <p style="margin: 0 0 4px;">ログフォルダの中のファイル(ReaTap.log など)を送ってもらえると原因を調べやすくなります。</p>
+    <button type="button" id="openLogDirBtn" class="secondary">ログフォルダを開く</button>
   </div>
 
   <!-- 削除確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
@@ -354,9 +362,9 @@
     </div>
   </div>
 
+  <script src="shared/error-log.js"></script>
   <script src="shared/relay-client.js"></script>
   <script src="shared/emoji-set.js"></script>
-  <script src="shared/tauri-plugin-global-shortcut.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>表示範囲を選択</title>
 <style>
   /* このウィンドウ自体は選んだモニターぴったりのサイズ・位置で開かれ、背景は
@@ -71,6 +73,7 @@
   <div id="hint">左クリックを押したままドラッグして、表示したい範囲を選択してください(Escでキャンセル)</div>
   <button id="cancelBtn">キャンセル</button>
   <div id="selectionBox"><div id="selectionLabel"></div></div>
+  <script src="shared/error-log.js"></script>
   <script src="region_picker.js"></script>
 </body>
 </html>

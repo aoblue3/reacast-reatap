@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaTap</title>
 <style>
   html, body {
@@ -180,6 +182,7 @@
     </div>
   </div>
 
+  <script src="shared/error-log.js"></script>
   <script src="shared/relay-client.js"></script>
   <script src="shared/emoji-set.js"></script>
   <script src="bar.js"></script>

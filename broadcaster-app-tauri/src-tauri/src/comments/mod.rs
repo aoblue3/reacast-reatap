@@ -216,6 +216,26 @@ pub struct SourceStatus {
     pub message: String,
 }
 
+/// エラー・警告・配信サイトの状態が変わった時だけログに残す(定期取得のたびに同じ行を書かない)
+fn log_status_change(before: &CommentStatus, after: &CommentStatus) {
+    if after.error != before.error {
+        if let Some(e) = &after.error {
+            log::warn!("コメント取得のエラー: {e}");
+        }
+    }
+    if after.warning != before.warning {
+        if let Some(w) = &after.warning {
+            log::info!("コメント取得の警告: {w}");
+        }
+    }
+    for src in &after.sources {
+        let prev = before.sources.iter().find(|x| x.id == src.id);
+        if prev.map_or(true, |p| p.state != src.state || p.message != src.message) {
+            log::info!("{}: {} {}", src.label, src.state, src.message);
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Post {
     no: u32,
@@ -458,6 +478,12 @@ impl CommentEngine {
             st.status = CommentStatus { running: true, sources, ..Default::default() };
             st.run_id
         };
+        log::info!(
+            "コメント取得を開始: 掲示板={} YouTube={} Twitch={}",
+            url.trim(),
+            settings.youtube_target.trim(),
+            settings.twitch_channel.trim()
+        );
         self.emit_status();
         self.emit_thread_reset();
         // 開始(再開始)のたびに右のレス一覧を空にしてから始める
@@ -671,6 +697,7 @@ impl CommentEngine {
             st.thread_posts.clear();
             st.status = CommentStatus::default();
         }
+        log::info!("コメント取得を停止");
         self.bridge().clear_subtitle();
         self.emit_status();
         self.emit_thread_reset();
@@ -751,8 +778,10 @@ impl CommentEngine {
             if st.run_id != run_id {
                 return;
             }
+            let before = st.status.clone();
             f(&mut st.status);
             st.status.queue_len = st.queue.len();
+            log_status_change(&before, &st.status);
         }
         self.emit_status();
     }

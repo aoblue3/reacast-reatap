@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaCast</title>
 <style>
   body {
@@ -292,6 +294,11 @@
     <div class="test-buttons" id="testButtons"></div>
   </div>
 
+  <div class="row">
+    <div class="muted">不具合が起きた時は、ログフォルダの中のファイル(ReaCast.log など)を送ってもらえると原因を調べやすくなります:</div>
+    <button id="openLogDirBtn" class="secondary">ログフォルダを開く</button>
+  </div>
+
   <!-- 更新確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
        実装次第でネイティブダイアログが常時最前面のこのウィンドウの後ろに
        隠れて出てきたり、フォーカスの扱いで固まって見えたりする不具合報告が
@@ -315,6 +322,7 @@
     </div>
   </div>
 
+  <script src="shared/error-log.js"></script>
   <script src="shared/emoji-set.js"></script>
   <script src="shared/relay-client.js"></script>
   <script src="control.js"></script>

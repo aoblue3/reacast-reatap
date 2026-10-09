@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
 <title>ReaCast - コメント読み上げ・字幕</title>
 <style>
   :root { color-scheme: dark; }
@@ -383,6 +385,7 @@
     <option value="UD デジタル 教科書体 N-B"></option>
   </datalist>
 
+  <script src="shared/error-log.js"></script>
   <script src="shared/comment-common.js"></script>
   <script src="comment_settings.js"></script>
 </body>

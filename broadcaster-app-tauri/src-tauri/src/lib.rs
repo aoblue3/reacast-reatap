@@ -1,3 +1,4 @@
+mod applog;
 mod comments;
 mod config_store;
 mod connect_code;
@@ -931,13 +932,10 @@ pub fn run() {
                 }
             }))?;
 
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // 不具合調査用のログファイル(配布版でも書く。applog.rs参照)
+            app.handle().plugin(applog::plugin())?;
+            applog::install_panic_hook();
+            applog::log_startup();
 
             let app_data_dir = app.path().app_data_dir()?;
             let config_path = app_data_dir.join("broadcaster-config.json");
@@ -1117,6 +1115,8 @@ pub fn run() {
             open_region_picker,
             updater::check_for_update,
             updater::get_app_version,
+            applog::log_from_frontend,
+            applog::open_log_dir,
             updater::download_and_apply_update,
             open_comment_settings,
             comments::comments_get_settings,
