@@ -1490,10 +1490,21 @@ async function init() {
 
   // アプリ本体の起動処理を待たせたくないので、awaitせず裏で確認する
   // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
+  showAppVersion();
   checkForUpdateOnStartup();
 }
 
 /* ------------------------- 自動アップデート確認 ------------------------- */
+
+/** ローカルビルドにはバージョンが埋め込まれないので「開発版」と出す。 */
+async function showAppVersion() {
+  try {
+    const v = await invoke('get_app_version');
+    document.getElementById('appVersion').textContent = v || '開発版';
+  } catch (err) {
+    console.error('バージョンの取得に失敗しました', err);
+  }
+}
 
 /** 起動時に一度だけ、GitHub Releases上に新しいバージョンが無いか確認する。
  * ビルド時にAPP_VERSION/UPDATE_CHECK_REPO(.github/workflows/build-release.yml

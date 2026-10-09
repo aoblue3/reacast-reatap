@@ -1116,6 +1116,7 @@ pub fn run() {
             set_overlay_region,
             open_region_picker,
             updater::check_for_update,
+            updater::get_app_version,
             updater::download_and_apply_update,
             open_comment_settings,
             comments::comments_get_settings,

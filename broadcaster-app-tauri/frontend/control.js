@@ -104,6 +104,16 @@ function showConfirmDialog(message) {
   });
 }
 
+// ローカルビルドにはバージョンが埋め込まれないので「開発版」と出す
+async function showAppVersion() {
+  try {
+    const v = await invoke('get_app_version');
+    document.getElementById('appVersion').textContent = v || '開発版';
+  } catch (err) {
+    console.error('バージョンの取得に失敗しました', err);
+  }
+}
+
 // 単体exeのままの自動アップデート確認(updater.rs参照)。ビルド時に
 // APP_VERSION/UPDATE_CHECK_REPOが埋め込まれていない場合(ローカルビルド等)は
 // check_for_updateが常にnullを返すので、この関数は実質何もしない。
@@ -803,5 +813,6 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadCooldown();
   await loadHideLocalOverlay();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
+  showAppVersion();
   checkForUpdateOnStartup();
 })();

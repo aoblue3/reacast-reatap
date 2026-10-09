@@ -837,6 +837,7 @@ pub fn run() {
             start_manual_pick,
             cancel_manual_pick,
             updater::check_for_update,
+            updater::get_app_version,
             updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())

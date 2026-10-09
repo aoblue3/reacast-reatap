@@ -53,6 +53,12 @@ fn current_version() -> &'static str {
     option_env!("APP_VERSION").unwrap_or("")
 }
 
+/// 画面に表示するためのバージョン(例: "v1.5.2")。ローカルビルドでは空文字列。
+#[tauri::command]
+pub fn get_app_version() -> String {
+    current_version().to_string()
+}
+
 /// アップデート確認先のGitHubリポジトリ("owner/repo"形式)。GitHub Actions側で
 /// `UPDATE_CHECK_REPO: ${{ github.repository }}` として自動的に渡される。
 fn update_repo() -> &'static str {
