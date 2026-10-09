@@ -175,6 +175,8 @@
       <div class="field"><label>レス読み上げ間隔(ターボモード)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>ターボを開始するレス件数</label><div><input type="number" min="1" data-key="turboThreshold" /><span class="unit">順番待ちがこの件数以上溜まったら短い間隔にします</span></div></div>
       <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /><span class="unit">ONにすると本文の前に番号を付けて渡します(既定OFF)</span></div></div>
+      <div class="field"><label>読み上げ時間の目安</label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
+      <div class="hint">文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
       <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
     </section>
 

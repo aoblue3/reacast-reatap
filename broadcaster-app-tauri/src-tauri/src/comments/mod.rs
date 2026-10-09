@@ -72,6 +72,10 @@ pub struct CommentSettings {
     pub turbo_threshold: usize,
     pub read_res_number: bool,
     pub max_chars: usize,
+    /// 読み上げにかかる時間の目安(1文字あたりのミリ秒、0で使わない)。読み上げが
+    /// 終わるまで次のレスに進まず、字幕もその間は表示しておく(読み上げソフトの
+    /// 「ただちに再生」をOFFにしている時に、字幕と声がずれないようにするため)
+    pub speech_ms_per_char: u64,
     pub reading_rules: String,
     pub ng_words: String,
     // ---- 字幕 ----
@@ -148,6 +152,7 @@ impl Default for CommentSettings {
             // 既定は本文だけを読み上げる(レス番号・名前は読まない)
             read_res_number: false,
             max_chars: 270,
+            speech_ms_per_char: 160,
             reading_rules: [
                 r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
                 r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
@@ -974,18 +979,19 @@ impl CommentEngine {
                 }
             }
 
-            let shown_ms = display_duration(&post, aa, &settings);
+            let speaking = settings.speech_enabled && !settings.command_path.trim().is_empty();
+            let spoken = if speaking { speech_text(&post, aa, &settings, &compiled) } else { String::new() };
+            let speech_ms = speech_duration(&spoken, &settings);
+            // 読み上げている間は字幕も出しておく
+            let shown_ms = display_duration(&post, aa, &settings).max(speech_ms);
             bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
 
-            if settings.speech_enabled && !settings.command_path.trim().is_empty() {
-                let spoken = speech_text(&post, aa, &settings, &compiled);
-                if !spoken.trim().is_empty() {
-                    run_speech_command(&settings, &post, &spoken);
-                }
+            if !spoken.trim().is_empty() {
+                run_speech_command(&settings, &post, &spoken);
             }
 
-            let interval = next_interval(backlog, shown_ms, &settings);
+            let interval = next_interval(backlog, shown_ms, speech_ms, &settings);
             tokio::time::sleep(Duration::from_millis(interval)).await;
         }
     }
@@ -1006,15 +1012,22 @@ fn display_duration(post: &Post, aa: bool, s: &CommentSettings) -> u64 {
     }
 }
 
+/// 読み上げにかかる時間の目安(読み上げる文字数 × 1文字あたりの時間)。
+fn speech_duration(spoken: &str, s: &CommentSettings) -> u64 {
+    let chars = spoken.chars().filter(|c| !c.is_whitespace()).count() as u64;
+    chars.saturating_mul(s.speech_ms_per_char)
+}
+
 /// 次のレスを出すまでの間隔。溜まっている時(ターボ)は短い間隔で追いつくことを
-/// 優先し、そうでなければ読み上げ間隔と(設定がONなら)字幕の表示時間の長い方。
-fn next_interval(backlog: usize, shown_ms: u64, s: &CommentSettings) -> u64 {
+/// 優先し、そうでなければ読み上げ間隔・読み上げ時間の目安・(設定がONなら)字幕の
+/// 表示時間のうち一番長いもの。
+fn next_interval(backlog: usize, shown_ms: u64, speech_ms: u64, s: &CommentSettings) -> u64 {
     if backlog >= s.turbo_threshold.max(1) {
         s.turbo_interval_ms
     } else if s.wait_for_display {
-        s.read_interval_ms.max(shown_ms)
+        s.read_interval_ms.max(shown_ms).max(speech_ms)
     } else {
-        s.read_interval_ms
+        s.read_interval_ms.max(speech_ms)
     }
 }
 
@@ -1354,15 +1367,21 @@ mod tests {
         assert_eq!(display_duration(&post(1, &"あ".repeat(500)), false, &s), 12000);
         assert_eq!(display_duration(&post(1, &"あ".repeat(500)), true, &s), 6000);
         // 普段は表示し終わるまで待つ(短いレスは読み上げ間隔3000ms)
-        assert_eq!(next_interval(0, 3160, &s), 3160);
-        assert_eq!(next_interval(0, 1000, &s), 3000);
+        assert_eq!(next_interval(0, 3160, 0, &s), 3160);
+        assert_eq!(next_interval(0, 1000, 0, &s), 3000);
+        // 読み上げが長ければ、読み終わるまで待つ
+        assert_eq!(next_interval(0, 7000, 16000, &s), 16000);
         // 溜まっている時はターボ間隔
-        assert_eq!(next_interval(3, 12000, &s), 400);
+        assert_eq!(next_interval(3, 12000, 16000, &s), 400);
+        // 読み上げ時間の目安: 100文字 × 160ms
+        assert_eq!(speech_duration(&"あ".repeat(100), &s), 16000);
+        assert_eq!(speech_duration("", &s), 0);
         let mut s2 = s.clone();
         s2.wait_for_display = false;
         s2.display_per_char_ms = 0;
         assert_eq!(display_duration(&post(1, &"あ".repeat(50)), false, &s2), 3000);
-        assert_eq!(next_interval(0, 7000, &s2), 3000);
+        assert_eq!(next_interval(0, 7000, 0, &s2), 3000);
+        assert_eq!(next_interval(0, 7000, 5000, &s2), 5000);
     }
 
     #[test]
