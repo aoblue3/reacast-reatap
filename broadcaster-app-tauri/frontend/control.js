@@ -127,9 +127,11 @@ async function checkForUpdateOnStartup() {
   }
   if (!info) return;
 
-  const notes = info.notes ? `\n\n更新内容:\n${info.notes}` : '';
+  // タイトル・更新内容はCHANGELOG.mdから作られる(.github/scripts/release_notes.py)
+  const title = info.title || info.version;
+  const notes = info.notes && info.notes.trim() ? `\n\n${info.notes.trim()}` : '';
   const ok = await showConfirmDialog(
-    `新しいバージョン ${info.version} が利用可能です。今すぐ更新しますか?${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`
+    `新しいバージョンが利用可能です。今すぐ更新しますか?\n\n${title}${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`
   );
   if (!ok) return;
 

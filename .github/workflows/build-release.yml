@@ -68,12 +68,21 @@ jobs:
           (Get-FileHash -Algorithm SHA256 -Path "broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe").Hash | Out-File -FilePath "broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe.sha256" -Encoding ascii -NoNewline
           (Get-FileHash -Algorithm SHA256 -Path "viewer-app-tauri/src-tauri/target/release/ReaTap.exe").Hash | Out-File -FilePath "viewer-app-tauri/src-tauri/target/release/ReaTap.exe.sha256" -Encoding ascii -NoNewline
 
+      # CHANGELOG.mdのこのバージョンの節から、Releaseのタイトル(見出しそのまま)と
+      # 本文(短いテキスト)を作る。本文はアプリの自動アップデートの確認ダイアログに
+      # そのまま表示される(.github/scripts/release_notes.py参照)。
+      - name: Release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: python .github/scripts/release_notes.py "${{ github.ref_name }}" release-notes.txt
+
       - name: Create GitHub Release with exe attached
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.notes.outputs.title }}
+          body_path: release-notes.txt
           files: |
             broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe
             broadcaster-app-tauri/src-tauri/target/release/ReaCast.exe.sha256
             viewer-app-tauri/src-tauri/target/release/ReaTap.exe
             viewer-app-tauri/src-tauri/target/release/ReaTap.exe.sha256
-          generate_release_notes: true

@@ -73,6 +73,8 @@ const ASSET_NAME: &str = "ReaCast.exe";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub version: String,
+    /// Releaseのタイトル(CHANGELOG.mdの見出し。例: "v1.5.3: バージョン表示…")
+    pub title: Option<String>,
     pub notes: Option<String>,
     pub download_url: String,
     pub sha256: Option<String>,
@@ -87,6 +89,7 @@ struct GithubAsset {
 #[derive(Debug, Deserialize)]
 struct GithubRelease {
     tag_name: String,
+    name: Option<String>,
     body: Option<String>,
     assets: Vec<GithubAsset>,
 }
@@ -184,6 +187,7 @@ pub async fn check_for_update() -> Result<Option<UpdateInfo>, String> {
     };
 
     Ok(Some(UpdateInfo {
+        title: release.name.filter(|n| !n.trim().is_empty() && n.trim() != release.tag_name),
         version: release.tag_name,
         notes: release.body,
         download_url: asset.browser_download_url.clone(),
