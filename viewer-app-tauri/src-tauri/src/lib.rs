@@ -1,4 +1,5 @@
 mod applog;
+mod backup;
 mod config_store;
 mod pcwmp;
 pub mod updater;
@@ -677,6 +678,8 @@ fn cancel_manual_pick(state: tauri::State<ManualPickState>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 設定の書き出し・読み込みのファイル選択(backup.rs)
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // 「タスクトレイから終了したはずなのに、後で開いたら前回のリアクションが
             // まだ出ていた」という報告への対策。app.exit(0)での強制終了時に
@@ -838,6 +841,8 @@ pub fn run() {
             updater::get_app_version,
             applog::log_from_frontend,
             applog::open_log_dir,
+            backup::export_settings,
+            backup::import_settings,
             updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())

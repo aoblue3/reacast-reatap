@@ -1491,6 +1491,25 @@ async function init() {
   // アプリ本体の起動処理を待たせたくないので、awaitせず裏で確認する
   // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
   showAppVersion();
+  document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('backupMsg');
+    try {
+      const path = await invoke('export_settings');
+      if (path) msg.textContent = `書き出しました: ${path}`;
+    } catch (err) {
+      msg.textContent = String(err);
+    }
+  });
+  document.getElementById('importSettingsBtn').addEventListener('click', async () => {
+    const ok = await showConfirmDialog('設定ファイルを読み込むと、今の設定はすべて置き換わり、アプリが再起動します。よろしいですか?');
+    if (!ok) return;
+    try {
+      // 成功するとRust側でアプリが再起動するので、ここには戻らない
+      await invoke('import_settings');
+    } catch (err) {
+      document.getElementById('backupMsg').textContent = String(err);
+    }
+  });
   document.getElementById('openLogDirBtn').addEventListener('click', () => {
     invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
   });

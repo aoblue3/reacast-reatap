@@ -1,4 +1,5 @@
 mod applog;
+mod backup;
 mod comments;
 mod config_store;
 mod connect_code;
@@ -1148,6 +1149,8 @@ pub fn run() {
             comments::comments_post,
             comments::comments_skip,
             preflight::preflight_check,
+            backup::export_settings,
+            backup::import_settings,
             comments::comments_default_reaction_rules,
             comments::comments_preview_draft,
             comments::comments_first_post_template,

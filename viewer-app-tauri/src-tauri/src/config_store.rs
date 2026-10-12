@@ -37,6 +37,17 @@ impl ConfigStore {
         self.persist()
     }
 
+    /// 設定の中身をまるごと取り出す(設定の書き出し用。backup.rs)
+    pub fn snapshot(&self) -> Map<String, Value> {
+        self.data.lock().unwrap().clone()
+    }
+
+    /// 設定の中身をまるごと入れ替えて保存する(設定の読み込み用。backup.rs)
+    pub fn replace_all(&self, data: Map<String, Value>) -> std::io::Result<()> {
+        *self.data.lock().unwrap() = data;
+        self.persist()
+    }
+
     fn persist(&self) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;

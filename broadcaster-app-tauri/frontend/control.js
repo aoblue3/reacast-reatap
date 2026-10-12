@@ -856,6 +856,25 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadHideLocalOverlay();
   await connectRelay(credentials, relayAddress, passphraseInputEl.value);
   showAppVersion();
+  document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('backupMsg');
+    try {
+      const path = await invoke('export_settings');
+      if (path) msg.textContent = `書き出しました: ${path}`;
+    } catch (err) {
+      msg.textContent = String(err);
+    }
+  });
+  document.getElementById('importSettingsBtn').addEventListener('click', async () => {
+    const ok = await showConfirmDialog('設定ファイルを読み込むと、今の設定はすべて置き換わり、アプリが再起動します。よろしいですか?');
+    if (!ok) return;
+    try {
+      // 成功するとRust側でアプリが再起動するので、ここには戻らない
+      await invoke('import_settings');
+    } catch (err) {
+      document.getElementById('backupMsg').textContent = String(err);
+    }
+  });
   document.getElementById('openLogDirBtn').addEventListener('click', () => {
     invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
   });
