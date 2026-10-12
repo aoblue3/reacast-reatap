@@ -45,6 +45,9 @@ pub struct CommentSettings {
     /// スレッドの>>1(テンプレート)は字幕・読み上げ・右のレス一覧に出さない
     /// (長いと字幕の文字が小さくなり、読み終わるまで次のレスが待たされるため)
     pub skip_first_post: bool,
+    /// 「スレッドのレス」タブから書き込む時の名前・メール欄
+    pub post_name: String,
+    pub post_mail: String,
     /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
@@ -141,6 +144,8 @@ impl Default for CommentSettings {
             start_on_launch: false,
             jpnkn_fast: true,
             skip_first_post: true,
+            post_name: String::new(),
+            post_mail: String::new(),
             start_res_no: 0,
             initial_text: "スレッド読み込みを開始しました".into(),
             icon_folder_bbs: String::new(),
@@ -1500,6 +1505,31 @@ pub async fn comments_list_threads(engine: Engine<'_>, url: String) -> Result<se
         .collect();
     items.sort_by_key(|v| std::cmp::Reverse(v["key"].as_str().and_then(|k| k.parse::<u64>().ok()).unwrap_or(0)));
     Ok(serde_json::json!({ "threads": items }))
+}
+
+/// 今読んでいるスレッドに書き込む(「スレッドのレス」タブから)。名前・メール欄は設定のもの。
+#[tauri::command]
+pub async fn comments_post(engine: Engine<'_>, body: String) -> Result<(), String> {
+    if body.trim().is_empty() {
+        return Err("本文が空です".into());
+    }
+    let url = engine
+        .status()
+        .thread_url
+        .ok_or("読み込み中のスレッドがありません(「開始」を押してから書き込んでください)")?;
+    let (board, key) = source::parse_url(&url)?;
+    let key = key.ok_or("スレッドのURLが分かりません")?;
+    let settings = engine.settings();
+    source::post_reply(
+        &source::http_client(),
+        &ThreadRef { board, key },
+        &settings.post_name,
+        &settings.post_mail,
+        body.trim_end(),
+    )
+    .await?;
+    log::info!("スレッドに書き込みました: {url}");
+    Ok(())
 }
 
 /// 掲示板の読み込み先を、選んだスレッドに切り替える。

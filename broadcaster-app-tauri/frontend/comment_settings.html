@@ -74,7 +74,7 @@
   .copy-row code { background: #15161a; padding: 4px 6px; border-radius: 4px; flex: 1; }
   h3 { font-size: 13px; margin: 16px 0 8px; color: #fff; }
   #threadList {
-    max-height: calc(100vh - 230px);
+    max-height: calc(100vh - 380px);
     overflow-y: auto;
     border: 1px solid #3a3d47;
     border-radius: 6px;
@@ -166,8 +166,18 @@
     </section>
 
     <section data-tab="thread">
-      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。</div>
+      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。「返信」を押すと、下の書き込み欄に「&gt;&gt;番号」を入れます。</div>
       <div id="threadList"><div class="empty">取得を開始すると、ここにスレッドのレスが表示されます</div></div>
+      <div class="inline" style="margin: 10px 0 6px">
+        <span>名前</span><input type="text" data-key="postName" style="width: 180px" placeholder="空欄なら板の名無し" />
+        <span>メール</span><input type="text" data-key="postMail" style="width: 120px" placeholder="sage など" />
+      </div>
+      <textarea id="postBody" style="min-height: 70px; font-family: inherit" placeholder="今読んでいるスレッドに書き込む本文(Ctrl+Enterでも書き込めます)"></textarea>
+      <div class="inline" style="margin-top: 6px">
+        <button id="postBtn">書き込む</button>
+        <span id="postMsg" class="unit"></span>
+      </div>
+      <div class="hint">jpnkn等の2ちゃんねる互換の掲示板だけに対応しています(したらば掲示板には書き込めません)。</div>
     </section>
 
     <section data-tab="speech">

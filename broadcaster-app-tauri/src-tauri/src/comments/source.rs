@@ -359,12 +359,54 @@ pub async fn create_thread(
     let status = resp.status();
     let bytes = resp.bytes().await.map_err(|e| format!("スレッドの作成に失敗しました: {e}"))?;
     let html = decode(SHIFT_JIS, &bytes);
-    check_post_result(status.is_success(), &html)
+    check_post_result(status.is_success(), &html, "スレッドの作成")
+}
+
+/// スレッドにレスを書き込む(2ch互換の掲示板のみ)。
+pub async fn post_reply(
+    client: &reqwest::Client,
+    thread: &ThreadRef,
+    name: &str,
+    mail: &str,
+    body: &str,
+) -> Result<(), String> {
+    let Board::Nch { origin, board } = &thread.board else {
+        return Err("書き込みは、今のところ2ちゃんねる互換の掲示板(jpnkn等)だけに対応しています".into());
+    };
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let form = [
+        ("bbs", board.as_str()),
+        ("key", thread.key.as_str()),
+        ("FROM", name),
+        ("mail", mail),
+        ("MESSAGE", body),
+        ("time", &time.to_string()),
+        ("submit", "書き込む"),
+    ]
+    .iter()
+    .map(|(k, v)| format!("{k}={}", sjis_form_encode(v)))
+    .collect::<Vec<_>>()
+    .join("&");
+    let resp = client
+        .post(format!("{origin}/test/bbs.cgi"))
+        .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(reqwest::header::REFERER, thread.read_url())
+        .body(form)
+        .send()
+        .await
+        .map_err(|e| format!("書き込みに失敗しました: {e}"))?;
+    let status = resp.status();
+    let bytes = resp.bytes().await.map_err(|e| format!("書き込みに失敗しました: {e}"))?;
+    let html = decode(SHIFT_JIS, &bytes);
+    check_post_result(status.is_success(), &html, "書き込み")
 }
 
 /// bbs.cgiの応答から成功/失敗を判定する(2ch互換の掲示板は、成功時に
-/// タイトルが「書きこみました」のページを返す)。
-fn check_post_result(http_ok: bool, html: &str) -> Result<(), String> {
+/// タイトルが「書きこみました」のページを返す)。whatはエラー文言用(「書き込み」等)。
+fn check_post_result(http_ok: bool, html: &str, what: &str) -> Result<(), String> {
     let title = html
         .find("<title>")
         .and_then(|i| html[i + 7..].find("</title>").map(|j| html[i + 7..i + 7 + j].trim().to_string()))
@@ -374,7 +416,7 @@ fn check_post_result(http_ok: bool, html: &str) -> Result<(), String> {
     }
     let detail = super::text::html_to_text(&html.replace('\n', " "));
     let detail: String = detail.chars().take(120).collect();
-    Err(format!("スレッドの作成に失敗しました: {}", if title.is_empty() { detail } else { title }))
+    Err(format!("{what}に失敗しました: {}", if title.is_empty() { detail } else { title }))
 }
 
 /// Shift_JISにしてからパーセントエンコードする(2ch互換のbbs.cgiの送り方)。
@@ -465,10 +507,10 @@ mod tests {
     fn sjis_form_encoding_and_post_result() {
         assert_eq!(sjis_form_encode("540"), "540");
         assert_eq!(sjis_form_encode("あ a&"), "%82%A0+a%26");
-        assert!(check_post_result(true, "<html><title>書きこみました。</title></html>").is_ok());
-        let err = check_post_result(true, "<html><title>ＥＲＲＯＲ！</title><body>スレ立てすぎです</body></html>");
+        assert!(check_post_result(true, "<html><title>書きこみました。</title></html>", "スレッドの作成").is_ok());
+        let err = check_post_result(true, "<html><title>ＥＲＲＯＲ！</title><body>スレ立てすぎです</body></html>", "スレッドの作成");
         assert!(err.unwrap_err().contains("ＥＲＲＯＲ"));
-        assert!(check_post_result(false, "<title>書きこみました</title>").is_err());
+        assert!(check_post_result(false, "<title>書きこみました</title>", "書き込み").is_err());
     }
 
     #[test]

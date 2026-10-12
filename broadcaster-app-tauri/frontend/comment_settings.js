@@ -445,7 +445,12 @@ function buildPostEl(p) {
   btn.textContent = '読み上げ';
   btn.title = 'このレスをもう一度字幕に表示して読み上げます';
   btn.addEventListener('click', () => invoke('comments_replay', { no: p.no }).catch(() => {}));
-  head.append(no, name, date, btn);
+  const reply = document.createElement('button');
+  reply.className = 'secondary';
+  reply.textContent = '返信';
+  reply.title = '下の書き込み欄に「>>番号」を入れます';
+  reply.addEventListener('click', () => insertReplyAnchor(p.no));
+  head.append(no, name, date, btn, reply);
   const body = document.createElement('div');
   body.className = 'post-body';
   body.textContent = p.body || '';
@@ -464,6 +469,46 @@ function appendPosts(posts) {
   threadListEl.appendChild(frag);
   if (atBottom) threadListEl.scrollTop = threadListEl.scrollHeight;
 }
+
+// ---- 今読んでいるスレッドへの書き込み(名前・メール欄は設定として保存) ----
+const postBodyEl = document.getElementById('postBody');
+const postBtn = document.getElementById('postBtn');
+const postMsgEl = document.getElementById('postMsg');
+
+function insertReplyAnchor(no) {
+  const anchor = `>>${no}\n`;
+  const v = postBodyEl.value;
+  postBodyEl.value = v && !v.endsWith('\n') ? `${v}\n${anchor}` : v + anchor;
+  postBodyEl.focus();
+  postBodyEl.setSelectionRange(postBodyEl.value.length, postBodyEl.value.length);
+}
+
+async function submitPost() {
+  const body = postBodyEl.value;
+  if (!body.trim() || postBtn.disabled) return;
+  postBtn.disabled = true;
+  postMsgEl.textContent = '書き込み中…';
+  try {
+    // 入力途中の名前・メール欄も反映してから書き込む
+    clearTimeout(saveTimer);
+    await invoke('comments_save_settings', { settings });
+    await invoke('comments_post', { body });
+    postBodyEl.value = '';
+    postMsgEl.textContent = '書き込みました';
+  } catch (err) {
+    postMsgEl.textContent = String((err && err.message) || err);
+  } finally {
+    postBtn.disabled = false;
+  }
+}
+
+postBtn.addEventListener('click', submitPost);
+postBodyEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    e.preventDefault();
+    submitPost();
+  }
+});
 
 function resetPosts() {
   threadListEl.textContent = '';

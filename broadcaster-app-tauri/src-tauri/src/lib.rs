@@ -1130,6 +1130,7 @@ pub fn run() {
             comments::comments_check_twitch,
             comments::comments_list_threads,
             comments::comments_switch_thread,
+            comments::comments_post,
             comments::comments_get_thread,
             comments::comments_replay,
             comments::comments_preview_next_thread,
