@@ -585,27 +585,12 @@ impl CommentEngine {
             (st.settings.clone(), st.status.clone())
         };
         let cur_title = status.thread_title.ok_or("先に取得を開始してください(今のスレッドのタイトルが必要です)")?;
-        let tmpl = if s.create_title_template.trim().is_empty() { "{next}" } else { s.create_title_template.as_str() };
-        let next = text::increment_last_number(&cur_title);
-        if (tmpl.contains("{next}") || tmpl.contains("{n}")) && next.is_none() {
-            return Err(format!(
-                "今のタイトル「{cur_title}」に数字が無いため、次のタイトルを自動で決められません(タイトルの設定を変えてください)"
-            ));
-        }
-        let next = next.unwrap_or_default();
-        let title = tmpl.replace("{next}", &next).replace("{n}", &text::last_number(&next).unwrap_or_default());
-        let body = s
-            .create_body_template
-            .replace("{prevUrl}", status.thread_url.as_deref().unwrap_or(""))
-            .replace("{prevTitle}", &cur_title)
-            .replace("{title}", &title);
-        if title.trim().is_empty() {
-            return Err("次スレのタイトルが空です".into());
-        }
-        if body.trim().is_empty() {
-            return Err(">>1の本文が空です".into());
-        }
-        Ok((title, body))
+        build_draft(&s, &cur_title, status.thread_url.as_deref().unwrap_or(""))
+    }
+
+    /// 今読んでいるスレッドの>>1の本文(テンプレートに取り込む用)。
+    pub fn first_post(&self) -> Option<String> {
+        self.state.lock().unwrap().thread_posts.iter().find(|p| p.no == 1).map(|p| p.body.clone())
     }
 
     /// 取得を開始する。掲示板(urlが空なら取得しない)と、設定にあるYouTube・Twitchを
@@ -1570,6 +1555,60 @@ pub fn comments_save_settings(
     Ok(())
 }
 
+/// 次スレのタイトルと>>1の本文を、設定のテンプレートと今のスレッドから作る。
+fn build_draft(s: &CommentSettings, cur_title: &str, cur_url: &str) -> Result<(String, String), String> {
+    let tmpl = if s.create_title_template.trim().is_empty() { "{next}" } else { s.create_title_template.as_str() };
+    let next = text::increment_last_number(cur_title);
+    if (tmpl.contains("{next}") || tmpl.contains("{n}")) && next.is_none() {
+        return Err(format!(
+            "今のタイトル「{cur_title}」に数字が無いため、次のタイトルを自動で決められません(タイトルの設定を変えてください)"
+        ));
+    }
+    let next = next.unwrap_or_default();
+    let title = tmpl.replace("{next}", &next).replace("{n}", &text::last_number(&next).unwrap_or_default());
+    let body = s
+        .create_body_template
+        .replace("{prevUrl}", cur_url)
+        .replace("{prevTitle}", cur_title)
+        .replace("{title}", &title);
+    if title.trim().is_empty() {
+        return Err("次スレのタイトルが空です".into());
+    }
+    if body.trim().is_empty() {
+        return Err(">>1の本文が空です".into());
+    }
+    Ok((title, body))
+}
+
+/// テンプレートの編集中に、入力途中の設定でタイトルと>>1を作って見せる。取得して
+/// いない時は見本のスレッド(sample: true)で作る。
+#[tauri::command]
+pub fn comments_preview_draft(engine: Engine, settings: CommentSettings) -> serde_json::Value {
+    let status = engine.status();
+    let (cur_title, cur_url, sample) = match status.thread_title {
+        Some(t) => (t, status.thread_url.unwrap_or_default(), false),
+        None => ("配信スレ★539".to_string(), "https://bbs.jpnkn.com/test/read.cgi/板の名前/1700000000/".to_string(), true),
+    };
+    match build_draft(&settings, &cur_title, &cur_url) {
+        Ok((title, body)) => serde_json::json!({ "title": title, "body": body, "sample": sample }),
+        Err(e) => serde_json::json!({ "error": e, "sample": sample }),
+    }
+}
+
+/// 今読んでいるスレッドの>>1の本文を、テンプレートとして使える形にして返す
+/// (同じ掲示板のスレッドのURLは{prevUrl}にする)。
+#[tauri::command]
+pub fn comments_first_post_template(engine: Engine) -> Result<String, String> {
+    let body = engine.first_post().ok_or("今読んでいるスレッドの>>1がありません(取得を開始してから押してください)")?;
+    Ok(thread_urls_to_placeholder(&body))
+}
+
+/// 本文中のスレッドのURL(…/read.cgi/…)を{prevUrl}にする。
+fn thread_urls_to_placeholder(body: &str) -> String {
+    let re = regex::Regex::new(r"https?://[^\s]+/read\.cgi/[^\s]+").unwrap();
+    re.replace_all(body, "{prevUrl}").into_owned()
+}
+
 /// コメントとリアクションの連動の既定のルール(「既定のルールに戻す」用)。
 #[tauri::command]
 pub fn comments_default_reaction_rules() -> String {
@@ -1770,12 +1809,6 @@ pub fn comments_switch_thread(engine: Engine, url: String) -> Result<(), String>
     engine.switch_thread(&url)
 }
 
-/// 次スレのタイトルと>>1の本文を確認する(実際には建てない)。
-#[tauri::command]
-pub fn comments_preview_next_thread(engine: Engine) -> Result<serde_json::Value, String> {
-    let (title, body) = engine.next_thread_draft()?;
-    Ok(serde_json::json!({ "title": title, "body": body }))
-}
 
 #[tauri::command]
 pub fn comments_desktop_adjusting(engine: Engine) -> bool {
@@ -1866,6 +1899,22 @@ mod tests {
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
         // お知らせにはレス番号を付けない
         assert_eq!(speech_text(&Post::system("次スレです"), false, &s, &c), "次スレで");
+    }
+
+    #[test]
+    fn next_thread_draft_and_template_import() {
+        let mut s = CommentSettings::default();
+        s.create_title_template = "{next}".into();
+        s.create_body_template = "前スレ\n{prevUrl}\n{prevTitle}→{title}".into();
+        let (title, body) = build_draft(&s, "配信スレ★539", "https://example.com/test/read.cgi/b/1/").unwrap();
+        assert_eq!(title, "配信スレ★540");
+        assert_eq!(body, "前スレ\nhttps://example.com/test/read.cgi/b/1/\n配信スレ★539→配信スレ★540");
+        s.create_body_template = " ".into();
+        assert!(build_draft(&s, "配信スレ★539", "").is_err());
+        assert_eq!(
+            thread_urls_to_placeholder("前スレ\nhttps://bbs.jpnkn.com/test/read.cgi/ao/1790705505/\nルール: https://example.com/rule"),
+            "前スレ\n{prevUrl}\nルール: https://example.com/rule"
+        );
     }
 
     #[test]

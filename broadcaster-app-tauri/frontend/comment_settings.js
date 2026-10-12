@@ -250,17 +250,56 @@ document.getElementById('resetDesktopBtn').addEventListener('click', () => {
   invoke('comments_desktop_reset').catch((e) => showStatusError(String(e)));
 });
 
-// ---- 次スレの確認 ----
-document.getElementById('previewThreadBtn').addEventListener('click', async () => {
-  const out = document.getElementById('threadPreview');
+// ---- 次スレの>>1のテンプレート編集(右側に建てた時の見え方をすぐ出す) ----
+const templateEl = document.querySelector('[data-key="createBodyTemplate"]');
+let draftTimer = null;
+
+/** 入力途中の設定でタイトルと>>1を作って表示する(実際には建てない)。 */
+async function renderDraft() {
+  const text = templateEl.value;
+  // 2ちゃんねる互換の掲示板の本文はShift_JISで数えるので、全角は2バイトとして数える
+  const bytes = Array.from(text).reduce((n, c) => n + (c.charCodeAt(0) < 0x80 ? 1 : 2), 0);
+  document.getElementById('templateCount').textContent =
+    `${text.split('\n').length}行 / ${Array.from(text).length}文字(約${bytes}バイト)`;
+  const d = await invoke('comments_preview_draft', { settings }).catch((e) => ({ error: String(e) }));
+  document.getElementById('draftNote').textContent = d.sample
+    ? '建てた時の見え方(取得していないので「配信スレ★539」の次として表示)'
+    : '建てた時の見え方';
+  document.getElementById('draftTitle').textContent = d.error ? '' : d.title;
+  document.getElementById('threadPreview').textContent = d.error || d.body;
+}
+
+function scheduleDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(renderDraft, 200);
+}
+
+for (const key of ['createBodyTemplate', 'createTitleTemplate']) {
+  document.querySelector(`[data-key="${key}"]`).addEventListener('input', scheduleDraft);
+}
+document.querySelector('nav button[data-tab="create"]').addEventListener('click', renderDraft);
+
+for (const btn of document.querySelectorAll('[data-insert]')) {
+  btn.addEventListener('click', () => {
+    // カーソルの位置に差し込む
+    const { selectionStart: a, selectionEnd: b, value } = templateEl;
+    templateEl.value = value.slice(0, a) + btn.dataset.insert + value.slice(b);
+    const pos = a + btn.dataset.insert.length;
+    templateEl.focus();
+    templateEl.setSelectionRange(pos, pos);
+    onFieldChange(templateEl);
+    scheduleDraft();
+  });
+}
+
+document.getElementById('importFirstPostBtn').addEventListener('click', async () => {
   try {
-    // 入力途中の設定も反映してから確認する
-    clearTimeout(saveTimer);
-    await invoke('comments_save_settings', { settings });
-    const d = await invoke('comments_preview_next_thread');
-    out.textContent = `タイトル: ${d.title}\n\n${d.body}`;
+    const body = await invoke('comments_first_post_template');
+    templateEl.value = body;
+    onFieldChange(templateEl);
+    renderDraft();
   } catch (e) {
-    out.textContent = String(e);
+    document.getElementById('threadPreview').textContent = String(e);
   }
 });
 

@@ -142,6 +142,10 @@
   #readingDialog { position: fixed; z-index: 21; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
   #readingDialog.visible { display: flex; }
   #reactionIdList button { padding: 2px 8px; font-size: 12px; }
+  /* 次スレの>>1のテンプレート編集(左: 入力、右: 建てた時の見え方) */
+  .template-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
+  .draft-title { font-weight: bold; margin: 4px 0; min-height: 1.4em; }
+  .draft-body { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 8px; min-height: 260px; border-radius: 6px; background: var(--c-15161a); border: 1px solid var(--c-3a3d47); font: inherit; }
   #readingDialog > div { background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
@@ -346,10 +350,25 @@
       <div class="hint">{next} = 今のタイトルの最後の数字を1増やしたもの(「539」→「540」、「雑談 part9」→「雑談 part10」)、{n} = その数字だけ。例: 「配信スレ{n}」</div>
       <div class="field"><label>名前 / メール</label><div class="inline"><input type="text" data-key="createName" placeholder="空欄なら名無し" /><input type="text" data-key="createMail" placeholder="sage等" /></div></div>
       <h3>&gt;&gt;1のテンプレート</h3>
-      <textarea data-key="createBodyTemplate"></textarea>
-      <div class="hint">{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル</div>
-      <div class="inline"><button class="secondary" id="previewThreadBtn">タイトルと本文を確認(建てません)</button></div>
-      <pre id="threadPreview" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; min-height:2em"></pre>
+      <div class="inline" style="margin-bottom: 6px">
+        <span class="unit">差し込む:</span>
+        <button class="secondary" data-insert="{prevUrl}" title="今のスレッドのURL">前スレのURL</button>
+        <button class="secondary" data-insert="{prevTitle}" title="今のスレッドのタイトル">前スレのタイトル</button>
+        <button class="secondary" data-insert="{title}" title="新しいスレッドのタイトル">新しいタイトル</button>
+        <button class="secondary" id="importFirstPostBtn" title="今読んでいるスレッドの>>1をテンプレートにします(スレッドのURLは前スレのURLに置き換えます)">今のスレの&gt;&gt;1を取り込む</button>
+      </div>
+      <div class="template-editor">
+        <div>
+          <textarea data-key="createBodyTemplate" style="min-height: 280px"></textarea>
+          <div class="unit" id="templateCount"></div>
+        </div>
+        <div>
+          <div class="unit" id="draftNote">建てた時の見え方</div>
+          <div id="draftTitle" class="draft-title"></div>
+          <pre id="threadPreview" class="draft-body"></pre>
+        </div>
+      </div>
+      <div class="hint">{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル。右側は入力に合わせてすぐ変わります(実際には建てません)。</div>
     </section>
 
     <section data-tab="words">
