@@ -414,6 +414,33 @@ function renderStatus(s) {
   }
 }
 
+// ---- コメントとリアクションの連動 ----
+const reactionRulesMsgEl = document.getElementById('reactionRulesMsg');
+document.getElementById('reactionRulesResetBtn').addEventListener('click', async () => {
+  settings.reactionRules = await invoke('comments_default_reaction_rules');
+  renderFields();
+  scheduleSave();
+  reactionRulesMsgEl.textContent = '既定のルールに戻しました';
+});
+// 使えるリアクションの一覧。押すと「/ID」をルールの最後に付け足す(正規表現はその前に書く)
+for (const e of window.EmojiSet.EMOJI_SET) {
+  const b = document.createElement('button');
+  b.className = 'secondary';
+  b.textContent = `${e.char.length > 4 ? e.label : e.char} ${e.id}`;
+  b.title = e.label;
+  b.addEventListener('click', () => {
+    const ta = document.querySelector('[data-key="reactionRules"]');
+    const cur = ta.value.replace(/\n+$/, '');
+    ta.value = `${cur}${cur ? '\n' : ''}/${e.id}`;
+    onFieldChange(ta);
+    ta.focus();
+    // カーソルを「/ID」の前に置いて、そのまま言葉を打てるようにする
+    const pos = ta.value.length - e.id.length - 1;
+    ta.setSelectionRange(pos, pos);
+  });
+  document.getElementById('reactionIdList').appendChild(b);
+}
+
 // ---- 読み上げの一時停止・スキップ(ボタンとホットキー。ホットキーはRust側で登録) ----
 const pauseBtn = document.getElementById('pauseBtn');
 pauseBtn.addEventListener('click', () => invoke('comments_toggle_pause').catch(() => {}));

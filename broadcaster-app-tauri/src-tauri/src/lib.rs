@@ -875,13 +875,22 @@ fn cfg_set(
 /// 中継サーバーから届いた(または動作確認用にコントロールパネルから送った)
 /// リアクションを、オーバーレイウィンドウに転送する。
 #[tauri::command]
-fn emit_overlay_reaction(
-    app: tauri::AppHandle,
-    store: tauri::State<ConfigStore>,
-    emoji: String,
-    viewer_id: Option<String>,
-) -> Result<(), String> {
-    let viewer_id = viewer_id.unwrap_or_default();
+fn emit_overlay_reaction(app: tauri::AppHandle, emoji: String, viewer_id: Option<String>) -> Result<(), String> {
+    show_reaction(&app, &emoji, &viewer_id.unwrap_or_default())
+}
+
+/// リアクションをオーバーレイとOBSに表示する(視聴者からのもの・テスト送信・
+/// コメントとの連動のどれもここを通る)。配信者がOFFにしたリアクションは出さない。
+pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str) -> Result<(), String> {
+    let store = app.state::<ConfigStore>();
+    // 視聴者からのリアクション・テスト送信はcontrol.js側で確認済み。コメントとの連動は
+    // ここで確認する(OFFにしたものが連動で出てしまわないように)
+    if viewer_id == "comment" {
+        let disabled = store.get("disabledReactionIds").and_then(|v| v.as_array().cloned()).unwrap_or_default();
+        if disabled.iter().any(|v| v.as_str() == Some(emoji)) {
+            return Ok(());
+        }
+    }
     // 「自分の画面には表示しない(OBS経由の配信画面にのみ表示)」設定。ONの間は
     // Tauri本体のオーバーレイウィンドウへの反映(=配信者自身のモニターに映る分)
     // だけを省略する。OBSの「ブラウザ」ソース向けの配信(下のobs_bridge呼び出し)は
@@ -1137,6 +1146,7 @@ pub fn run() {
             comments::comments_switch_thread,
             comments::comments_post,
             comments::comments_skip,
+            comments::comments_default_reaction_rules,
             comments::comments_toggle_pause,
             comments::comments_suspend_hotkeys,
             comments::comments_apply_hotkeys,

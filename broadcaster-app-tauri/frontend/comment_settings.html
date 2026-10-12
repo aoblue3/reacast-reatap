@@ -141,6 +141,7 @@
   #postMenu button:disabled { opacity: 0.4; }
   #readingDialog { position: fixed; z-index: 21; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
   #readingDialog.visible { display: flex; }
+  #reactionIdList button { padding: 2px 8px; font-size: 12px; }
   #readingDialog > div { background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
@@ -191,6 +192,7 @@
     <button data-tab="aa">AAモード</button>
     <button data-tab="create">次スレ作成</button>
     <button data-tab="words">NGワード・読み方</button>
+    <button data-tab="reactions">リアクション連動</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
     <button data-tab="output">表示先(OBS・デスクトップ)</button>
@@ -358,6 +360,20 @@
       <div class="hint">SpeechCastMeの「読み方」の内容をそのまま貼り付けて使えます(¥はバックスラッシュとして扱います)。</div>
     </section>
 
+    <section data-tab="reactions">
+      <div class="hint">字幕に出したレスの本文がルールに当てはまると、視聴者のリアクションと同じように配信画面へリアクションを飛ばします(例: 「www」で草、「888」で拍手、「おつ」でおつかれ)。コントロールパネルでOFFにしたリアクションは飛びません。AAには反応しません。</div>
+      <div class="field"><label>コメントとリアクションを連動する</label><div><input type="checkbox" data-key="reactionLink" /></div></div>
+      <div class="field"><label>1件のレスで飛ばす最大数</label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個(上のルールほど優先)</span></div></div>
+      <h3>ルール(1行に「正規表現/リアクションのID」。上にあるものほど優先)</h3>
+      <textarea data-key="reactionRules" style="min-height: 260px"></textarea>
+      <div class="inline" style="margin: 6px 0">
+        <button class="secondary" id="reactionRulesResetBtn">既定のルールに戻す</button>
+        <span class="unit" id="reactionRulesMsg"></span>
+      </div>
+      <div class="hint">「^おつ$」のように^と$で囲むと「レス全体がその言葉」の時だけ反応します(短い言葉の誤爆よけ)。下のリアクションを押すと、そのIDをルールの最後に付け足します。</div>
+      <div id="reactionIdList" class="inline"></div>
+    </section>
+
     <section data-tab="list">
       <div class="field"><label>デザインのプリセット</label><div class="inline">
         <select id="listPreset">
@@ -472,6 +488,7 @@
   </datalist>
 
   <script src="shared/error-log.js"></script>
+  <script src="shared/emoji-set.js"></script>
   <script src="shared/comment-common.js"></script>
   <script src="comment_settings.js"></script>
 </body>

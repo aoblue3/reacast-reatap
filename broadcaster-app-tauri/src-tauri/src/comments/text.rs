@@ -193,6 +193,42 @@ pub fn parse_reading_rules(text: &str) -> Vec<ReadingRule> {
         .collect()
 }
 
+/// コメントとリアクションの連動ルール(1行に「正規表現/リアクションのID」)。
+pub struct ReactionRule {
+    re: Regex,
+    id: String,
+}
+
+/// 書式は読み方と同じ(区切りは行の最後の`/`、`¥`はバックスラッシュ)。
+/// 正規表現として不正な行と、IDが空の行は読み飛ばす。
+pub fn parse_reaction_rules(text: &str) -> Vec<ReactionRule> {
+    non_empty_lines(text)
+        .into_iter()
+        .filter_map(|line| {
+            let idx = line.rfind('/')?;
+            let (pat, id) = (&line[..idx], line[idx + 1..].trim());
+            if pat.is_empty() || id.is_empty() {
+                return None;
+            }
+            Regex::new(&pat.replace('¥', "\\")).ok().map(|re| ReactionRule { re, id: id.to_string() })
+        })
+        .collect()
+}
+
+/// 本文に当てはまったルールのリアクションID(上の行から順に、同じIDは1回、最大max個)。
+pub fn matched_reactions(body: &str, rules: &[ReactionRule], max: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for r in rules {
+        if out.len() >= max {
+            break;
+        }
+        if !out.contains(&r.id) && r.re.is_match(body) {
+            out.push(r.id.clone());
+        }
+    }
+    out
+}
+
 pub fn apply_reading_rules(text: &str, rules: &[ReadingRule]) -> String {
     let mut s = text.to_string();
     for r in rules {
@@ -360,6 +396,15 @@ mod tests {
         assert_eq!(html_to_text(nch), "　　∧＿∧\n　 （　´∀｀）\n\n   （　　　　）");
         // 空白1つだけの行があっても落ちない
         assert_eq!(html_to_text(" a <br> <br> b "), "a\n\nb");
+    }
+
+    #[test]
+    fn reaction_rules_match_in_order_without_duplicates() {
+        let rules = parse_reaction_rules("[wｗ]{3,}/kusa\n888/clap\n草/kusa\n(不正な正規表現/x\nおめでと/cake\nIDなし/");
+        assert_eq!(rules.len(), 4);
+        assert_eq!(matched_reactions("草www 888", &rules, 3), vec!["kusa", "clap"]);
+        assert_eq!(matched_reactions("888 おめでとう www", &rules, 2), vec!["kusa", "clap"]);
+        assert!(matched_reactions("こんにちは", &rules, 3).is_empty());
     }
 
     #[test]

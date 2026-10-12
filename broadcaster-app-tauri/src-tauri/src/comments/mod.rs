@@ -94,6 +94,13 @@ pub struct CommentSettings {
     pub hotkey_pause: String,
     pub reading_rules: String,
     pub ng_words: String,
+    // ---- コメントとリアクションの連動 ----
+    /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
+    pub reaction_link: bool,
+    /// 1行に「正規表現/リアクションのID」(text::parse_reaction_rules)
+    pub reaction_rules: String,
+    /// 1件のレスで飛ばすリアクションの最大数
+    pub reaction_link_max: usize,
     // ---- 字幕 ----
     pub display_ms: u64,
     /// 長いレスほど長く表示する: 1文字あたりに足す時間(0で長さに関係なく一定)
@@ -136,6 +143,56 @@ pub struct DesktopRect {
     pub width: u32,
     pub height: u32,
 }
+
+/// コメントとリアクションの連動の既定のルール(上にあるものほど優先)。
+/// IDはshared/emoji-set.jsのもの。誤爆しやすい短い言葉は「^…$」(レス全体がその言葉)にしている。
+const DEFAULT_REACTION_RULES: &[&str] = &[
+    // 笑い
+    "[wｗWＷ]{3,}|^草+$|大草原/kusa",
+    "ワロタ|ﾜﾛﾀ|わろた|爆笑|腹痛い|^笑$|ｗｗ笑/lol",
+    // 拍手・お祝い
+    "^[8８]{3,}$|パチパチ|ぱちぱち|拍手/clap",
+    "おめでと|^おめ$|祝|ハッピーバースデー|誕生日/cake",
+    "優勝|勝った|勝利|クリア|^GG$|^gg$|やったー/gg",
+    "花火|たまや|かぎや/fireworks",
+    // 気持ち
+    "かわいい|可愛い|かわよ|カワイイ|好き|♡|❤/heart",
+    "^えっ|^まじ[!！?？]|^マジ[!！?？]|^うそ[!！?？]|^嘘[!！?？]|^[!！][?？]$/shock",
+    "胸熱|激アツ|激熱|アツい|熱い|神回|燃える|🔥/fire",
+    "泣いた|泣ける|涙|うるっ|;;|；；|( ;∀;)/cry",
+    "こわ[いっ]|怖い|ひえ|ヒエ|ぎゃあ|ギャー|ぎゃー/scary",
+    "お願い|おねがい|頼む|たのむ/please",
+    "むずい|難しい|うーん|考え中|^[?？]{2,}$/think",
+    "眠い|ねむい|おやすみ|寝る|zzz|ｚｚｚ/sleepy",
+    "死んだ|しんだ|ちーん|チーン|昇天|成仏/skull",
+    // ほめる・応援
+    "^ナイス|ないす|ﾅｲｽ|nice|ナイスー/nice",
+    "がんば|頑張|ファイト|ふぁいと|ガンバ/ganbare",
+    "^それな|それな[ｗw]/sorena",
+    "^わかる|わかる[ｗw]|わかりみ/wakaru",
+    "^うまい|上手い|うますぎ|うめえ/umai",
+    "^神$|神[ｗw]|ゴッド|^GOD$/kami",
+    "^OK$|^おけ$|^おk$|^りょ|^了解/ok",
+    "的中|ヘッショ|ヘッドショット|ドンピシャ/headshot",
+    // 挨拶
+    "^乙|^おつ|お疲れ|おつかれ|^おつ[ー〜~]?$/otsu",
+    // 食べ物・飲み物
+    "乾杯|かんぱい|カンパイ|🍻|🍺/cheers",
+    "ラーメン|らーめん|拉麺/ramen",
+    "寿司|すし|スシ|🍣/sushi",
+    "バナナ|ばなな/banana",
+    // 動物など
+    "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
+    "ぶーぶー|ブーブー|🐷/pig",
+    "ペンギン|ぺんぎん|🐧/penguin",
+    "カエル|ケロケロ|けろけろ|🐸/frog",
+    "赤ちゃん|ばぶ|バブー|👶/baby",
+    "うんこ|うんち|💩/poop",
+    // その他
+    "ドカン|どかーん|爆発|💣/bomb",
+    "ゴール|サッカー|⚽/soccer",
+    "^[ｷキ]ﾀ━|キタ━|きたあ|キター|キタ[ー━]+/fire",
+];
 
 impl Default for CommentSettings {
     fn default() -> Self {
@@ -184,6 +241,9 @@ impl Default for CommentSettings {
             ]
             .join("\n"),
             ng_words: String::new(),
+            reaction_link: true,
+            reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
+            reaction_link_max: 2,
             display_ms: 3000,
             display_per_char_ms: 80,
             display_max_ms: 12000,
@@ -330,6 +390,7 @@ struct Compiled {
     ng_words: Vec<String>,
     aa_patterns: Vec<String>,
     reading_rules: Vec<text::ReadingRule>,
+    reaction_rules: Vec<text::ReactionRule>,
 }
 
 impl Compiled {
@@ -338,6 +399,7 @@ impl Compiled {
             ng_words: text::non_empty_lines(&s.ng_words),
             aa_patterns: text::non_empty_lines(&s.aa_patterns),
             reading_rules: text::parse_reading_rules(&s.reading_rules),
+            reaction_rules: text::parse_reaction_rules(&s.reaction_rules),
         }
     }
 }
@@ -1277,6 +1339,14 @@ impl CommentEngine {
             let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
             bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
+            // 本文がルールに当てはまったら、字幕と同時にリアクションも飛ばす(AAは除く)
+            if settings.reaction_link && !post.system && !aa {
+                for id in text::matched_reactions(&post.body, &compiled.reaction_rules, settings.reaction_link_max) {
+                    if let Err(e) = crate::show_reaction(&self.app, &id, "comment") {
+                        log::warn!("コメントからのリアクションを表示できませんでした: {e}");
+                    }
+                }
+            }
 
             if !spoken.trim().is_empty() {
                 run_speech_command(&settings, &post, &spoken);
@@ -1440,6 +1510,12 @@ pub fn comments_save_settings(
     engine.apply_settings(settings);
     crate::sync_subtitle_window(&app);
     Ok(())
+}
+
+/// コメントとリアクションの連動の既定のルール(「既定のルールに戻す」用)。
+#[tauri::command]
+pub fn comments_default_reaction_rules() -> String {
+    DEFAULT_REACTION_RULES.join("\n")
 }
 
 /// 今のレスを飛ばして次のレスへ進む(設定画面のボタン・ホットキー)。
@@ -1732,6 +1808,27 @@ mod tests {
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
         // お知らせにはレス番号を付けない
         assert_eq!(speech_text(&Post::system("次スレです"), false, &s, &c), "次スレで");
+    }
+
+    #[test]
+    fn default_reaction_rules_are_valid() {
+        // 全部の行が正規表現として正しく、IDがリアクションの一覧(emoji-set.js)にある
+        let rules = text::parse_reaction_rules(&DEFAULT_REACTION_RULES.join("\n"));
+        assert_eq!(rules.len(), DEFAULT_REACTION_RULES.len());
+        let emoji_set = include_str!("../../../frontend/shared/emoji-set.js");
+        for line in DEFAULT_REACTION_RULES {
+            let id = &line[line.rfind('/').unwrap() + 1..];
+            assert!(emoji_set.contains(&format!("id: '{id}'")), "{id}がemoji-set.jsにありません");
+        }
+        let m = |body: &str| text::matched_reactions(body, &rules, 2);
+        assert_eq!(m("wwwww"), vec!["kusa"]);
+        assert_eq!(m("8888"), vec!["clap"]);
+        assert_eq!(m("おつー"), vec!["otsu"]);
+        assert_eq!(m("誕生日おめでとう！"), vec!["cake"]);
+        // 誤爆しやすい言葉
+        assert!(m("少しだけ").is_empty());
+        assert!(m("8時に始めます").is_empty());
+        assert!(m("今日はよろしく").is_empty());
     }
 
     #[test]
