@@ -216,6 +216,37 @@ const LIST_PRESETS = {
     itemBgColor: '#120a24', itemBgOpacity: 60, itemPadding: 6, itemRadius: 4,
     customCss: '.body { text-shadow: 0 0 6px #3cf2ff, 0 0 12px #3cf2ff; }\n.item { border: 1px solid rgba(60, 242, 255, 0.4); }',
   },
+  // ペルソナ5風: 黒地に白、赤のアクセント、斜めに傾いた札、太いゴシック
+  p5: {
+    headFontSize: 14, headBold: true, numberColor: '#000000', nameColor: '#000000', dateColor: '#bbbbbb',
+    bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#000000', itemBgOpacity: 92, itemPadding: 8, itemRadius: 0,
+    customCss: [
+      "@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');",
+      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'Dela Gothic One', 'BIZ UDゴシック', sans-serif !important; }",
+      '.item { transform: skewX(-10deg) rotate(-1.5deg); border-left: 6px solid #ff1f1f; box-shadow: 5px 5px 0 #ff1f1f; }',
+      '.item:nth-child(even) { transform: skewX(-10deg) rotate(1.5deg); }',
+      '.item .content { transform: skewX(10deg); }',
+      '.head .no, .head .avatar { background: #ff1f1f; padding: 0 0.35em; transform: rotate(-4deg); display: inline-block; }',
+      '.head .name { background: #ffffff; padding: 0 0.35em; transform: rotate(2deg); display: inline-block; }',
+      '.body { letter-spacing: 0.04em; }',
+    ].join('\n'),
+  },
+  // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
+  retro: {
+    headFontSize: 0, headBold: false, numberColor: '#f8d800', nameColor: '#7cf87c', dateColor: '#a8a8a8',
+    bodyColor: '#ffffff', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#000000', itemBgOpacity: 100, itemPadding: 10, itemRadius: 4,
+    customCss: [
+      "@import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');",
+      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'DotGothic16', monospace !important; -webkit-font-smoothing: none; }",
+      '.item { border: 3px solid #ffffff; box-shadow: 0 0 0 3px #000000, inset 0 0 0 3px #000000; }',
+      ".head .name::before { content: '▶'; margin-right: 0.2em; }",
+      // 一番新しいレスの最後に、点滅する「▼」(新しい順でも古い順でも)
+      "#list:not(.bottom) .item:first-child .body::after, #list.bottom .item:last-child .body::after { content: ' ▼'; animation: retro-blink 1s steps(1) infinite; }",
+      '@keyframes retro-blink { 50% { opacity: 0; } }',
+    ].join('\n'),
+  },
 };
 const PRESET_KEYS = [
   'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
