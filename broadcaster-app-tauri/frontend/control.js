@@ -15,6 +15,46 @@ const invoke = window.__TAURI__.core.invoke;
 document.getElementById('openCommentSettingsBtn').addEventListener('click', () => {
   invoke('open_comment_settings').catch(() => {});
 });
+
+// ---- 配信前チェック(中継サーバーはこの画面の状態、それ以外はRust側のpreflight_check) ----
+const preflightOverlay = document.getElementById('preflightOverlay');
+const preflightListEl = document.getElementById('preflightList');
+
+function renderPreflight(items) {
+  preflightListEl.textContent = '';
+  const marks = { ok: '✔', warn: '⚠', ng: '✖', skip: '－' };
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = `pf-item pf-${it.state}`;
+    const mark = document.createElement('span');
+    mark.className = 'pf-mark';
+    mark.textContent = marks[it.state] || '';
+    const label = document.createElement('span');
+    label.textContent = it.label;
+    const msg = document.createElement('span');
+    msg.className = 'muted';
+    msg.textContent = it.message;
+    row.append(mark, label, msg);
+    preflightListEl.appendChild(row);
+  }
+}
+
+async function runPreflight() {
+  preflightOverlay.classList.add('visible');
+  const relay = connStatusEl.classList.contains('ok')
+    ? { label: '中継サーバー', state: 'ok', message: `つながっています(視聴者${viewerCountEl.textContent}人)` }
+    : { label: '中継サーバー', state: 'ng', message: 'つながっていません(視聴者のリアクションが届きません)' };
+  const passphrase = passphraseInputEl.value.trim()
+    ? { label: '合言葉', state: 'ok', message: passphraseInputEl.value.trim() }
+    : { label: '合言葉', state: 'ng', message: '決まっていません' };
+  renderPreflight([relay, passphrase, { label: 'その他', state: 'skip', message: '確認中…(最大10秒ほどかかります)' }]);
+  const rest = await invoke('preflight_check').catch((e) => [{ label: 'その他', state: 'ng', message: String(e) }]);
+  renderPreflight([relay, passphrase, ...rest]);
+}
+
+document.getElementById('preflightBtn').addEventListener('click', runPreflight);
+document.getElementById('preflightRetryBtn').addEventListener('click', runPreflight);
+document.getElementById('preflightCloseBtn').addEventListener('click', () => preflightOverlay.classList.remove('visible'));
 const listen = window.__TAURI__.event.listen;
 
 const connStatusEl = document.getElementById('connStatus');

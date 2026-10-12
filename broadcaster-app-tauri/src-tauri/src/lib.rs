@@ -3,6 +3,7 @@ mod comments;
 mod config_store;
 mod connect_code;
 mod obs_bridge;
+mod preflight;
 pub mod updater;
 
 use config_store::ConfigStore;
@@ -1146,6 +1147,7 @@ pub fn run() {
             comments::comments_switch_thread,
             comments::comments_post,
             comments::comments_skip,
+            preflight::preflight_check,
             comments::comments_default_reaction_rules,
             comments::comments_preview_draft,
             comments::comments_first_post_template,

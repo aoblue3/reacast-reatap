@@ -126,6 +126,11 @@ impl CommentBridgeState {
 }
 
 impl ObsBridge {
+    /// 今つながっているブラウザソース等の数(配信前チェック用)
+    pub fn client_count(&self) -> usize {
+        self.tx.receiver_count()
+    }
+
     /// リアクション発生時に呼ぶ。OBS側のブラウザソースが繋がっていれば
     /// そちらにも同じリアクションを配信する(誰も繋いでいなくてもエラーには
     /// ならず、単に何も起きない)。

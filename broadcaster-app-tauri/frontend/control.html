@@ -151,6 +151,11 @@
   .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .confirm-buttons button { margin: 0; }
+  .pf-item { display: grid; grid-template-columns: 1.6em 11em 1fr; gap: 4px; margin-bottom: 6px; white-space: normal; }
+  .pf-ok .pf-mark { color: var(--c-8effa0); }
+  .pf-warn .pf-mark { color: #e0a030; }
+  .pf-ng .pf-mark { color: var(--c-ff8a8a); }
+  .pf-skip { opacity: 0.6; }
   /* 🆗のような一部の絵文字が、bodyのフォント指定に含まれる"Segoe UI"側の
      白黒グリフとマッチして真っ黒に見えてしまう不具合対策。絵文字専用フォントを
      最優先にする(bar.html/main.htmlの同様の対応も参照)。 */
@@ -255,6 +260,7 @@
 
   <div class="row">
     <button id="openCommentSettingsBtn">コメント読み上げ・字幕の設定を開く</button>
+    <button id="preflightBtn" class="secondary" title="中継サーバー・掲示板・YouTube・Twitch・読み上げソフト・OBSがつながっているかをまとめて確かめます">配信前チェック</button>
     <div class="muted">掲示板のレスを取得して、字幕(下)・レス一覧(右)・デスクトップ字幕に表示し、読み上げソフトに渡します。</div>
   </div>
 
@@ -372,6 +378,18 @@
   <!-- アップデートのダウンロード中であることを示すだけの、ボタン無しの簡易表示。
        ダウンロードが固まっているのか進行中なのか見分けが付かないという指摘への
        対応(control.js/checkForUpdateOnStartup参照)。 -->
+  <!-- 配信前チェックの結果(control.js/runPreflight参照) -->
+  <div id="preflightOverlay" class="confirm-overlay">
+    <div class="confirm-box" style="width: 420px">
+      <div style="font-weight: bold; margin-bottom: 8px">配信前チェック</div>
+      <div id="preflightList" class="confirm-message"></div>
+      <div class="confirm-buttons">
+        <button id="preflightRetryBtn" class="secondary">もう一度</button>
+        <button id="preflightCloseBtn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <div id="updateStatusOverlay" class="confirm-overlay">
     <div class="confirm-box">
       <div id="updateStatusMessage" class="confirm-message"></div>
