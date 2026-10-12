@@ -39,7 +39,9 @@
       customCss: '',
     },
     aa: {
-      fontFamily: 'MS UI Gothic',
+      // 2ちゃんねるのAAはＭＳ Ｐゴシックで描かれる前提(MS UI Gothicはかなの幅が違ってずれる)
+      fontFamily: 'ＭＳ Ｐゴシック',
+      pgothic: true,
       fontSize: 30,
       color: '#ffffff',
       outlineWidth: 3,
@@ -111,6 +113,10 @@
     // 以前の「瞬間表示する」チェックボックス(instant)だけが保存されている設定からの引き継ぎ
     const sub = s.subtitle || {};
     if (sub.appear === undefined && sub.instant === false) out.subtitle.appear = 'typewriter';
+    // 以前の既定(MS UI Gothic)のままのAAのフォントは、一度だけＭＳ Ｐゴシックにする
+    // (pgothicが無い=この引き継ぎ前の設定。その後に選び直したフォントはそのまま)
+    const aa = s.aa || {};
+    if (!aa.pgothic && (!aa.fontFamily || aa.fontFamily === 'MS UI Gothic')) out.aa.fontFamily = DEFAULT_STYLE.aa.fontFamily;
     return out;
   }
 

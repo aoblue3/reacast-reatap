@@ -6,11 +6,11 @@ use regex::{NoExpand, Regex};
 
 /// datの本文(HTML断片)を表示・読み上げ用のプレーンテキストにする。
 /// `<br>`は改行に、それ以外のタグ(アンカーの`<a>`等)は取り除き、
-/// 文字参照(&gt;等)を元に戻す。2ch形式のdatは` <br> `のように前後に
-/// 空白が入るので、各行の前後の空白も落とす。
+/// 文字参照(&gt;等)を元に戻す。行頭の空白は残す(AAの位置合わせに必要)。
 pub fn html_to_text(html: &str) -> String {
+    let html = strip_2ch_padding(html);
     let mut out = String::with_capacity(html.len());
-    let mut rest = html;
+    let mut rest = html.as_str();
     while let Some(start) = rest.find('<') {
         out.push_str(&rest[..start]);
         let after = &rest[start..];
@@ -32,11 +32,38 @@ pub fn html_to_text(html: &str) -> String {
     let decoded = decode_entities(&out);
     decoded
         .lines()
-        .map(|l| l.trim())
+        .map(|l| l.trim_end())
         .collect::<Vec<_>>()
         .join("\n")
         .trim_matches('\n')
         .to_string()
+}
+
+/// 昔ながらの2ch形式のdatは、本文の前後と`<br>`の前後に半角スペースを1つずつ
+/// 入れる(` 1行目 <br> 2行目 `)。全部の`<br>`がそうなっている時だけ、その
+/// 1つずつを取り除く。jpnknは`<br>`の前後に空白を入れないので、行頭の空白は
+/// そのまま残る(以前は各行の前後の空白を全部落としていて、AAがずれていた)。
+fn strip_2ch_padding(html: &str) -> String {
+    let parts: Vec<&str> = html.split("<br>").collect();
+    let last = parts.len() - 1;
+    let padded = parts
+        .iter()
+        .enumerate()
+        .all(|(i, p)| (i == 0 || p.starts_with(' ')) && (i == last || p.ends_with(' ')));
+    if !padded {
+        return html.to_string();
+    }
+    let joined = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let p = if i > 0 { p.strip_prefix(' ').unwrap_or(p) } else { p };
+            if i < last { p.strip_suffix(' ').unwrap_or(p) } else { p }
+        })
+        .collect::<Vec<_>>()
+        .join("<br>");
+    let joined = joined.strip_prefix(' ').unwrap_or(&joined);
+    joined.strip_suffix(' ').unwrap_or(joined).to_string()
 }
 
 fn decode_entities(s: &str) -> String {
@@ -321,6 +348,18 @@ mod tests {
     fn html_to_text_handles_br_tags_and_entities() {
         let html = " ずんだ <br> お風呂 &gt;&gt;12 <a href=\"../test/read.cgi/x/1/12\" target=\"_blank\">&gt;&gt;12</a> &amp; &#65;&#x42; ";
         assert_eq!(html_to_text(html), "ずんだ\nお風呂 >>12 >>12 & AB");
+    }
+
+    #[test]
+    fn html_to_text_keeps_leading_spaces_for_aa() {
+        // jpnkn形式(<br>の前後に空白なし)。行頭の全角・半角スペースを残す
+        let jpnkn = "　　∧＿∧<br>　 （　´∀｀）<br>  （　　　　）";
+        assert_eq!(html_to_text(jpnkn), "　　∧＿∧\n　 （　´∀｀）\n  （　　　　）");
+        // 2ch形式(本文の前後と<br>の前後に空白1つ)は、その1つだけを取り除く
+        let nch = " 　　∧＿∧ <br> 　 （　´∀｀） <br>  <br>    （　　　　） ";
+        assert_eq!(html_to_text(nch), "　　∧＿∧\n　 （　´∀｀）\n\n   （　　　　）");
+        // 空白1つだけの行があっても落ちない
+        assert_eq!(html_to_text(" a <br> <br> b "), "a\n\nb");
     }
 
     #[test]
