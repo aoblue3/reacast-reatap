@@ -10,6 +10,7 @@
 //! コントロールパネル等の画面を隠していてもWebViewのタイマー抑制の影響を
 //! 受けずに動き続けるようにするため。
 
+pub mod hotkeys;
 pub mod jpnkn_fast;
 pub mod source;
 pub mod twitch;
@@ -88,6 +89,9 @@ pub struct CommentSettings {
     /// 1件のレスで待つ最大の時間(ミリ秒、0で無制限)。長いレスは読み上げをこの時間に
     /// 収まる所で打ち切って(「以下略」)、字幕もこの時間で次のレスへ進む
     pub max_wait_ms: u64,
+    /// 読み上げの「スキップ」「一時停止/再開」のホットキー(空なら使わない。hotkeys.rs)
+    pub hotkey_skip: String,
+    pub hotkey_pause: String,
     pub reading_rules: String,
     pub ng_words: String,
     // ---- 字幕 ----
@@ -170,6 +174,8 @@ impl Default for CommentSettings {
             max_chars: 270,
             speech_ms_per_char: 160,
             max_wait_ms: 20000,
+            hotkey_skip: String::new(),
+            hotkey_pause: String::new(),
             reading_rules: [
                 r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
                 r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
@@ -216,6 +222,8 @@ pub struct CommentStatus {
     pub warning: Option<String>,
     /// 配信サイト(YouTube・Twitch)ごとの状態
     pub sources: Vec<SourceStatus>,
+    /// 読み上げを一時停止中か(取得は続け、順番待ちに溜めておく)
+    pub paused: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -348,12 +356,16 @@ struct State {
     adjusting: bool,
     /// テスト表示のために、取得していなくてもデスクトップ字幕を出しておく期限
     desktop_hold_until: Option<std::time::Instant>,
+    /// 読み上げの一時停止中(開始・停止をまたいで保つ)
+    paused: bool,
 }
 
 pub struct CommentEngine {
     app: AppHandle,
     state: Mutex<State>,
     wake: Notify,
+    /// 「スキップ」で、今のレスの待ち時間を打ち切って次のレスへ進む
+    skip: Notify,
 }
 
 impl CommentEngine {
@@ -370,8 +382,10 @@ impl CommentEngine {
                 status: CommentStatus::default(),
                 adjusting: false,
                 desktop_hold_until: None,
+                paused: false,
             }),
             wake: Notify::new(),
+            skip: Notify::new(),
         });
         let worker = engine.clone();
         tauri::async_runtime::spawn(async move { worker.run_queue().await });
@@ -383,7 +397,39 @@ impl CommentEngine {
     }
 
     pub fn status(&self) -> CommentStatus {
-        self.state.lock().unwrap().status.clone()
+        let st = self.state.lock().unwrap();
+        CommentStatus { paused: st.paused, ..st.status.clone() }
+    }
+
+    /// 今のレスの字幕を消し、待ち時間を打ち切って次のレスへ進む。読み上げソフトに
+    /// 渡し済みの声は止められない(民安★TALK側で止める)。
+    pub fn skip(&self) {
+        log::info!("読み上げをスキップ");
+        self.bridge().clear_subtitle();
+        self.skip.notify_waiters();
+    }
+
+    /// 読み上げの一時停止と再開を切り替える。一時停止中も取得は続け、順番待ちに溜める。
+    pub fn toggle_pause(&self) -> bool {
+        let paused = {
+            let mut st = self.state.lock().unwrap();
+            st.paused = !st.paused;
+            st.paused
+        };
+        log::info!("読み上げを{}", if paused { "一時停止" } else { "再開" });
+        if !paused {
+            self.wake.notify_one();
+        }
+        self.emit_status();
+        paused
+    }
+
+    /// 指定した時間待つ。途中で「スキップ」されたらすぐ戻る。
+    async fn wait_or_skip(&self, ms: u64) {
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_millis(ms)) => {}
+            _ = self.skip.notified() => {}
+        }
     }
 
     pub fn apply_settings(&self, settings: CommentSettings) {
@@ -1175,6 +1221,11 @@ impl CommentEngine {
 
     async fn run_queue(self: Arc<Self>) {
         loop {
+            if self.state.lock().unwrap().paused {
+                // 再開(またはレスの追加)で起こされるまで待つ
+                self.wake.notified().await;
+                continue;
+            }
             let next = {
                 let mut st = self.state.lock().unwrap();
                 st.queue.pop_front().map(|p| (p, st.settings.clone(), st.compiled.clone(), st.queue.len()))
@@ -1208,7 +1259,7 @@ impl CommentEngine {
                     json["quoted"] = serde_json::json!(true);
                     let ms = settings.anchor_preview_ms.max(300);
                     bridge.show_subtitle(json, ms);
-                    tokio::time::sleep(Duration::from_millis(ms)).await;
+                    self.wait_or_skip(ms).await;
                 }
             }
 
@@ -1227,7 +1278,7 @@ impl CommentEngine {
             }
 
             let interval = next_interval(backlog, shown_ms, speech_ms, &settings);
-            tokio::time::sleep(Duration::from_millis(interval)).await;
+            self.wait_or_skip(interval).await;
         }
     }
 }
@@ -1378,9 +1429,36 @@ pub fn comments_save_settings(
     settings: CommentSettings,
 ) -> Result<(), String> {
     save_settings(&store, &settings)?;
+    if let Err(e) = hotkeys::apply(&app, &settings) {
+        log::warn!("{e}");
+    }
     engine.apply_settings(settings);
     crate::sync_subtitle_window(&app);
     Ok(())
+}
+
+/// 今のレスを飛ばして次のレスへ進む(設定画面のボタン・ホットキー)。
+#[tauri::command]
+pub fn comments_skip(engine: Engine) {
+    engine.skip();
+}
+
+/// 読み上げの一時停止/再開を切り替える。戻り値は切り替えた後に一時停止中か。
+#[tauri::command]
+pub fn comments_toggle_pause(engine: Engine) -> bool {
+    engine.toggle_pause()
+}
+
+/// ホットキーの割り当て中は、登録済みのホットキーを一旦外す。
+#[tauri::command]
+pub fn comments_suspend_hotkeys(app: AppHandle) {
+    hotkeys::suspend(&app);
+}
+
+/// 設定のホットキーを登録し直す(登録できなかったキーがあればその説明を返す)。
+#[tauri::command]
+pub fn comments_apply_hotkeys(app: AppHandle, engine: Engine) -> Result<(), String> {
+    hotkeys::apply(&app, &engine.settings())
 }
 
 #[tauri::command(async)]

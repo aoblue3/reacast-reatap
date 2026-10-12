@@ -55,6 +55,7 @@ function writeField(el, value) {
 
 function renderFields() {
   for (const el of fields) writeField(el, getPath(settings, el.dataset.key));
+  renderHotkeys();
   monitorSelect.value = settings.desktopMonitorId || '';
   const r = settings.desktopRect;
   document.getElementById('desktopRectInfo').textContent = r
@@ -391,10 +392,13 @@ function renderStatus(s) {
     span.textContent = text;
     statusEl.appendChild(span);
   };
+  pauseBtn.textContent = s.paused ? '再開' : '一時停止';
   if (!s.running) {
     add('停止中');
+    if (s.paused) add(' / 読み上げ一時停止中', 'warn');
     return;
   }
+  if (s.paused) add('読み上げ一時停止中 ', 'warn');
   add('取得中', 'ok');
   if (s.threadUrl) {
     if (s.threadTitle) add(` 「${s.threadTitle}」`);
@@ -408,6 +412,111 @@ function renderStatus(s) {
     add(`${src.label}: `);
     add(src.message, src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : 'warn');
   }
+}
+
+// ---- 読み上げの一時停止・スキップ(ボタンとホットキー。ホットキーはRust側で登録) ----
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', () => invoke('comments_toggle_pause').catch(() => {}));
+document.getElementById('skipBtn').addEventListener('click', () => invoke('comments_skip').catch(() => {}));
+
+const hotkeyMsgEl = document.getElementById('hotkeyMsg');
+const HOTKEY_HINT = hotkeyMsgEl.textContent;
+let hotkeyCapturing = null; // 割り当て中の設定項目名("hotkeySkip" | "hotkeyPause")
+let hotkeyCaptureTimer = null;
+
+function formatHotkeyLabel(shortcut) {
+  if (!shortcut) return '';
+  return shortcut
+    .split('+')
+    .map((tok) => tok.replace(/^Key/, '').replace(/^Digit/, ''))
+    .join('+');
+}
+
+function renderHotkeys() {
+  for (const el of document.querySelectorAll('[data-hotkey]')) {
+    const key = el.dataset.hotkey;
+    el.value = hotkeyCapturing === key ? 'キーを押してください(Escで取消)' : formatHotkeyLabel(settings[key]);
+  }
+}
+
+/** ReaTapと同じ書き方("Ctrl+Alt+KeyS")。修飾キーだけの時はnull。 */
+function shortcutFromEvent(e) {
+  if (/^(Shift|Control|Alt|Meta)(Left|Right)$/.test(e.code)) return null;
+  const parts = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.metaKey) parts.push('Super');
+  parts.push(e.code);
+  return parts.join('+');
+}
+
+async function applyHotkeys() {
+  try {
+    await invoke('comments_apply_hotkeys');
+    hotkeyMsgEl.textContent = HOTKEY_HINT;
+    hotkeyMsgEl.style.color = '';
+  } catch (err) {
+    hotkeyMsgEl.textContent = String(err);
+    hotkeyMsgEl.style.color = 'var(--c-ff8a8a)';
+  }
+}
+
+async function endHotkeyCapture() {
+  document.removeEventListener('keydown', onHotkeyCaptureKeydown, true);
+  clearTimeout(hotkeyCaptureTimer);
+  hotkeyCapturing = null;
+  renderHotkeys();
+  await applyHotkeys();
+}
+
+async function saveHotkey(key, shortcut) {
+  settings[key] = shortcut;
+  clearTimeout(saveTimer);
+  await invoke('comments_save_settings', { settings }).catch((e) => showStatusError(`設定の保存に失敗しました: ${e}`));
+}
+
+function onHotkeyCaptureKeydown(e) {
+  if (!hotkeyCapturing) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.code === 'Escape') {
+    endHotkeyCapture();
+    return;
+  }
+  const shortcut = shortcutFromEvent(e);
+  if (!shortcut) return;
+  const key = hotkeyCapturing;
+  const other = key === 'hotkeySkip' ? 'hotkeyPause' : 'hotkeySkip';
+  (async () => {
+    if (settings[other] === shortcut) {
+      hotkeyMsgEl.textContent = `「${formatHotkeyLabel(shortcut)}」は既にもう一方に割り当てられています`;
+      hotkeyMsgEl.style.color = 'var(--c-ff8a8a)';
+      return;
+    }
+    await saveHotkey(key, shortcut);
+    await endHotkeyCapture();
+  })();
+}
+
+for (const btn of document.querySelectorAll('[data-hotkey-set]')) {
+  btn.addEventListener('click', async () => {
+    // 割り当て済みのキーを押した時にOSに奪われないよう、一旦すべて外す
+    await invoke('comments_suspend_hotkeys').catch(() => {});
+    if (!hotkeyCapturing) document.addEventListener('keydown', onHotkeyCaptureKeydown, true);
+    hotkeyCapturing = btn.dataset.hotkeySet;
+    renderHotkeys();
+    clearTimeout(hotkeyCaptureTimer);
+    hotkeyCaptureTimer = setTimeout(endHotkeyCapture, 10000);
+  });
+}
+
+for (const btn of document.querySelectorAll('[data-hotkey-clear]')) {
+  btn.addEventListener('click', async () => {
+    await saveHotkey(btn.dataset.hotkeyClear, '');
+    renderHotkeys();
+    await applyHotkeys();
+  });
 }
 
 startBtn.addEventListener('click', async () => {

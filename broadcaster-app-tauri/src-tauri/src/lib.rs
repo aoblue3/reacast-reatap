@@ -921,6 +921,8 @@ pub fn run() {
     tauri::Builder::default()
         // コメント機能の「参照」ボタン(読み上げソフト・アイコンのフォルダを選ぶ)用
         .plugin(tauri_plugin_dialog::init())
+        // 読み上げのスキップ・一時停止のホットキー(comments/hotkeys.rs)
+        .plugin(comments::hotkeys::plugin())
         .setup(|app| {
             // 多重起動防止。2回目の起動を検知したら、既存のコントロールパネルを
             // 前面に出すだけにする(オーバーレイ・接続が重複するのを防ぐ)。
@@ -990,6 +992,9 @@ pub fn run() {
             let engine = comments::CommentEngine::new(app.handle().clone(), comment_settings.clone());
             engine.apply_settings(comment_settings.clone());
             app.manage(engine.clone());
+            if let Err(e) = comments::hotkeys::apply(app.handle(), &comment_settings) {
+                log::warn!("{e}");
+            }
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
@@ -1131,6 +1136,10 @@ pub fn run() {
             comments::comments_list_threads,
             comments::comments_switch_thread,
             comments::comments_post,
+            comments::comments_skip,
+            comments::comments_toggle_pause,
+            comments::comments_suspend_hotkeys,
+            comments::comments_apply_hotkeys,
             comments::comments_get_thread,
             comments::comments_replay,
             comments::comments_preview_next_thread,
