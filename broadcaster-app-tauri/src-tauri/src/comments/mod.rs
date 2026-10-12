@@ -1357,8 +1357,10 @@ impl CommentEngine {
             let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
             bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
-            // 本文がルールに当てはまったら、字幕と同時にリアクションも飛ばす(AAは除く)
-            if settings.reaction_link && !post.system && !aa {
+            // 本文がルールに当てはまったら、字幕と同時にリアクションも飛ばす(AAは除く)。
+            // お知らせには反応しないが、「テスト表示」(test()のレス)ではルールを試せるようにする
+            let linkable = !post.system || post.name == "テスト";
+            if settings.reaction_link && linkable && !aa {
                 for id in text::matched_reactions(&post.body, &compiled.reaction_rules, settings.reaction_link_max) {
                     if let Err(e) = crate::show_reaction(&self.app, &id, "comment") {
                         log::warn!("コメントからのリアクションを表示できませんでした: {e}");
