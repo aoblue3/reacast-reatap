@@ -261,6 +261,8 @@ struct Post {
     icon: Option<String>,
     /// 取得元: "bbs" | "youtube" | "twitch" | "system"
     source: &'static str,
+    /// 配信サイトのコメントを書いた人のアイコン画像のURL(レス番号の位置に出す)
+    avatar: Option<String>,
 }
 
 impl Post {
@@ -273,6 +275,7 @@ impl Post {
             system: false,
             icon,
             source: "bbs",
+            avatar: None,
         }
     }
 
@@ -285,12 +288,13 @@ impl Post {
             system: true,
             icon: None,
             source: "system",
+            avatar: None,
         }
     }
 
     /// 配信サイトのチャット(レス番号は無い)
-    fn chat(source: &'static str, name: String, body: String, icon: Option<String>) -> Self {
-        Self { no: 0, name, date: String::new(), body, system: false, icon, source }
+    fn chat(source: &'static str, name: String, body: String, icon: Option<String>, avatar: Option<String>) -> Self {
+        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar }
     }
 
     fn to_json(&self, aa: bool) -> serde_json::Value {
@@ -303,6 +307,7 @@ impl Post {
             "system": self.system,
             "icon": self.icon,
             "source": self.source,
+            "avatar": self.avatar,
         })
     }
 }
@@ -605,7 +610,7 @@ impl CommentEngine {
                                     Some(a) => format!("{a} {}", m.text),
                                     None => m.text,
                                 };
-                                Post::chat("youtube", m.author, body, self.pick_icon("youtube"))
+                                Post::chat("youtube", m.author, body, self.pick_icon("youtube"), m.photo)
                             })
                             .collect();
                         self.enqueue(run_id, posts);
@@ -644,6 +649,9 @@ impl CommentEngine {
     async fn run_twitch(self: Arc<Self>, run_id: u64, channel: String) {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::tungstenite::Message;
+        // ログイン名→アイコンのURL(調べられなかった人はNone)。同じ人を何度も調べない
+        let mut avatars: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+        let client = source::http_client();
         while self.is_current(run_id) {
             let conn = tokio_tungstenite::connect_async("wss://irc-ws.chat.twitch.tv:443").await;
             let (mut write, mut read) = match conn {
@@ -687,7 +695,14 @@ impl CommentEngine {
                         // Twitch側からの「繋ぎ直してください」の合図
                         reconnect = true;
                     } else if let Some(m) = twitch::parse_privmsg(line) {
-                        posts.push(Post::chat("twitch", m.author, m.text, self.pick_icon("twitch")));
+                        if !avatars.contains_key(&m.login) {
+                            if avatars.len() > 2000 {
+                                avatars.clear();
+                            }
+                            avatars.insert(m.login.clone(), twitch::fetch_avatar(&client, &m.login).await);
+                        }
+                        let avatar = avatars.get(&m.login).cloned().flatten();
+                        posts.push(Post::chat("twitch", m.author, m.text, self.pick_icon("twitch"), avatar));
                     }
                 }
                 self.enqueue(run_id, posts);
@@ -1616,7 +1631,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs" }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None }
     }
 
     #[test]

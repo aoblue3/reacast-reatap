@@ -59,6 +59,8 @@
   }
   #box.vertical { writing-mode: vertical-rl; }
   .res-head { display: block; font-size: 0.75em; }
+  /* YouTube・Twitchのコメントを書いた人のアイコン(レス番号の位置に出す) */
+  .res-head .avatar { width: 1.3em; height: 1.3em; border-radius: 50%; object-fit: cover; vertical-align: -0.3em; margin-right: 0.3em; }
   /* アンカー先のレス(新しいレスの前に、斜体で先に表示する)。カスタムCSSでは #box.quoted */
   #box.quoted { transform-origin: left bottom; }
 
@@ -186,10 +188,20 @@
         );
         // 番号は「レス69」の形にする(名前・時刻はそのまま)
         const label = sub.showResNumber && res.no > 0 && !res.system ? head.replace(/^\d+/, `レス${res.no}`) : head;
-        if (label) {
+        // YouTube・Twitchのコメントは、レス番号の代わりに書いた人のアイコンを出す
+        const avatar = sub.showResNumber && !res.system && !(res.no > 0) && res.avatar;
+        if (label || avatar) {
           const el = document.createElement('span');
           el.className = 'res-head';
-          el.textContent = label;
+          if (avatar) {
+            const img = document.createElement('img');
+            img.className = 'avatar';
+            img.src = res.avatar;
+            img.referrerPolicy = 'no-referrer';
+            img.onerror = () => img.remove();
+            el.appendChild(img);
+          }
+          el.appendChild(document.createTextNode(label));
           box.appendChild(el);
         }
       }

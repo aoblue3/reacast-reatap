@@ -111,6 +111,8 @@ pub struct ChatMessage {
     pub text: String,
     /// スーパーチャットの金額(例: "¥500")
     pub amount: Option<String>,
+    /// 書いた人のアイコン画像のURL
+    pub photo: Option<String>,
 }
 
 pub struct ChatPage {
@@ -165,6 +167,13 @@ fn parse_actions(actions: &[serde_json::Value]) -> Vec<ChatMessage> {
                 author: r.pointer("/authorName/simpleText").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
                 text,
                 amount,
+                photo: r
+                    .pointer("/authorPhoto/thumbnails")
+                    .and_then(|t| t.as_array())
+                    .and_then(|t| t.last())
+                    .and_then(|t| t.get("url"))
+                    .and_then(|u| u.as_str())
+                    .map(|u| if u.starts_with("//") { format!("https:{u}") } else { u.to_string() }),
             });
         }
     }
@@ -383,6 +392,7 @@ mod tests {
             "actions": [
                 { "addChatItemAction": { "item": { "liveChatTextMessageRenderer": {
                     "id": "a1", "authorName": { "simpleText": "@たぬき" },
+                    "authorPhoto": { "thumbnails": [ { "url": "https://yt4.ggpht.com/a=s32" }, { "url": "https://yt4.ggpht.com/a=s64" } ] },
                     "message": { "runs": [ { "text": "こんにちは" }, { "emoji": { "emojiId": "😀" } },
                         { "emoji": { "isCustomEmoji": true, "shortcuts": [":yt:"] } } ] } } } } },
                 { "addChatItemAction": { "item": { "liveChatPaidMessageRenderer": {
@@ -397,7 +407,9 @@ mod tests {
         assert_eq!(page.messages.len(), 2);
         assert_eq!(page.messages[0].author, "@たぬき");
         assert_eq!(page.messages[0].text, "こんにちは😀:yt:");
+        assert_eq!(page.messages[0].photo.as_deref(), Some("https://yt4.ggpht.com/a=s64"));
         assert_eq!(page.messages[1].amount.as_deref(), Some("¥500"));
+        assert_eq!(page.messages[1].photo, None);
         assert_eq!(page.next, Some(("NEXT".into(), 10000)));
         let ended = parse_chat_response(&serde_json::json!({}));
         assert!(ended.messages.is_empty() && ended.next.is_none());

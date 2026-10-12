@@ -28,7 +28,28 @@ pub fn parse_channel(input: &str) -> Result<String, String> {
 #[derive(Debug, PartialEq)]
 pub struct ChatMessage {
     pub author: String,
+    /// ログイン名(アイコンを調べる時に使う)
+    pub login: String,
     pub text: String,
+}
+
+/// Twitchのユーザーのアイコン画像のURLを調べる。公式APIはログインが要るので、
+/// Twitchのサイト自身が使っている公開のGraphQL(非公式)を使う。
+pub async fn fetch_avatar(client: &reqwest::Client, login: &str) -> Option<String> {
+    if login.is_empty() || !login.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    let query = serde_json::json!({ "query": format!("query{{user(login:\"{login}\"){{profileImageURL(width:70)}}}}") });
+    let resp = client
+        .post("https://gql.twitch.tv/gql")
+        .header("Client-Id", "kimne78kx3ncx6brgo4mv6wki5h1ko")
+        .timeout(std::time::Duration::from_secs(4))
+        .json(&query)
+        .send()
+        .await
+        .ok()?;
+    let v: serde_json::Value = resp.json().await.ok()?;
+    v.pointer("/data/user/profileImageURL").and_then(|u| u.as_str()).map(String::from)
 }
 
 /// IRCタグの値のエスケープを戻す(\s=空白 など)。
@@ -77,7 +98,7 @@ pub fn parse_privmsg(line: &str) -> Option<ChatMessage> {
         .strip_prefix("\u{1}ACTION ")
         .and_then(|t| t.strip_suffix('\u{1}'))
         .unwrap_or(text);
-    Some(ChatMessage { author: display.unwrap_or_else(|| login.to_string()), text: text.to_string() })
+    Some(ChatMessage { author: display.unwrap_or_else(|| login.to_string()), login: login.to_string(), text: text.to_string() })
 }
 
 #[cfg(test)]
@@ -99,13 +120,13 @@ mod tests {
         let line = "@badge-info=;color=#1E90FF;display-name=テストユーザー;emotes=;id=x :testuser!testuser@testuser.tmi.twitch.tv PRIVMSG #example_channel :こんにちは、テストです";
         assert_eq!(
             parse_privmsg(line),
-            Some(ChatMessage { author: "テストユーザー".into(), text: "こんにちは、テストです".into() })
+            Some(ChatMessage { author: "テストユーザー".into(), login: "testuser".into(), text: "こんにちは、テストです".into() })
         );
         // display-nameが空ならログイン名、本文中の " :" で切れない
         let line2 = "@display-name=;id=y :abc!abc@abc.tmi.twitch.tv PRIVMSG #ch :a : b";
-        assert_eq!(parse_privmsg(line2).unwrap(), ChatMessage { author: "abc".into(), text: "a : b".into() });
+        assert_eq!(parse_privmsg(line2).unwrap(), ChatMessage { author: "abc".into(), login: "abc".into(), text: "a : b".into() });
         let me = "@display-name=Foo\\sBar :foo!foo@foo.tmi.twitch.tv PRIVMSG #ch :\u{1}ACTION waves\u{1}";
-        assert_eq!(parse_privmsg(me).unwrap(), ChatMessage { author: "Foo Bar".into(), text: "waves".into() });
+        assert_eq!(parse_privmsg(me).unwrap(), ChatMessage { author: "Foo Bar".into(), login: "foo".into(), text: "waves".into() });
         assert_eq!(parse_privmsg("PING :tmi.twitch.tv"), None);
         assert_eq!(parse_privmsg(":tmi.twitch.tv 001 justinfan1 :Welcome"), None);
     }

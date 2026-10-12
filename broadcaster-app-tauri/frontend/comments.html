@@ -26,7 +26,7 @@
   /* 新しいレスを下に追加する設定の時は、下端に寄せる */
   #list.bottom { justify-content: flex-end; }
   /* カスタムCSSで使えるクラス:
-     .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .name(名前)
+     .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .avatar(YouTube・Twitchの人のアイコン) .name(名前)
      .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ)
      .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch(取得元ごと) */
   .item {
@@ -40,7 +40,9 @@
   }
   .icon { flex: 0 0 auto; object-fit: cover; border-radius: 6px; }
   .content { min-width: 0; flex: 1 1 auto; }
-  .head > span + span { margin-left: 0.4em; }
+  .head > span + span, .head > .avatar + span { margin-left: 0.4em; }
+  /* YouTube・Twitchのコメントを書いた人のアイコン(レス番号の位置に出す) */
+  .head .avatar { width: 1.4em; height: 1.4em; border-radius: 50%; object-fit: cover; vertical-align: middle; }
   .head .src { font-size: 0.8em; padding: 0 0.35em; border-radius: 3px; color: #fff; text-shadow: none; }
   .src-youtube .head .src { background: #e62117; }
   .src-twitch .head .src { background: #9146ff; }
@@ -90,6 +92,15 @@
       return el;
     }
 
+    function avatarImg(url) {
+      const img = document.createElement('img');
+      img.className = 'avatar';
+      img.src = url;
+      img.referrerPolicy = 'no-referrer';
+      img.onerror = () => img.remove();
+      return img;
+    }
+
     function buildItem(res) {
       const s = style.list;
       const el = document.createElement('div');
@@ -122,6 +133,7 @@
         const label = { youtube: 'YouTube', twitch: 'Twitch' }[res.source];
         if (s.showSource && label) head.appendChild(span('src', label));
         if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
+        else if (s.showResNumber && res.avatar) head.appendChild(avatarImg(res.avatar));
         if (s.showName && res.name) head.appendChild(span('name', res.name, s.nameColor));
         if (s.showDate && res.date) head.appendChild(span('date', res.date, s.dateColor));
       }
