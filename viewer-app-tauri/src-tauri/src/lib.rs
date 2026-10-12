@@ -491,14 +491,18 @@ fn position_bar_window(
     // 以前はLogicalとして扱っていたため、表示スケールが100%でない環境では
     // ウィンドウが対象とズレた位置・サイズになっていた可能性がある(100%環境では
     // 論理=物理なので問題が表面化しない)。物理ピクセルとして正しく扱うよう修正。
-    win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-        x, y,
-    )))
-    .map_err(|e| e.to_string())?;
-    win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-        width, height,
-    )))
-    .map_err(|e| e.to_string())?;
+    // 0.25秒おきに呼ばれるが、対象が動いていない時は位置も大きさも同じなので、
+    // 変わった時だけ動かす(毎回動かすとその分ウィンドウの再配置が走って無駄)
+    let pos = tauri::PhysicalPosition::new(x, y);
+    if win.outer_position().ok() != Some(pos) {
+        win.set_position(tauri::Position::Physical(pos))
+            .map_err(|e| e.to_string())?;
+    }
+    let size = tauri::PhysicalSize::new(width, height);
+    if win.inner_size().ok() != Some(size) {
+        win.set_size(tauri::Size::Physical(size))
+            .map_err(|e| e.to_string())?;
+    }
     // 対象ソフト(pcwmp/PCRPlayer等)側が「常に最前面」に設定されていると、
     // お互いに最前面を取り合ってウィンドウが裏に隠れてしまうことがあるため、
     // 位置を更新するたび(0.25秒おき)に最前面を取り直す。ただし根本的な対策は

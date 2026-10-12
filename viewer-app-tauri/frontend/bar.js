@@ -501,10 +501,22 @@ async function detectAndFollowOnce() {
   }
 }
 
+// 1回の検出が0.25秒より長くかかった時(応答の遅いウィンドウのタイトル取得を
+// 待った等)に、前の検出が終わる前に次を始めて重ねないようにする
+let detecting = false;
+
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => {
-    detectAndFollowOnce();
+  pollTimer = setInterval(async () => {
+    if (detecting) return;
+    detecting = true;
+    try {
+      await detectAndFollowOnce();
+    } catch (err) {
+      console.error('対象ウィンドウの検出に失敗しました', err);
+    } finally {
+      detecting = false;
+    }
   }, POLL_INTERVAL_MS);
 }
 

@@ -204,6 +204,33 @@ mod win {
         if pid == 0 {
             return String::new();
         }
+        // 0.25秒おきの検出で、毎回すべてのウィンドウのプロセスを開いて実行ファイルの
+        // パスを調べ直すのは無駄なので、プロセスIDごとに数秒だけ覚えておく
+        // (プロセスIDは終了後に別のプロセスへ再利用されることがあるため、長くは覚えない)。
+        static PATH_CACHE: Mutex<Option<std::collections::HashMap<u32, (String, std::time::Instant)>>> =
+            Mutex::new(None);
+        const PATH_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+        let now = std::time::Instant::now();
+        {
+            let mut cache = PATH_CACHE.lock().unwrap();
+            let map = cache.get_or_insert_with(Default::default);
+            if let Some((path, at)) = map.get(&pid) {
+                if now.duration_since(*at) < PATH_CACHE_TTL {
+                    return path.clone();
+                }
+            }
+        }
+        let path = query_process_path(pid);
+        let mut cache = PATH_CACHE.lock().unwrap();
+        let map = cache.get_or_insert_with(Default::default);
+        if map.len() > 1000 {
+            map.retain(|_, (_, at)| now.duration_since(*at) < PATH_CACHE_TTL);
+        }
+        map.insert(pid, (path.clone(), now));
+        path
+    }
+
+    fn query_process_path(pid: u32) -> String {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) };
         let Ok(handle) = handle else {
             return String::new();
@@ -264,12 +291,17 @@ mod win {
     }
 
     pub fn list_windows() -> Vec<WindowInfo> {
-        static RESULT: Mutex<Vec<WindowInfo>> = Mutex::new(Vec::new());
-        RESULT.lock().unwrap().clear();
+        // 結果は呼び出しごとの変数に集める。以前は全体で1つのstatic変数に集めて
+        // いたため、配信者ごとのリアクションバーの検出(や候補一覧の取得)が同時に
+        // 走ると、片方がもう片方の途中の結果を消してしまい、「ある1回だけ検出に
+        // 失敗する」ことがあった(bar.jsのHIDE_AFTER_CONSECUTIVE_MISSES参照)。
+        let mut out: Vec<WindowInfo> = Vec::new();
 
-        unsafe extern "system" fn enum_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
+        unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            // lparamはlist_windowsのoutへのポインタ(EnumWindowsが返るまで有効)
+            let out = &mut *(lparam.0 as *mut Vec<WindowInfo>);
             if let Some(info) = window_info(hwnd) {
-                RESULT.lock().unwrap().push(info);
+                out.push(info);
             }
             BOOL(1)
         }
@@ -277,12 +309,10 @@ mod win {
         unsafe {
             let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(
                 Some(enum_proc),
-                LPARAM(0),
+                LPARAM(&mut out as *mut Vec<WindowInfo> as isize),
             );
         }
-
-        let mut out = RESULT.lock().unwrap();
-        std::mem::take(&mut out)
+        out
     }
 
     pub fn get_active_window() -> Option<WindowInfo> {
