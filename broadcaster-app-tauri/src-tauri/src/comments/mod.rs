@@ -42,6 +42,9 @@ pub struct CommentSettings {
     pub start_on_launch: bool,
     /// jpnknの板では即時通知(Fastインターフェース)も使って、書き込まれた瞬間に拾う
     pub jpnkn_fast: bool,
+    /// スレッドの>>1(テンプレート)は字幕・読み上げ・右のレス一覧に出さない
+    /// (長いと字幕の文字が小さくなり、読み終わるまで次のレスが待たされるため)
+    pub skip_first_post: bool,
     /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
@@ -134,6 +137,7 @@ impl Default for CommentSettings {
             thread_warn_count: 975,
             start_on_launch: false,
             jpnkn_fast: true,
+            skip_first_post: true,
             start_res_no: 0,
             initial_text: "スレッド読み込みを開始しました".into(),
             icon_folder_bbs: String::new(),
@@ -920,7 +924,8 @@ impl CommentEngine {
                             }
                         }
                     } else {
-                        self.enqueue(run_id, posts);
+                        let skip_first = self.settings().skip_first_post;
+                        self.enqueue(run_id, posts.into_iter().filter(|p| !(skip_first && p.no == 1)).collect());
                     }
                     let (title, url, last_no) = (reader.title.clone(), reader.thread.read_url(), reader.last_no);
                     self.update_status(run_id, |s| {
@@ -1015,13 +1020,21 @@ impl CommentEngine {
                         if !self.is_bbs_current(run_id, gen) {
                             return;
                         }
+                        // 1001番(「このスレッドは1000を超えました」)は即時通知では使わない。
+                        // 1000番より先に読まれてしまったことがあるため(定期取得なら
+                        // 1000番→1001番の順に届く)
+                        if raw.no > 1000 {
+                            continue;
+                        }
                         // 今読んでいるスレッドへの、まだ読んでいない書き込みだけ
                         if first || thread_key != reader.thread.key || !seen.insert(raw.no) {
                             continue;
                         }
                         let post = Post::from_raw(&raw, self.pick_icon("bbs"));
                         self.record_posts(run_id, std::slice::from_ref(&post), false);
-                        self.enqueue(run_id, vec![post]);
+                        if !(raw.no == 1 && self.settings().skip_first_post) {
+                            self.enqueue(run_id, vec![post]);
+                        }
                     }
                 }
             }
