@@ -181,6 +181,7 @@
       <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /><span class="unit">ONにすると本文の前に番号を付けて渡します(既定OFF)</span></div></div>
       <div class="field"><label>読み上げ時間の目安</label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
       <div class="hint">文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
+      <div class="field"><label>1件の最大待ち時間</label><div><input type="number" min="0" step="1000" data-key="maxWaitMs" /><span class="unit">ミリ秒(0で無制限)。これより長くかかるレスは、読み上げをこの時間に収まる所で打ち切って「以下略」を付け、次のレスへ進みます</span></div></div>
       <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
     </section>
 

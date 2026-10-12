@@ -82,6 +82,9 @@ pub struct CommentSettings {
     /// 終わるまで次のレスに進まず、字幕もその間は表示しておく(読み上げソフトの
     /// 「ただちに再生」をOFFにしている時に、字幕と声がずれないようにするため)
     pub speech_ms_per_char: u64,
+    /// 1件のレスで待つ最大の時間(ミリ秒、0で無制限)。長いレスは読み上げをこの時間に
+    /// 収まる所で打ち切って(「以下略」)、字幕もこの時間で次のレスへ進む
+    pub max_wait_ms: u64,
     pub reading_rules: String,
     pub ng_words: String,
     // ---- 字幕 ----
@@ -161,6 +164,7 @@ impl Default for CommentSettings {
             read_res_number: false,
             max_chars: 270,
             speech_ms_per_char: 160,
+            max_wait_ms: 20000,
             reading_rules: [
                 r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
                 r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
@@ -1190,9 +1194,11 @@ impl CommentEngine {
 
             let speaking = settings.speech_enabled && !settings.command_path.trim().is_empty();
             let spoken = if speaking { speech_text(&post, aa, &settings, &compiled) } else { String::new() };
+            let spoken = fit_speech_to_max_wait(spoken, &settings);
             let speech_ms = speech_duration(&spoken, &settings);
-            // 読み上げている間は字幕も出しておく
+            // 読み上げている間は字幕も出しておく(長いレスでも最大待ち時間まで)
             let shown_ms = display_duration(&post, aa, &settings).max(speech_ms);
+            let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
             bridge.show_subtitle(post.to_json(aa), shown_ms);
             bridge.push_comment(post.to_json(aa));
 
@@ -1233,6 +1239,30 @@ fn display_duration(post: &Post, aa: bool, s: &CommentSettings) -> u64 {
 fn speech_duration(spoken: &str, s: &CommentSettings) -> u64 {
     let chars = spoken.chars().filter(|c| !c.is_whitespace()).count() as u64;
     chars.saturating_mul(s.speech_ms_per_char)
+}
+
+/// 読み上げ時間の目安が最大待ち時間を超える長いレスは、収まる所までで打ち切って
+/// 「以下略」を付ける(読み上げが終わる前に次のレスへ進んで、声と字幕がずれないように)。
+fn fit_speech_to_max_wait(spoken: String, s: &CommentSettings) -> String {
+    const SUFFIX: &str = "、以下略";
+    if s.max_wait_ms == 0 || s.speech_ms_per_char == 0 || speech_duration(&spoken, s) <= s.max_wait_ms {
+        return spoken;
+    }
+    let limit = (s.max_wait_ms / s.speech_ms_per_char) as usize;
+    let limit = limit.saturating_sub(SUFFIX.chars().count()); // 「、以下略」を読む分
+    let mut out = String::new();
+    let mut count = 0;
+    for c in spoken.chars() {
+        if !c.is_whitespace() {
+            if count == limit {
+                break;
+            }
+            count += 1;
+        }
+        out.push(c);
+    }
+    out.truncate(out.trim_end().len());
+    out + SUFFIX
 }
 
 /// 次のレスを出すまでの間隔。溜まっている時(ターボ)は短い間隔で追いつくことを
@@ -1574,6 +1604,19 @@ mod tests {
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
         // お知らせにはレス番号を付けない
         assert_eq!(speech_text(&Post::system("次スレです"), false, &s, &c), "次スレで");
+    }
+
+    #[test]
+    fn long_speech_is_cut_to_the_max_wait() {
+        let mut s = CommentSettings::default(); // 160ms/文字、最大20000ms=125文字
+        let short = "あ".repeat(100);
+        assert_eq!(fit_speech_to_max_wait(short.clone(), &s), short);
+        let cut = fit_speech_to_max_wait("い".repeat(270), &s);
+        assert!(cut.ends_with("、以下略"));
+        assert!(speech_duration(&cut, &s) <= s.max_wait_ms);
+        assert_eq!(cut.chars().filter(|c| *c == 'い').count(), 121);
+        s.max_wait_ms = 0;
+        assert_eq!(fit_speech_to_max_wait("い".repeat(270), &s).chars().count(), 270);
     }
 
     #[test]
