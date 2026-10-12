@@ -65,7 +65,8 @@
     border-bottom: 1px solid var(--c-33353d);
   }
   .url-row { display: flex; gap: 6px; }
-  .url-row input { flex: 1; }
+  .url-row input { flex: 1; min-width: 0; }
+  .url-row button { white-space: nowrap; }
   #status { margin-top: 6px; font-size: 12px; color: var(--c-a9acb8); min-height: 1.4em; }
   #status .ok { color: var(--c-7dff9a); }
   #status .ng { color: var(--c-ff8a8a); }
@@ -132,6 +133,15 @@
   .post-head .date { color: var(--c-8d909c); }
   .post-head button { margin-left: auto; padding: 2px 8px; font-size: 12px; }
   .post-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+  /* スレッドのレスの右クリックメニュー */
+  #postMenu { position: fixed; z-index: 20; display: none; min-width: 220px; padding: 4px 0; background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+  #postMenu.visible { display: block; }
+  #postMenu button { display: block; width: 100%; text-align: left; background: none; color: inherit; border-radius: 0; padding: 6px 12px; }
+  #postMenu button:hover { background: var(--c-34373f); }
+  #postMenu button:disabled { opacity: 0.4; }
+  #readingDialog { position: fixed; z-index: 21; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
+  #readingDialog.visible { display: flex; }
+  #readingDialog > div { background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
   #preview {
@@ -215,7 +225,7 @@
     </section>
 
     <section data-tab="thread">
-      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。「返信」を押すと、下の書き込み欄に「&gt;&gt;番号」を入れます。</div>
+      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。「返信」を押すと、下の書き込み欄に「&gt;&gt;番号」を入れます。レスを右クリックすると、選んだ文字・名前・IDをNGワードに追加したり、選んだ文字の読み方を登録したりできます。</div>
       <div id="threadList"><div class="empty">取得を開始すると、ここにスレッドのレスが表示されます</div></div>
       <div class="inline" style="margin: 10px 0 6px">
         <span>名前</span><input type="text" data-key="postName" style="width: 180px" placeholder="空欄なら板の名無し" />
@@ -227,6 +237,18 @@
         <span id="postMsg" class="unit"></span>
       </div>
       <div class="hint">jpnkn等の2ちゃんねる互換の掲示板だけに対応しています(したらば掲示板には書き込めません)。</div>
+      <div id="postMenu"></div>
+      <div id="readingDialog">
+        <div>
+          <div style="margin-bottom: 6px">「<span id="readingWord"></span>」の読み方</div>
+          <input type="text" id="readingInput" class="wide" placeholder="例: よみかた" />
+          <div class="inline" style="justify-content: flex-end; margin-top: 10px">
+            <button class="secondary" id="readingCancel">キャンセル</button>
+            <button id="readingOk">登録</button>
+          </div>
+        </div>
+      </div>
+      <div id="postMenuMsg" class="hint"></div>
     </section>
 
     <section data-tab="speech">
@@ -329,7 +351,7 @@
     </section>
 
     <section data-tab="words">
-      <h3>NGワード(1行に1つ。名前か本文に含まれるレスは表示も読み上げもしません)</h3>
+      <h3>NGワード(1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは表示も読み上げもしません)</h3>
       <textarea data-key="ngWords"></textarea>
       <h3>読み方(1行に「単語/読み方」。単語部分には正規表現が使えます)</h3>
       <textarea data-key="readingRules" style="min-height: 220px"></textarea>

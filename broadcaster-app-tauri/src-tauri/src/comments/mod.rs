@@ -305,6 +305,11 @@ impl Post {
         Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar }
     }
 
+    /// NGワードが名前・本文・日時の行(「ID:xxxx」を含む)のどれかに含まれるか
+    fn is_ng(&self, c: &Compiled) -> bool {
+        text::contains_ng(&format!("{}\n{}", self.name, self.date), &self.body, &c.ng_words)
+    }
+
     fn to_json(&self, aa: bool) -> serde_json::Value {
         serde_json::json!({
             "no": self.no,
@@ -989,7 +994,7 @@ impl CommentEngine {
                             Vec::new()
                         };
                         for p in shown {
-                            if !text::contains_ng(&p.name, &p.body, &compiled.ng_words) {
+                            if !p.is_ng(&compiled) {
                                 self.bridge().push_comment(p.to_json(detect_aa(&settings, &compiled, p)));
                             }
                         }
@@ -1240,7 +1245,7 @@ impl CommentEngine {
             }
             self.emit_status();
 
-            if !post.system && text::contains_ng(&post.name, &post.body, &compiled.ng_words) {
+            if !post.system && post.is_ng(&compiled) {
                 continue;
             }
             let aa = detect_aa(&settings, &compiled, &post);

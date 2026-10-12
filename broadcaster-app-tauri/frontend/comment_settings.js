@@ -564,8 +564,101 @@ function buildPostEl(p) {
   body.className = 'post-body';
   body.textContent = p.body || '';
   el.append(head, body);
+  el.addEventListener('contextmenu', (e) => openPostMenu(e, p));
   return el;
 }
+
+// ---- レスの右クリックメニュー(NGワード・読み方に追加) ----
+const postMenuEl = document.getElementById('postMenu');
+const postMenuMsgEl = document.getElementById('postMenuMsg');
+const readingDialogEl = document.getElementById('readingDialog');
+const readingInputEl = document.getElementById('readingInput');
+let readingWord = '';
+
+function closePostMenu() {
+  postMenuEl.classList.remove('visible');
+}
+
+/** 改行区切りの設定(NGワード等)に1行足す。既にあれば足さない。 */
+function appendLine(key, line) {
+  const cur = String(settings[key] || '').replace(/\n+$/, '');
+  if (cur.split('\n').includes(line)) return false;
+  settings[key] = cur ? `${cur}\n${line}` : line;
+  renderFields();
+  scheduleSave();
+  return true;
+}
+
+function addNgWord(word) {
+  const ok = appendLine('ngWords', word);
+  postMenuMsgEl.textContent = ok ? `「${word}」をNGワードに追加しました` : `「${word}」は既にNGワードにあります`;
+}
+
+/** 読み方の単語部分は正規表現なので、記号はそのままの文字として扱うようにする。 */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+function openPostMenu(e, p) {
+  e.preventDefault();
+  const selected = String(window.getSelection() || '').trim().replace(/\s*\n\s*/g, ' ');
+  const id = (String(p.date || '').match(/ID:([^\s]+)/) || [])[1];
+  const items = [
+    [selected ? `「${selected.slice(0, 20)}」をNGワードに追加` : '文字を選んでから右クリックするとNGワードに追加できます', selected ? () => addNgWord(selected) : null],
+    [selected ? `「${selected.slice(0, 20)}」の読み方を登録…` : '文字を選んでから右クリックすると読み方を登録できます', selected ? () => openReadingDialog(selected) : null],
+    [p.name ? `名前「${p.name.slice(0, 20)}」をNGワードに追加` : '名前がありません', p.name ? () => addNgWord(p.name) : null],
+    [id ? `ID「${id}」をNGワードに追加` : 'IDがありません', id ? () => addNgWord(`ID:${id}`) : null],
+  ];
+  postMenuEl.textContent = '';
+  for (const [label, action] of items) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.disabled = !action;
+    if (action) {
+      b.addEventListener('click', () => {
+        closePostMenu();
+        action();
+      });
+    }
+    postMenuEl.appendChild(b);
+  }
+  postMenuEl.classList.add('visible');
+  // 画面からはみ出さないように位置を決める
+  const { offsetWidth: w, offsetHeight: h } = postMenuEl;
+  postMenuEl.style.left = `${Math.min(e.clientX, window.innerWidth - w - 4)}px`;
+  postMenuEl.style.top = `${Math.min(e.clientY, window.innerHeight - h - 4)}px`;
+}
+
+function openReadingDialog(word) {
+  readingWord = word;
+  document.getElementById('readingWord').textContent = word;
+  readingInputEl.value = '';
+  readingDialogEl.classList.add('visible');
+  readingInputEl.focus();
+}
+
+function submitReading() {
+  const reading = readingInputEl.value.trim();
+  readingDialogEl.classList.remove('visible');
+  if (!reading) return;
+  const ok = appendLine('readingRules', `${escapeRegExp(readingWord)}/${reading}`);
+  postMenuMsgEl.textContent = ok ? `「${readingWord}」を「${reading}」と読むように登録しました` : '既に同じ読み方が登録されています';
+}
+
+document.getElementById('readingOk').addEventListener('click', submitReading);
+document.getElementById('readingCancel').addEventListener('click', () => readingDialogEl.classList.remove('visible'));
+readingInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitReading();
+  if (e.key === 'Escape') readingDialogEl.classList.remove('visible');
+});
+document.addEventListener('click', (e) => {
+  if (!postMenuEl.contains(e.target)) closePostMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePostMenu();
+});
+window.addEventListener('blur', closePostMenu);
+threadListEl.addEventListener('scroll', closePostMenu);
 
 function appendPosts(posts) {
   if (!posts.length) return;
