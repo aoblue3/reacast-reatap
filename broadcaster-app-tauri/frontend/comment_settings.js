@@ -56,6 +56,7 @@ function writeField(el, value) {
 function renderFields() {
   for (const el of fields) writeField(el, getPath(settings, el.dataset.key));
   renderHotkeys();
+  renderRuleEditors();
   monitorSelect.value = settings.desktopMonitorId || '';
   const r = settings.desktopRect;
   document.getElementById('desktopRectInfo').textContent = r
@@ -492,23 +493,258 @@ document.getElementById('reactionRulesResetBtn').addEventListener('click', async
   scheduleSave();
   reactionRulesMsgEl.textContent = '既定のルールに戻しました';
 });
-// 使えるリアクションの一覧。押すと「/ID」をルールの最後に付け足す(正規表現はその前に書く)
-for (const e of window.EmojiSet.EMOJI_SET) {
-  const b = document.createElement('button');
-  b.className = 'secondary';
-  b.textContent = `${e.char.length > 4 ? e.label : e.char} ${e.id}`;
-  b.title = e.label;
-  b.addEventListener('click', () => {
-    const ta = document.querySelector('[data-key="reactionRules"]');
-    const cur = ta.value.replace(/\n+$/, '');
-    ta.value = `${cur}${cur ? '\n' : ''}/${e.id}`;
-    onFieldChange(ta);
-    ta.focus();
-    // カーソルを「/ID」の前に置いて、そのまま言葉を打てるようにする
-    const pos = ta.value.length - e.id.length - 1;
-    ta.setSelectionRange(pos, pos);
+// ---- 読み方・リアクション連動のルールを、正規表現を書かずに編集する画面 ----
+// 保存する形はこれまでどおり「正規表現/読み方(またはリアクションID)」の1行1ルール。
+// 「言葉(、区切りで複数)」と「当てはまり方」から正規表現を作り、逆に読み込む時は、
+// その形で作れる正規表現だけを「言葉」に戻す(戻せないものは上級者向けの行として出す)。
+const RULE_MODES = [
+  ['contains', '含む'],
+  ['exact', 'ちょうど同じ'],
+  ['starts', 'で始まる'],
+  ['ends', 'で終わる'],
+  ['regex', '上級者向け(正規表現)'],
+];
+const REGEX_SPECIAL = '.*+?^${}()|[]\\/';
+
+/** 正規表現の「|」で区切る(\| は区切りではない)。 */
+function splitAlternatives(pattern) {
+  const out = [];
+  let cur = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '\\' && i + 1 < pattern.length) {
+      cur += c + pattern[++i];
+    } else if (c === '|') {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+/** 記号を含まないただの文字列なら、その文字列(\. 等は元に戻す)。そうでなければnull。 */
+function regexToLiteral(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') {
+      const next = s[++i];
+      if (next === undefined || !REGEX_SPECIAL.includes(next)) return null;
+      out += next;
+    } else if (REGEX_SPECIAL.includes(c)) {
+      return null;
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+/** 正規表現を{mode, words}に戻す。言葉の形で表せなければnull。 */
+function patternToWords(pattern) {
+  if (!pattern || pattern.includes('¥')) return null;
+  let mode = null;
+  const words = [];
+  for (const alt of splitAlternatives(pattern)) {
+    let body = alt;
+    const start = body.startsWith('^');
+    if (start) body = body.slice(1);
+    const end = body.endsWith('$') && !body.endsWith('\\$');
+    if (end) body = body.slice(0, -1);
+    const word = regexToLiteral(body);
+    if (!word || word.includes('、')) return null;
+    const m = start && end ? 'exact' : start ? 'starts' : end ? 'ends' : 'contains';
+    if (mode && mode !== m) return null;
+    mode = m;
+    words.push(word);
+  }
+  return { mode, words };
+}
+
+function wordsToPattern(mode, words) {
+  const lits = words.map(escapeRegExp);
+  const wrap = { contains: (l) => l, exact: (l) => `^${l}$`, starts: (l) => `^${l}`, ends: (l) => `${l}$` }[mode];
+  return lits.map(wrap).join('|');
+}
+
+function parseRules(text) {
+  return String(text || '')
+    .split('\n')
+    .filter((l) => l.trim() !== '')
+    .map((line) => {
+      const i = line.lastIndexOf('/');
+      const pattern = i === -1 ? line : line.slice(0, i);
+      const target = i === -1 ? '' : line.slice(i + 1);
+      const w = patternToWords(pattern);
+      return w ? { mode: w.mode, words: w.words.join('、'), target } : { mode: 'regex', words: pattern, target };
+    });
+}
+
+function serializeRules(rows) {
+  return rows
+    .map((r) => {
+      if (r.mode === 'regex') return r.words.trim() ? `${r.words}/${r.target}` : null;
+      const words = r.words.split(/[、,，]/).map((w) => w.trim()).filter(Boolean);
+      return words.length ? `${wordsToPattern(r.mode, words)}/${r.target}` : null;
+    })
+    .filter((l) => l !== null)
+    .join('\n');
+}
+
+function reactionSelect(value) {
+  const sel = document.createElement('select');
+  for (const e of window.EmojiSet.EMOJI_SET) {
+    const o = document.createElement('option');
+    o.value = e.id;
+    o.textContent = e.char.length > 4 ? e.label : `${e.char} ${e.label}`;
+    sel.appendChild(o);
+  }
+  if (value && !window.EmojiSet.isValidEmojiId(value)) {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = `${value}(見つかりません)`;
+    sel.appendChild(o);
+  }
+  sel.value = value || window.EmojiSet.EMOJI_SET[0].id;
+  return sel;
+}
+
+/** 画面の行から設定の文字列を作って保存する。 */
+function commitRuleEditor(editor) {
+  const rows = [...editor.querySelectorAll('.rule-row')].map((row) => ({
+    mode: row.querySelector('.rule-mode').value,
+    words: row.querySelector('.rule-words').value,
+    target: row.querySelector('.rule-target').value.trim(),
+  }));
+  const text = serializeRules(rows);
+  editor.dataset.last = text;
+  const ta = document.querySelector(`textarea[data-key="${editor.dataset.rulesFor}"]`);
+  ta.value = text;
+  onFieldChange(ta);
+}
+
+function buildRuleRow(editor, rule) {
+  const isReaction = editor.dataset.target === 'reaction';
+  const row = document.createElement('div');
+  row.className = 'rule-row';
+  const words = document.createElement('input');
+  words.type = 'text';
+  words.className = 'rule-words' + (rule.mode === 'regex' ? ' rule-regex' : '');
+  words.value = rule.words;
+  words.placeholder = rule.mode === 'regex' ? '正規表現' : '言葉(、で区切って複数)';
+  const mode = document.createElement('select');
+  mode.className = 'rule-mode';
+  for (const [v, label] of RULE_MODES) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    mode.appendChild(o);
+  }
+  mode.value = rule.mode;
+  let target;
+  if (isReaction) {
+    target = reactionSelect(rule.target);
+  } else {
+    target = document.createElement('input');
+    target.type = 'text';
+    target.value = rule.target;
+    target.placeholder = '読み方(空欄なら読まない)';
+  }
+  target.classList.add('rule-target');
+  const buttons = document.createElement('div');
+  buttons.className = 'rule-buttons';
+  const btn = (text, title, fn) => {
+    const b = document.createElement('button');
+    b.className = 'secondary';
+    b.textContent = text;
+    b.title = title;
+    b.addEventListener('click', fn);
+    buttons.appendChild(b);
+  };
+  btn('↑', '上へ(優先して当てはめる)', () => {
+    if (row.previousElementSibling && row.previousElementSibling.classList.contains('rule-row')) {
+      row.parentNode.insertBefore(row, row.previousElementSibling);
+      commitRuleEditor(editor);
+    }
   });
-  document.getElementById('reactionIdList').appendChild(b);
+  btn('↓', '下へ', () => {
+    if (row.nextElementSibling && row.nextElementSibling.classList.contains('rule-row')) {
+      row.parentNode.insertBefore(row.nextElementSibling, row);
+      commitRuleEditor(editor);
+    }
+  });
+  btn('✕', 'このルールを消す', () => {
+    row.remove();
+    commitRuleEditor(editor);
+  });
+  words.addEventListener('input', () => commitRuleEditor(editor));
+  target.addEventListener(isReaction ? 'change' : 'input', () => commitRuleEditor(editor));
+  mode.addEventListener('change', () => {
+    // 上級者向けとの切り替えでは、今の言葉を正規表現に(または正規表現を言葉に)直して見せる
+    const prev = words.classList.contains('rule-regex') ? 'regex' : 'simple';
+    if (prev === 'simple' && mode.value === 'regex') {
+      const list = words.value.split(/[、,，]/).map((w) => w.trim()).filter(Boolean);
+      const lastMode = row.dataset.mode || 'contains';
+      words.value = list.length ? wordsToPattern(lastMode, list) : '';
+    } else if (prev === 'regex' && mode.value !== 'regex') {
+      const w = patternToWords(words.value);
+      words.value = w ? w.words.join('、') : '';
+    }
+    words.classList.toggle('rule-regex', mode.value === 'regex');
+    words.placeholder = mode.value === 'regex' ? '正規表現' : '言葉(、で区切って複数)';
+    if (mode.value !== 'regex') row.dataset.mode = mode.value;
+    commitRuleEditor(editor);
+  });
+  if (rule.mode !== 'regex') row.dataset.mode = rule.mode;
+  row.append(words, mode, target, buttons);
+  return row;
+}
+
+function renderRuleEditor(editor) {
+  const key = editor.dataset.rulesFor;
+  const text = String(settings[key] || '');
+  // 入力中に保存→設定の再読み込みで描き直されて、入力欄のカーソルが飛ばないようにする
+  if (editor.dataset.last === text && editor.childElementCount) return;
+  editor.dataset.last = text;
+  editor.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'rule-head';
+  for (const t of ['言葉', '当てはまり方', editor.dataset.target === 'reaction' ? 'リアクション' : '読み方', '']) {
+    const s = document.createElement('span');
+    s.textContent = t;
+    head.appendChild(s);
+  }
+  editor.appendChild(head);
+  for (const rule of parseRules(text)) editor.appendChild(buildRuleRow(editor, rule));
+  const add = document.createElement('button');
+  add.className = 'secondary';
+  add.textContent = '＋ ルールを追加';
+  add.addEventListener('click', () => {
+    const row = buildRuleRow(editor, { mode: 'contains', words: '', target: '' });
+    editor.insertBefore(row, add);
+    row.querySelector('.rule-words').focus();
+  });
+  editor.appendChild(add);
+}
+
+function renderRuleEditors() {
+  for (const editor of document.querySelectorAll('.rule-editor')) renderRuleEditor(editor);
+}
+
+for (const toggle of document.querySelectorAll('.rule-text-toggle')) {
+  toggle.addEventListener('change', () => {
+    const key = toggle.dataset.rulesFor;
+    const editor = document.querySelector(`.rule-editor[data-rules-for="${key}"]`);
+    document.querySelector(`textarea[data-key="${key}"]`).style.display = toggle.checked ? '' : 'none';
+    editor.style.display = toggle.checked ? 'none' : '';
+    if (!toggle.checked) {
+      editor.dataset.last = '';
+      renderRuleEditor(editor);
+    }
+  });
 }
 
 // ---- 読み上げの一時停止・スキップ(ボタンとホットキー。ホットキーはRust側で登録) ----

@@ -52,6 +52,9 @@
     --c-ffffff: #141414;
   }
   :root { color-scheme: dark; }
+  /* 縦のスクロールバーが出るタブと出ないタブで横幅が変わり、タブの並びが
+     折り返し直して動いてしまうので、スクロールバーの場所を常に空けておく */
+  html { scrollbar-gutter: stable; }
   body {
     margin: 0;
     font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif;
@@ -134,19 +137,26 @@
   .post-head button { margin-left: auto; padding: 2px 8px; font-size: 12px; }
   .post-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
   /* スレッドのレスの右クリックメニュー */
-  #postMenu { position: fixed; z-index: 20; display: none; min-width: 220px; padding: 4px 0; background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+  #postMenu { position: fixed; z-index: 20; display: none; min-width: 220px; padding: 4px 0; background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
   #postMenu.visible { display: block; }
   #postMenu button { display: block; width: 100%; text-align: left; background: none; color: inherit; border-radius: 0; padding: 6px 12px; }
   #postMenu button:hover { background: var(--c-34373f); }
   #postMenu button:disabled { opacity: 0.4; }
   #readingDialog { position: fixed; z-index: 21; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
   #readingDialog.visible { display: flex; }
-  #reactionIdList button { padding: 2px 8px; font-size: 12px; }
+  /* 読み方・リアクション連動のルール編集(1行=1ルール) */
+  .rule-editor { margin-bottom: 6px; }
+  .rule-row { display: grid; grid-template-columns: 1fr 130px 1fr auto; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .rule-row input[type=text], .rule-row select { width: 100%; }
+  .rule-row .rule-regex { font-family: Consolas, monospace; }
+  .rule-row .rule-buttons { display: flex; gap: 2px; }
+  .rule-row .rule-buttons button { padding: 3px 8px; }
+  .rule-head { display: grid; grid-template-columns: 1fr 130px 1fr auto; gap: 6px; font-size: 12px; color: var(--c-8d909c); margin-bottom: 2px; }
   /* 次スレの>>1のテンプレート編集(左: 入力、右: 建てた時の見え方) */
   .template-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
   .draft-title { font-weight: bold; margin: 4px 0; min-height: 1.4em; }
   .draft-body { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 8px; min-height: 260px; border-radius: 6px; background: var(--c-15161a); border: 1px solid var(--c-3a3d47); font: inherit; }
-  #readingDialog > div { background: var(--c-22242a); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
+  #readingDialog > div { background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
   #preview {
@@ -374,23 +384,26 @@
     <section data-tab="words">
       <h3>NGワード(1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは表示も読み上げもしません)</h3>
       <textarea data-key="ngWords"></textarea>
-      <h3>読み方(1行に「単語/読み方」。単語部分には正規表現が使えます)</h3>
-      <textarea data-key="readingRules" style="min-height: 220px"></textarea>
-      <div class="hint">SpeechCastMeの「読み方」の内容をそのまま貼り付けて使えます(¥はバックスラッシュとして扱います)。</div>
+      <h3>読み方(上から順に置き換えます)</h3>
+      <div class="rule-editor" data-rules-for="readingRules" data-target="reading"></div>
+      <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="readingRules" /> テキストで直接編集する(上級者向け: 1行に「単語/読み方」、単語は正規表現)</label>
+      <textarea data-key="readingRules" style="min-height: 220px; display: none"></textarea>
+      <div class="hint">言葉は「、」で区切ると複数まとめて指定できます。読み方を空欄にすると、その言葉は読みません。SpeechCastMeの「読み方」はテキストで直接編集に切り替えて、そのまま貼り付けられます(¥はバックスラッシュとして扱います)。</div>
     </section>
 
     <section data-tab="reactions">
       <div class="hint">字幕に出したレスの本文がルールに当てはまると、視聴者のリアクションと同じように配信画面へリアクションを飛ばします(例: 「www」で草、「888」で拍手、「おつ」でおつかれ)。コントロールパネルでOFFにしたリアクションは飛びません。AAには反応しません。</div>
       <div class="field"><label>コメントとリアクションを連動する</label><div><input type="checkbox" data-key="reactionLink" /></div></div>
       <div class="field"><label>1件のレスで飛ばす最大数</label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個(上のルールほど優先)</span></div></div>
-      <h3>ルール(1行に「正規表現/リアクションのID」。上にあるものほど優先)</h3>
-      <textarea data-key="reactionRules" style="min-height: 260px"></textarea>
+      <h3>ルール(上にあるものほど優先)</h3>
+      <div class="rule-editor" data-rules-for="reactionRules" data-target="reaction"></div>
+      <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="reactionRules" /> テキストで直接編集する(上級者向け: 1行に「正規表現/リアクションのID」)</label>
+      <textarea data-key="reactionRules" style="min-height: 260px; display: none"></textarea>
       <div class="inline" style="margin: 6px 0">
         <button class="secondary" id="reactionRulesResetBtn">既定のルールに戻す</button>
         <span class="unit" id="reactionRulesMsg"></span>
       </div>
-      <div class="hint">「^おつ$」のように^と$で囲むと「レス全体がその言葉」の時だけ反応します(短い言葉の誤爆よけ)。下のリアクションを押すと、そのIDをルールの最後に付け足します。</div>
-      <div id="reactionIdList" class="inline"></div>
+      <div class="hint">言葉は「、」で区切ると複数まとめて指定できます。「おつ」のような短い言葉は「ちょうど同じ」(レス全体がその言葉の時だけ)にすると、関係ないレスで反応しにくくなります。</div>
     </section>
 
     <section data-tab="list">
