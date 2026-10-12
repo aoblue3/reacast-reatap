@@ -6,46 +6,91 @@
 <link rel="icon" href="data:," />
 <title>ReaCast - コメント読み上げ・字幕</title>
 <style>
+  /* 色はテーマ(shared/theme.js)で切り替える。変数名は元(ダークテーマ)の色 */
+  :root {
+    color-scheme: dark;
+    --c-15161a: #15161a;
+    --c-1c1d22: #1c1d22;
+    --c-24262d: #24262d;
+    --c-26282f: #26282f;
+    --c-2b2d35: #2b2d35;
+    --c-33353d: #33353d;
+    --c-34373f: #34373f;
+    --c-3a3d47: #3a3d47;
+    --c-3b6df0: #3b6df0;
+    --c-7dff9a: #7dff9a;
+    --c-8d909c: #8d909c;
+    --c-8fd88f: #8fd88f;
+    --c-a9acb8: #a9acb8;
+    --c-c4c6cf: #c4c6cf;
+    --c-c9cbd4: #c9cbd4;
+    --c-e6e6ea: #e6e6ea;
+    --c-ff8a8a: #ff8a8a;
+    --c-ffd36b: #ffd36b;
+    --c-ffffff: #ffffff;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --c-15161a: #eff0f2;
+    --c-1c1d22: #ebebee;
+    --c-24262d: #e4e5e9;
+    --c-26282f: #e3e4e8;
+    --c-2b2d35: #dfe0e5;
+    --c-33353d: #dadce0;
+    --c-34373f: #d9dbe0;
+    --c-3a3d47: #d4d6dc;
+    --c-3b6df0: #3b6df0;
+    --c-7dff9a: #148f30;
+    --c-8d909c: #636672;
+    --c-8fd88f: #2a792a;
+    --c-a9acb8: #474a56;
+    --c-c4c6cf: #30323b;
+    --c-c9cbd4: #2b2d36;
+    --c-e6e6ea: #151519;
+    --c-ff8a8a: #8f1414;
+    --c-ffd36b: #8f6a14;
+    --c-ffffff: #141414;
+  }
   :root { color-scheme: dark; }
   body {
     margin: 0;
     font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif;
     font-size: 13px;
-    background: #1c1d22;
-    color: #e6e6ea;
+    background: var(--c-1c1d22);
+    color: var(--c-e6e6ea);
   }
   header {
     padding: 10px 14px;
-    background: #24262d;
-    border-bottom: 1px solid #33353d;
+    background: var(--c-24262d);
+    border-bottom: 1px solid var(--c-33353d);
   }
   .url-row { display: flex; gap: 6px; }
   .url-row input { flex: 1; }
-  #status { margin-top: 6px; font-size: 12px; color: #a9acb8; min-height: 1.4em; }
-  #status .ok { color: #7dff9a; }
-  #status .ng { color: #ff8a8a; }
-  #status .warn { color: #ffd36b; }
+  #status { margin-top: 6px; font-size: 12px; color: var(--c-a9acb8); min-height: 1.4em; }
+  #status .ok { color: var(--c-7dff9a); }
+  #status .ng { color: var(--c-ff8a8a); }
+  #status .warn { color: var(--c-ffd36b); }
   nav { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 14px 0; }
   nav button {
-    background: #2b2d35;
-    color: #c9cbd4;
-    border: 1px solid #3a3d47;
+    background: var(--c-2b2d35);
+    color: var(--c-c9cbd4);
+    border: 1px solid var(--c-3a3d47);
     border-bottom: none;
     border-radius: 6px 6px 0 0;
     padding: 6px 10px;
     cursor: pointer;
   }
-  nav button.active { background: #34373f; color: #fff; }
-  main { padding: 12px 14px 24px; border-top: 1px solid #3a3d47; }
+  nav button.active { background: var(--c-34373f); color: var(--c-ffffff); }
+  main { padding: 12px 14px 24px; border-top: 1px solid var(--c-3a3d47); }
   section { display: none; }
   section.active { display: block; }
   .field { display: grid; grid-template-columns: 220px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
-  .field > label:first-child { color: #c4c6cf; }
-  .hint { color: #8d909c; font-size: 12px; margin: 2px 0 10px; line-height: 1.5; }
+  .field > label:first-child { color: var(--c-c4c6cf); }
+  .hint { color: var(--c-8d909c); font-size: 12px; margin: 2px 0 10px; line-height: 1.5; }
   input[type=text], input[type=number], textarea, select {
-    background: #15161a;
-    color: #e6e6ea;
-    border: 1px solid #3a3d47;
+    background: var(--c-15161a);
+    color: var(--c-e6e6ea);
+    border: 1px solid var(--c-3a3d47);
     border-radius: 4px;
     padding: 4px 6px;
     font: inherit;
@@ -54,40 +99,41 @@
   input[type=number] { width: 110px; }
   input[type=text].wide { width: 100%; }
   textarea { width: 100%; min-height: 150px; font-family: 'MS Gothic', monospace; }
-  input[type=color] { width: 48px; height: 26px; padding: 0; border: 1px solid #3a3d47; background: none; }
+  input[type=color] { width: 48px; height: 26px; padding: 0; border: 1px solid var(--c-3a3d47); background: none; }
   button {
-    background: #3b6df0;
-    color: #fff;
+    background: var(--c-3b6df0);
+    color: #fff; /* theme-keep: 青いボタンの白文字 */
     border: none;
     border-radius: 4px;
     padding: 5px 12px;
     cursor: pointer;
     font: inherit;
   }
-  button.secondary { background: #3a3d47; }
+  button.secondary { background: var(--c-3a3d47); }
+  :root[data-theme="light"] button.secondary { color: #222; }
   button:disabled { opacity: 0.5; cursor: default; }
-  .unit { color: #8d909c; margin-left: 4px; }
+  .unit { color: var(--c-8d909c); margin-left: 4px; }
   .inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .arrows { display: grid; grid-template-columns: repeat(3, 32px); gap: 2px; }
   .arrows button { padding: 4px 0; }
   .copy-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-  .copy-row code { background: #15161a; padding: 4px 6px; border-radius: 4px; flex: 1; }
-  h3 { font-size: 13px; margin: 16px 0 8px; color: #fff; }
+  .copy-row code { background: var(--c-15161a); padding: 4px 6px; border-radius: 4px; flex: 1; }
+  h3 { font-size: 13px; margin: 16px 0 8px; color: var(--c-ffffff); }
   #threadList {
     max-height: calc(100vh - 380px);
     overflow-y: auto;
-    border: 1px solid #3a3d47;
+    border: 1px solid var(--c-3a3d47);
     border-radius: 6px;
-    background: #15161a;
+    background: var(--c-15161a);
   }
-  .post { padding: 6px 10px; border-bottom: 1px solid #26282f; }
+  .post { padding: 6px 10px; border-bottom: 1px solid var(--c-26282f); }
   .post:last-child { border-bottom: none; }
-  .post-head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #8fd88f; }
-  .post-head .date { color: #8d909c; }
+  .post-head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--c-8fd88f); }
+  .post-head .date { color: var(--c-8d909c); }
   .post-head button { margin-left: auto; padding: 2px 8px; font-size: 12px; }
   .post-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
-  .empty { padding: 16px; color: #8d909c; }
+  .empty { padding: 16px; color: var(--c-8d909c); }
   #preview {
     margin-top: 12px;
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
@@ -107,12 +153,13 @@
   .preview-frame {
     width: 100%;
     height: 280px;
-    border: 1px solid #3a3d47;
+    border: 1px solid var(--c-3a3d47);
     border-radius: 6px;
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
   }
   textarea.css { min-height: 110px; }
 </style>
+<script src="shared/theme.js"></script>
 </head>
 <body>
   <header>
@@ -143,14 +190,14 @@
       <h3>配信サイトのコメント(空欄なら取得しません)</h3>
       <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル(配信が始まるのを待って自動で繋ぎます)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
       <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
-      <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:#15161a; padding:8px; border-radius:6px; display:none"></pre>
+      <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
       <div class="hint">掲示板・YouTube・Twitchのコメントは、すべて同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げされます(同時配信でも表示が重なりません)。掲示板のURLを空欄にすれば、配信サイトのコメントだけを取得できます。どちらも非公式の方法で取得しているため、各サイトの仕様変更で取得できなくなることがあります。</div>
       <h3>掲示板</h3>
       <div class="inline" style="margin-bottom:8px">
         <button class="secondary" id="listThreadsBtn">スレッドを選ぶ</button>
         <span class="unit">読み込んでいるスレッドが違う時に、板のスレッド一覧から手動で選んで切り替えられます(取得中のみ)</span>
       </div>
-      <div id="threadPicker" style="display:none; max-height: 260px; overflow-y:auto; border:1px solid #3a3d47; border-radius:6px; margin-bottom:10px"></div>
+      <div id="threadPicker" style="display:none; max-height: 260px; overflow-y:auto; border:1px solid var(--c-3a3d47); border-radius:6px; margin-bottom:10px"></div>
       <div class="field"><label>jpnknの即時通知を使う</label><div><input type="checkbox" data-key="jpnknFast" /><span class="unit">jpnknの板では、書き込まれた瞬間にレスを拾います(Fastインターフェース)。定期取得も取りこぼし対策として続けます</span></div></div>
       <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
@@ -273,7 +320,7 @@
       <textarea data-key="createBodyTemplate"></textarea>
       <div class="hint">{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル</div>
       <div class="inline"><button class="secondary" id="previewThreadBtn">タイトルと本文を確認(建てません)</button></div>
-      <pre id="threadPreview" class="hint" style="white-space: pre-wrap; background:#15161a; padding:8px; border-radius:6px; min-height:2em"></pre>
+      <pre id="threadPreview" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; min-height:2em"></pre>
     </section>
 
     <section data-tab="words">

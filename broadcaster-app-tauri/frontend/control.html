@@ -6,10 +6,65 @@
 <link rel="icon" href="data:," />
 <title>ReaCast</title>
 <style>
+  /* 色はテーマ(shared/theme.js)で切り替える。変数名は元(ダークテーマ)の色 */
+  :root {
+    color-scheme: dark;
+    --c-0d0e11: #0d0e11;
+    --c-17181c: #17181c;
+    --c-1e1f25: #1e1f25;
+    --c-1f6b3a: #1f6b3a;
+    --c-202127: #202127;
+    --c-24252b: #24252b;
+    --c-2a2b30: #2a2b30;
+    --c-2f5ad0: #2f5ad0;
+    --c-333333: #333333;
+    --c-3a6df0: #3a6df0;
+    --c-444444: #444444;
+    --c-6b1f1f: #6b1f1f;
+    --c-8effa0: #8effa0;
+    --c-999999: #999999;
+    --c-9ff29f: #9ff29f;
+    --c-b23a3a: #b23a3a;
+    --c-bb3333: #bb3333;
+    --c-c94444: #c94444;
+    --c-cccccc: #cccccc;
+    --c-d7ffe0: #d7ffe0;
+    --c-d98a8a: #d98a8a;
+    --c-eeeeee: #eeeeee;
+    --c-ff8a8a: #ff8a8a;
+    --c-ffd7d7: #ffd7d7;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --c-0d0e11: #f5f5f7;
+    --c-17181c: #eeeff1;
+    --c-1e1f25: #e9e9ed;
+    --c-1f6b3a: #d0f1dc;
+    --c-202127: #e8e8ec;
+    --c-24252b: #e5e6e9;
+    --c-2a2b30: #e2e3e6;
+    --c-2f5ad0: #2f5ad0;
+    --c-333333: #e0e0e0;
+    --c-3a6df0: #3a6df0;
+    --c-444444: #d6d6d6;
+    --c-6b1f1f: #f1d0d0;
+    --c-8effa0: #148f28;
+    --c-999999: #666666;
+    --c-9ff29f: #148f14;
+    --c-b23a3a: #b23a3a;
+    --c-bb3333: #bb3333;
+    --c-c94444: #c94444;
+    --c-cccccc: #333333;
+    --c-d7ffe0: #148f30;
+    --c-d98a8a: #7b2828;
+    --c-eeeeee: #141414;
+    --c-ff8a8a: #8f1414;
+    --c-ffd7d7: #8f1414;
+  }
   body {
     font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
-    background: #17181c;
-    color: #eee;
+    background: var(--c-17181c);
+    color: var(--c-eeeeee);
     margin: 0;
     padding: 20px;
     box-sizing: border-box;
@@ -26,15 +81,15 @@
     font-size: 12px;
     margin-left: 8px;
   }
-  .status.ok { background: #1f6b3a; color: #d7ffe0; }
-  .status.ng { background: #6b1f1f; color: #ffd7d7; }
+  .status.ok { background: var(--c-1f6b3a); color: var(--c-d7ffe0); }
+  .status.ng { background: var(--c-6b1f1f); color: var(--c-ffd7d7); }
   textarea {
     width: 100%;
     height: 90px;
     box-sizing: border-box;
-    background: #0d0e11;
-    color: #9ff29f;
-    border: 1px solid #333;
+    background: var(--c-0d0e11);
+    color: var(--c-9ff29f);
+    border: 1px solid var(--c-333333);
     border-radius: 6px;
     padding: 10px;
     font-family: monospace;
@@ -42,9 +97,9 @@
     resize: none;
   }
   input[type="text"] {
-    background: #0d0e11;
-    color: #9ff29f;
-    border: 1px solid #333;
+    background: var(--c-0d0e11);
+    color: var(--c-9ff29f);
+    border: 1px solid var(--c-333333);
     border-radius: 6px;
     padding: 8px 10px;
     font-family: monospace;
@@ -52,12 +107,12 @@
     letter-spacing: 0.02em;
     width: 260px;
   }
-  input[type="text"].invalid { border-color: #b33; }
+  input[type="text"].invalid { border-color: var(--c-bb3333); }
   #passphraseMsg { font-size: 12px; margin-top: 6px; min-height: 16px; }
-  #passphraseMsg.ok { color: #8effa0; }
-  #passphraseMsg.ng { color: #ff8a8a; }
+  #passphraseMsg.ok { color: var(--c-8effa0); }
+  #passphraseMsg.ng { color: var(--c-ff8a8a); }
   button {
-    background: #3a6df0;
+    background: var(--c-3a6df0);
     color: white;
     border: none;
     padding: 8px 16px;
@@ -67,12 +122,13 @@
     margin-top: 8px;
     margin-right: 8px;
   }
-  button:hover { background: #2f5ad0; }
-  button.secondary { background: #333; }
-  button.secondary:hover { background: #444; }
-  button.danger { background: #b23a3a; }
-  button.danger:hover { background: #c94444; }
-  .muted { color: #999; font-size: 12px; }
+  button:hover { background: var(--c-2f5ad0); }
+  button.secondary { background: var(--c-333333); }
+  :root[data-theme="light"] button.secondary { color: #222; }
+  button.secondary:hover { background: var(--c-444444); }
+  button.danger { background: var(--c-b23a3a); }
+  button.danger:hover { background: var(--c-c94444); }
+  .muted { color: var(--c-999999); font-size: 12px; }
 
   .confirm-overlay {
     display: none;
@@ -85,8 +141,8 @@
   }
   .confirm-overlay.visible { display: flex; }
   .confirm-box {
-    background: #1e1f25;
-    border: 1px solid #333;
+    background: var(--c-1e1f25);
+    border: 1px solid var(--c-333333);
     border-radius: 10px;
     padding: 18px;
     width: 300px;
@@ -120,9 +176,9 @@
     100% { background-position: 400% 50%; }
   }
   select {
-    background: #24252b;
-    color: #eee;
-    border: 1px solid #333;
+    background: var(--c-24252b);
+    color: var(--c-eeeeee);
+    border: 1px solid var(--c-333333);
     border-radius: 4px;
     padding: 5px 8px;
     font-size: 13px;
@@ -142,9 +198,9 @@
     gap: 6px;
     margin-top: 6px;
   }
-  .region-row label { width: 70px; font-size: 12px; color: #ccc; }
+  .region-row label { width: 70px; font-size: 12px; color: var(--c-cccccc); }
   .region-row span { display: inline-block; min-width: 38px; }
-  #regionFields { margin-top: 4px; padding-left: 4px; border-left: 2px solid #2a2b30; }
+  #regionFields { margin-top: 4px; padding-left: 4px; border-left: 2px solid var(--c-2a2b30); }
   #regionFields.disabled { opacity: 0.4; pointer-events: none; }
 
   /* 受け付けるリアクションのON/OFF一覧。数が多いのでコンパクトなチップ状に
@@ -161,16 +217,16 @@
   .rt-negative-heading {
     margin: 10px 0 6px;
     padding-top: 8px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--c-333333);
     font-size: 12px;
-    color: #d98a8a;
+    color: var(--c-d98a8a);
   }
   .rt-chip {
     display: flex;
     align-items: center;
     gap: 5px;
-    background: #202127;
-    border: 1px solid #2a2b30;
+    background: var(--c-202127);
+    border: 1px solid var(--c-2a2b30);
     border-radius: 999px;
     padding: 4px 10px 4px 8px;
     font-size: 12px;
@@ -179,7 +235,7 @@
   }
   .rt-chip.rt-off {
     opacity: 0.45;
-    border-color: #6b1f1f;
+    border-color: var(--c-6b1f1f);
   }
   .rt-chip input { margin: 0; }
   .rt-chip .rt-emoji {
@@ -187,6 +243,7 @@
     font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
   }
 </style>
+<script src="shared/theme.js"></script>
 </head>
 <body>
   <h1>ReaCast(配信者アプリ) <span id="appVersion" class="muted" style="font-weight: normal;"></span> <span id="connStatus" class="status ng">未接続</span></h1>
@@ -292,6 +349,15 @@
   <div class="row">
     <div class="muted">動作確認用テスト送信(オフにしたものも含め、実際に視聴者から送られたように見た目を確認できます):</div>
     <div class="test-buttons" id="testButtons"></div>
+  </div>
+
+  <div class="row">
+    <span class="muted">画面の色:</span>
+    <select data-ui-theme>
+      <option value="system">OSの設定に合わせる</option>
+      <option value="light">ライト</option>
+      <option value="dark">ダーク</option>
+    </select>
   </div>
 
   <div class="row">

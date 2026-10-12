@@ -267,7 +267,7 @@ document.getElementById('previewThreadBtn').addEventListener('click', async () =
 const checkResultEl = document.getElementById('checkResult');
 function showCheck(lines, ok) {
   checkResultEl.style.display = '';
-  checkResultEl.style.color = ok ? '#7dff9a' : '#ff8a8a';
+  checkResultEl.style.color = ok ? 'var(--c-7dff9a)' : 'var(--c-ff8a8a)';
   checkResultEl.textContent = lines.filter(Boolean).join('\n');
 }
 document.getElementById('checkYoutubeBtn').addEventListener('click', async (e) => {
@@ -326,7 +326,7 @@ document.getElementById('listThreadsBtn').addEventListener('click', async (e) =>
       head.className = 'post-head';
       const title = document.createElement('span');
       title.textContent = `${t.title}(${t.count})${t.current ? ' ← 読み込み中' : ''}`;
-      if (t.count >= 1000) title.style.color = '#8d909c';
+      if (t.count >= 1000) title.style.color = 'var(--c-8d909c)';
       const btn = document.createElement('button');
       btn.className = 'secondary';
       btn.textContent = 'このスレッドを読む';

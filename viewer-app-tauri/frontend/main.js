@@ -494,18 +494,18 @@ addProfileForm.addEventListener('submit', async (e) => {
 
     const relayAddress = await resolveRelayAddress();
 
-    connStatus.style.color = '#8ac6ff';
+    connStatus.style.color = 'var(--c-8ac6ff)';
     connStatus.textContent = '配信者への接続を確認しています...';
 
     const result = await testConnection({ ...relayAddress, passphrase });
     if (!result.ok) {
-      connStatus.style.color = '#ff8a8a';
+      connStatus.style.color = 'var(--c-ff8a8a)';
       connStatus.textContent = `接続を確認できませんでした: ${result.message}`;
       submitBtn.disabled = false;
       return;
     }
 
-    connStatus.style.color = '#8effa0';
+    connStatus.style.color = 'var(--c-9ff29f)';
     connStatus.textContent = '配信者への接続を確認しました。一覧に追加しました。';
 
     const id = genProfileId();
@@ -1010,7 +1010,7 @@ async function buildProfileSettingsPanel(profile) {
   // 対象ウィンドウの手動指定
   const manualHeading = document.createElement('div');
   manualHeading.style.fontSize = '12px';
-  manualHeading.style.color = '#ccc';
+  manualHeading.style.color = 'var(--c-cccccc)';
   manualHeading.textContent = manualOverridePath
     ? `手動選択中の対象: ${manualOverridePath}`
     : '対象ウィンドウ: 自動検出' + (broadcasterName ? `(配信者名「${broadcasterName}」で絞り込み)` : '');
