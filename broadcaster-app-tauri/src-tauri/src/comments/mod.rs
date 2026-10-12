@@ -93,6 +93,10 @@ pub struct CommentSettings {
     pub hotkey_skip: String,
     pub hotkey_pause: String,
     pub reading_rules: String,
+    /// v1.5.6で増やした既定の読み方を足し終えたか。保存済みの設定に無い時は
+    /// false(=これから足す)、新しく作った設定ではtrue(load_settings参照)
+    #[serde(default)]
+    pub reading_presets_v2: bool,
     pub ng_words: String,
     // ---- コメントとリアクションの連動 ----
     /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
@@ -143,6 +147,40 @@ pub struct DesktopRect {
     pub width: u32,
     pub height: u32,
 }
+
+/// 既定の読み方(上から順に置き換える)。先頭2つはURLで、以前の既定(OLD_URL_READINGS)と
+/// 同じ並び。行を足したら、既存の人にはadd_reading_presetsで一度だけ足される。
+const DEFAULT_READING_RULES: &[&str] = &[
+    r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/ユーアールエル省略",
+    r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/ユーアールエル省略",
+    // アンカー(>>12 や >>12-15)は読まない
+    r"[>＞≫]{1,2}[0-9０-９]+([-ー][0-9０-９]+)?/",
+    // 6桁以上の数字
+    r"[0-9０-９]{6,}/数字省略",
+    "ww+/ワラワラ",
+    "ｗｗ+/ワラワラ",
+    r"^[wｗ]$/ワラ",
+    r"^[8８]{3,}$/パチパチ",
+    // 記号や伸ばし棒の連続は1つに
+    r"[!！]{2,}/！",
+    r"[?？]{2,}/？",
+    r"[ー〜~]{3,}/ー",
+    // 絵文字は読まない(読み上げソフトが名前を読み上げてしまうため)
+    r"[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}]/",
+    // ネットスラング
+    "(?i)orz/がっくり",
+    "(?i)kwsk/くわしく",
+    "(?i)wktk/わくてか",
+    "(?i)ktkr/きたこれ",
+    "(?i)gdgd/ぐだぐだ",
+    "(?i)ggrks/ぐぐれかす",
+];
+
+/// v1.5.5までの既定のURLの読み方(DEFAULT_READING_RULESの先頭2つに置き換える)
+const OLD_URL_READINGS: &[&str] = &[
+    r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
+    r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
+];
 
 /// コメントとリアクションの連動の既定のルール(上にあるものほど優先)。
 /// IDはshared/emoji-set.jsのもの。誤爆しやすい短い言葉は「^…$」(レス全体がその言葉)にしている。
@@ -233,13 +271,8 @@ impl Default for CommentSettings {
             max_wait_ms: 20000,
             hotkey_skip: String::new(),
             hotkey_pause: String::new(),
-            reading_rules: [
-                r"(https|ttps)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
-                r"(http|ttp)(:¥/¥/[-_.!~*¥'()a-zA-Z0-9;¥/?:¥@&=+¥$,%#]+)/リンク",
-                "ww+/ワラワラ",
-                "ｗｗ+/ワラワラ",
-            ]
-            .join("\n"),
+            reading_rules: DEFAULT_READING_RULES.join("\n"),
+            reading_presets_v2: true,
             ng_words: String::new(),
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
@@ -1469,10 +1502,35 @@ fn run_speech_command(s: &CommentSettings, post: &Post, spoken: &str) {
 }
 
 pub fn load_settings(store: &ConfigStore) -> CommentSettings {
-    store
+    let mut s: CommentSettings = store
         .get(SETTINGS_KEY)
         .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if !s.reading_presets_v2 {
+        add_reading_presets(&mut s);
+        let _ = save_settings(store, &s);
+    }
+    s
+}
+
+/// 以前から使っている人の読み方に、v1.5.6で増やした既定の読み方を一度だけ足す
+/// (同じ行が既にあれば足さない)。以前の既定のURLの読み(リンク)は新しい読みにする。
+fn add_reading_presets(s: &mut CommentSettings) {
+    let mut lines: Vec<String> = s
+        .reading_rules
+        .lines()
+        .map(|l| match OLD_URL_READINGS.iter().position(|old| *old == l) {
+            Some(i) => DEFAULT_READING_RULES[i].to_string(),
+            None => l.to_string(),
+        })
+        .collect();
+    for rule in DEFAULT_READING_RULES {
+        if !lines.iter().any(|l| l == rule) {
+            lines.push(rule.to_string());
+        }
+    }
+    s.reading_rules = lines.join("\n");
+    s.reading_presets_v2 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
@@ -1808,6 +1866,37 @@ mod tests {
         assert_eq!(speech_text(&post(1, "あいうえおか"), false, &s, &c), "あいうえ");
         // お知らせにはレス番号を付けない
         assert_eq!(speech_text(&Post::system("次スレです"), false, &s, &c), "次スレで");
+    }
+
+    #[test]
+    fn default_reading_rules_read_naturally() {
+        assert_eq!(text::parse_reading_rules(&DEFAULT_READING_RULES.join("\n")).len(), DEFAULT_READING_RULES.len());
+        let s = CommentSettings::default();
+        let c = Compiled::from(&s);
+        let read = |body: &str| speech_text(&post(5, body), false, &s, &c);
+        assert_eq!(read(">>12 わかる"), " わかる");
+        assert_eq!(read("見て https://example.com/a?b=1"), "見て ユーアールエル省略");
+        assert_eq!(read("ID 12345678 です"), "ID 数字省略 です");
+        assert_eq!(read("すごい!!!!"), "すごい！");
+        assert_eq!(read("やったー😀👍"), "やったー");
+        assert_eq!(read("kwsk"), "くわしく");
+        assert_eq!(read("8888"), "パチパチ");
+    }
+
+    #[test]
+    fn reading_presets_are_added_once_to_saved_settings() {
+        // v1.5.5までの設定(reading_presets_v2が無い)を読み込んだ時
+        let old = serde_json::json!({ "readingRules": format!("{}\n自分の/読み方", OLD_URL_READINGS[0]) });
+        let mut s: CommentSettings = serde_json::from_value(old).unwrap();
+        assert!(!s.reading_presets_v2);
+        add_reading_presets(&mut s);
+        let lines: Vec<&str> = s.reading_rules.lines().collect();
+        assert_eq!(lines[0], DEFAULT_READING_RULES[0]); // 以前の既定のURLの読みは新しい読みに
+        assert_eq!(lines[1], "自分の/読み方"); // 自分で足した行はそのまま
+        assert_eq!(lines.len(), 1 + DEFAULT_READING_RULES.len());
+        assert!(s.reading_presets_v2);
+        // 新しく作った設定では足し済み扱い
+        assert!(CommentSettings::default().reading_presets_v2);
     }
 
     #[test]
