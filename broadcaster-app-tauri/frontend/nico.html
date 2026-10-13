@@ -80,15 +80,18 @@
 
     function flow(res) {
       if (res.system) return;
-      if (res.aa && !style.nico.showAA) return;
       const s = style.nico;
+      if (s.aaOnly && !res.aa) return;
+      if (res.aa && !s.showAA && !s.aaOnly) return;
       const text = res.aa ? String(res.body || '') : String(res.body || '').replace(/\s*\n\s*/g, ' ');
       if (!text.trim()) return;
 
       const el = document.createElement('div');
-      el.className = 'nico';
+      el.className = 'nico' + (res.aa ? ' aa' : '');
       el.textContent = text;
-      el.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      // AAは「AAモード」のフォントで描く(文字幅が違うとずれる)
+      el.style.fontFamily = C.cssFontFamily(res.aa ? style.aa.fontFamily : s.fontFamily);
+      if (res.aa) el.style.lineHeight = '1.1';
       el.style.fontSize = `${Number(s.fontSize) || 40}px`;
       el.style.fontWeight = s.bold ? 'bold' : 'normal';
       el.style.color = s.color;
@@ -99,13 +102,24 @@
       stage.appendChild(el);
 
       const W = window.innerWidth;
+      const H = window.innerHeight;
+      if (res.aa && el.offsetHeight > H) {
+        // 画面より背の高いAAは、全体が収まる大きさまで小さくする
+        const size = Math.max(6, Math.floor((Number(s.fontSize) || 40) * (H / el.offsetHeight)));
+        el.style.fontSize = `${size}px`;
+      }
       const width = el.offsetWidth;
       const durationMs = Math.max(1000, (Number(s.durationSec) || 5) * 1000);
       const speed = (W + width) / durationMs; // px/ms
       const now = performance.now();
-      const lane = pickLane(now, width, speed, durationMs);
-      lanes[lane] = { start: now, width, speed };
-      el.style.top = `${lane * laneHeight()}px`;
+      if (res.aa) {
+        // AAは行に関係なく、上下が見切れない範囲のランダムな高さに流す
+        el.style.top = `${Math.floor(Math.random() * Math.max(1, H - el.offsetHeight + 1))}px`;
+      } else {
+        const lane = pickLane(now, width, speed, durationMs);
+        lanes[lane] = { start: now, width, speed };
+        el.style.top = `${lane * laneHeight()}px`;
+      }
       el.style.visibility = '';
       const anim = el.animate(
         [{ transform: 'translateX(0)' }, { transform: `translateX(${-(W + width)}px)` }],
@@ -118,7 +132,11 @@
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
         C.applyCustomCss(style.nico.customCss);
-      } else if (msg.type === 'comment' && msg.res) {
+      } else if (msg.type === 'comment' && msg.res && !style.nico.instant) {
+        // 通常: 字幕・読み上げと同じタイミングで1件ずつ
+        flow(msg.res);
+      } else if (msg.type === 'nico' && msg.res && style.nico.instant) {
+        // 「届いたらすぐ流す」: 取得した瞬間に送られてくる(comments::enqueue)
         flow(msg.res);
       }
     });

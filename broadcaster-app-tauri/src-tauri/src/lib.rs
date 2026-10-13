@@ -564,8 +564,16 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // 競争に負けにくくするための対策。
     // 2秒おきの通常時には、ついでにオーバーレイの位置・サイズのずれも直す
     // (realign_overlay_window参照。150ms間隔のバースト中はやらない)。
+    // リアクション機能のOFF→ONでオーバーレイを作り直した時、前の画面のスレッドが
+    // 2秒の待ちの間に新しい画面を見つけて動き続けないよう、作るたびに番号を進め、
+    // 自分の番号でなくなったスレッドは終わる
+    static OVERLAY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let my_gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let reassert_handle = app.clone();
     std::thread::spawn(move || loop {
+        if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != my_gen {
+            break;
+        }
         let bursting = reassert_handle
             .try_state::<TopmostReasserter>()
             .map(|s| s.is_bursting())
@@ -876,6 +884,28 @@ fn cfg_set(
 
 /// 中継サーバーから届いた(または動作確認用にコントロールパネルから送った)
 /// リアクションを、オーバーレイウィンドウに転送する。
+/// リアクション機能を使うか(コントロールパネルの「リアクション機能を使う」。既定はON)。
+/// OFFの間はオーバーレイの画面を作らず、中継サーバーにも繋がない(control.js)。
+fn reactions_enabled(store: &ConfigStore) -> bool {
+    store.get("reactionsEnabled").and_then(|v| v.as_bool()).unwrap_or(true)
+}
+
+/// リアクション機能のON/OFFを切り替える。OFFにするとオーバーレイの画面を閉じる
+/// (最前面の取り直しのスレッドも、画面が無くなると止まる)。ONにすると作り直す。
+#[tauri::command(async)]
+fn set_reactions_enabled(app: tauri::AppHandle, store: tauri::State<ConfigStore>, enabled: bool) -> Result<(), String> {
+    store
+        .set("reactionsEnabled".into(), serde_json::Value::Bool(enabled))
+        .map_err(|e| e.to_string())?;
+    match (enabled, app.get_webview_window("overlay")) {
+        (false, Some(win)) => win.destroy().map_err(|e| e.to_string())?,
+        (true, None) => create_overlay_window(&app).map_err(|e| e.to_string())?,
+        _ => {}
+    }
+    log::info!("リアクション機能を{}", if enabled { "ON" } else { "OFF" });
+    Ok(())
+}
+
 #[tauri::command]
 fn emit_overlay_reaction(app: tauri::AppHandle, emoji: String, viewer_id: Option<String>) -> Result<(), String> {
     show_reaction(&app, &emoji, &viewer_id.unwrap_or_default())
@@ -885,6 +915,9 @@ fn emit_overlay_reaction(app: tauri::AppHandle, emoji: String, viewer_id: Option
 /// コメントとの連動のどれもここを通る)。配信者がOFFにしたリアクションは出さない。
 pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str) -> Result<(), String> {
     let store = app.state::<ConfigStore>();
+    if !reactions_enabled(&store) {
+        return Ok(());
+    }
     // 視聴者からのリアクション・テスト送信はcontrol.js側で確認済み。コメントとの連動は
     // ここで確認する(OFFにしたものが連動で出てしまわないように)
     if viewer_id == "comment" {
@@ -1015,7 +1048,9 @@ pub fn run() {
             }
 
             let handle = app.handle().clone();
-            create_overlay_window(&handle)?;
+            if reactions_enabled(&app.state::<ConfigStore>()) {
+                create_overlay_window(&handle)?;
+            }
             create_control_window(&handle)?;
 
             // タスクトレイに常駐アイコンを出す。コントロールパネルを最小化すると
@@ -1125,6 +1160,7 @@ pub fn run() {
             cfg_get,
             cfg_set,
             emit_overlay_reaction,
+            set_reactions_enabled,
             list_monitors,
             set_overlay_monitor,
             set_overlay_region,

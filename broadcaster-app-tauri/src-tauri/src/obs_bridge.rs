@@ -211,6 +211,12 @@ impl ObsBridge {
         let _ = self.tx.send(serde_json::json!({ "type": "comment", "res": res }).to_string());
     }
 
+    /// コメント機能: ニコ生風の「届いたらすぐ流す」用に、レスをニコ生風の画面にだけ送る
+    /// (右のレス一覧の履歴には入れない)。
+    pub fn push_nico(&self, res: serde_json::Value) {
+        let _ = self.tx.send(serde_json::json!({ "type": "nico", "res": res }).to_string());
+    }
+
     /// コメント機能: 取得を止めた時に字幕を消す。
     /// コメント機能: 右のレス一覧を空にする(開始・再開始時)。
     pub fn clear_comments(&self) {

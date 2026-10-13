@@ -475,7 +475,9 @@
       <div class="field"><label>流れる時間</label><div><input type="number" min="1" max="30" step="0.5" data-key="style.nico.durationSec" /><span class="unit">秒(画面を横切るのにかかる時間。長いコメントほど速く流れます)</span></div></div>
       <div class="field"><label>不透明度</label><div><input type="number" min="10" max="100" data-key="style.nico.opacity" /><span class="unit">%</span></div></div>
       <div class="field"><label>最大の行数</label><div><input type="number" min="0" max="50" data-key="style.nico.maxLines" /><span class="unit">0なら画面の高さに収まるだけ</span></div></div>
-      <div class="field"><label>AAも流す</label><div><input type="checkbox" data-key="style.nico.showAA" /></div></div>
+      <div class="field"><label>AAも流す</label><div><input type="checkbox" data-key="style.nico.showAA" /><span class="unit">AAは見切れないよう、全体が画面に収まる位置(大きすぎる時は小さくして)に流します</span></div></div>
+      <div class="field"><label>AAだけを流す</label><div><input type="checkbox" data-key="style.nico.aaOnly" /><span class="unit">普通のコメントは流さず、AAだけを流します</span></div></div>
+      <div class="field"><label>届いたらすぐ流す</label><div><input type="checkbox" data-key="style.nico.instant" /><span class="unit">読み上げの順番を待たずに、コメントが届いた瞬間に流します(コメントが多い時は画面いっぱいに流れます)。OFFの時は字幕・読み上げと同じタイミングで1件ずつ流します</span></div></div>
       <h3>カスタムCSS(上級者向け)</h3>
       <textarea class="css" data-key="style.nico.customCss" placeholder=".nico { letter-spacing: 0.05em; }"></textarea>
     </section>

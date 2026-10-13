@@ -954,6 +954,14 @@ impl CommentEngine {
             if st.run_id != run_id {
                 return;
             }
+            // ニコ生風の「届いたらすぐ流す」: 読み上げの順番待ちを通さず、届いた時点で流す
+            // (字幕・読み上げ・右のレス一覧はこれまでどおり順番待ちから1件ずつ)
+            if st.settings.style.pointer("/nico/instant").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let bridge = self.bridge();
+                for p in posts.iter().filter(|p| !p.system && !p.is_ng(&st.compiled)) {
+                    bridge.push_nico(p.to_json(detect_aa(&st.settings, &st.compiled, p)));
+                }
+            }
             st.queue.extend(posts);
             st.status.queue_len = st.queue.len();
         }
@@ -1700,7 +1708,16 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
     post.name = name;
     post.date = "2026/10/08(木) 21:00:00.00 ID:test".into();
     post.icon = engine.pick_icon("bbs");
-    engine.bridge().push_comment(post.to_json(false));
+    // AAとして判定されるかも本番と同じにする(ニコ生風のAAの流れ方を試せるように)
+    let aa = {
+        let st = engine.state.lock().unwrap();
+        detect_aa(&st.settings, &st.compiled, &post)
+    };
+    let json = post.to_json(aa);
+    let bridge = engine.bridge();
+    bridge.push_comment(json.clone());
+    // ニコ生風の「届いたらすぐ流す」がONの時は、ニコ生風はこちらを流す(OFFの時は無視される)
+    bridge.push_nico(json);
 }
 
 /// YouTubeのURLで、配信とチャットに接続できるかを確かめる(取得は開始しない)。

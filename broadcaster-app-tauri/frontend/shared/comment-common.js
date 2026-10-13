@@ -100,6 +100,9 @@
       // 同時に流す最大の行数(0なら画面の高さに収まるだけ)
       maxLines: 0,
       showAA: false,
+      // AAだけを流す / 読み上げの順番を待たず、届いた瞬間に流す
+      aaOnly: false,
+      instant: false,
       customCss: '',
     },
   };

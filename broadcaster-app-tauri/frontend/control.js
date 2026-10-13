@@ -41,10 +41,15 @@ function renderPreflight(items) {
 
 async function runPreflight() {
   preflightOverlay.classList.add('visible');
-  const relay = connStatusEl.classList.contains('ok')
+  const reactionsOff = document.body.classList.contains('reactions-off');
+  const relay = reactionsOff
+    ? { label: '中継サーバー', state: 'skip', message: 'リアクション機能はOFFです' }
+    : connStatusEl.classList.contains('ok')
     ? { label: '中継サーバー', state: 'ok', message: `つながっています(視聴者${viewerCountEl.textContent}人)` }
     : { label: '中継サーバー', state: 'ng', message: 'つながっていません(視聴者のリアクションが届きません)' };
-  const passphrase = passphraseInputEl.value.trim()
+  const passphrase = reactionsOff
+    ? { label: '合言葉', state: 'skip', message: 'リアクション機能はOFFです' }
+    : passphraseInputEl.value.trim()
     ? { label: '合言葉', state: 'ok', message: passphraseInputEl.value.trim() }
     : { label: '合言葉', state: 'ng', message: '決まっていません' };
   renderPreflight([relay, passphrase, { label: 'その他', state: 'skip', message: '確認中…(最大10秒ほどかかります)' }]);
@@ -732,6 +737,32 @@ savePassphraseBtn.addEventListener('click', async () => {
   sendPassphraseUpdate(value);
 });
 
+/** 「リアクション機能を使う」。OFFの間は中継サーバーに繋がず、リアクション関係の
+ * 表示を隠す(オーバーレイの画面はRust側のset_reactions_enabledが閉じる)。 */
+async function initReactionsToggle(relayAddress) {
+  const checkbox = document.getElementById('reactionsEnabledCheckbox');
+  const saved = await invoke('cfg_get', { key: 'reactionsEnabled' });
+  checkbox.checked = saved !== false;
+  const apply = async (enabled) => {
+    document.body.classList.toggle('reactions-off', !enabled);
+    if (enabled && !relayClient) {
+      await connectRelay(credentials, relayAddress, passphraseInputEl.value);
+    } else if (!enabled && relayClient) {
+      relayClient.close();
+      relayClient = null;
+    }
+  };
+  checkbox.addEventListener('change', async () => {
+    try {
+      await invoke('set_reactions_enabled', { enabled: checkbox.checked });
+    } catch (err) {
+      console.error('リアクション機能の切り替えに失敗しました', err);
+    }
+    await apply(checkbox.checked);
+  });
+  await apply(checkbox.checked);
+}
+
 async function connectRelay(creds, relayAddress, passphrase) {
   relayClient = new window.RelayClient({
     url: `ws://${relayAddress.host}:${relayAddress.port}`,
@@ -854,7 +885,7 @@ async function connectRelay(creds, relayAddress, passphrase) {
   renderNoComboGrowthList();
   await loadCooldown();
   await loadHideLocalOverlay();
-  await connectRelay(credentials, relayAddress, passphraseInputEl.value);
+  await initReactionsToggle(relayAddress);
   showAppVersion();
   document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
     const msg = document.getElementById('backupMsg');

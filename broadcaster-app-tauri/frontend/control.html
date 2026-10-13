@@ -151,6 +151,8 @@
   .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .confirm-buttons button { margin: 0; }
+  /* リアクション機能をOFFにしている間は、リアクション関係の表示を隠す */
+  body.reactions-off .reaction-only { display: none !important; }
   .pf-item { display: grid; grid-template-columns: 1.6em 11em 1fr; gap: 4px; margin-bottom: 6px; white-space: normal; }
   .pf-ok .pf-mark { color: var(--c-8effa0); }
   .pf-warn .pf-mark { color: #e0a030; }
@@ -251,9 +253,9 @@
 <script src="shared/theme.js"></script>
 </head>
 <body>
-  <h1>ReaCast(配信者アプリ) <span id="appVersion" class="muted" style="font-weight: normal;"></span> <span id="connStatus" class="status ng">未接続</span></h1>
+  <h1>ReaCast(配信者アプリ) <span id="appVersion" class="muted" style="font-weight: normal;"></span> <span id="connStatus" class="status ng reaction-only">未接続</span></h1>
 
-  <div class="row">
+  <div class="row reaction-only">
     <div class="muted">視聴者数: <span id="viewerCount">0</span></div>
     <div class="muted">中継サーバー: <span id="relayAddr">-</span></div>
   </div>
@@ -263,6 +265,13 @@
     <button id="preflightBtn" class="secondary" title="中継サーバー・掲示板・YouTube・Twitch・読み上げソフト・OBSがつながっているかをまとめて確かめます">配信前チェック</button>
     <div class="muted">掲示板のレスを取得して、字幕(下)・レス一覧(右)・デスクトップ字幕に表示し、読み上げソフトに渡します。</div>
   </div>
+
+  <div class="row">
+    <label><input type="checkbox" id="reactionsEnabledCheckbox" checked /> リアクション機能を使う</label>
+    <div class="muted">視聴者からのリアクション(絵文字)を使わない場合はOFFにしてください。中継サーバーへの接続とリアクション表示用の画面を止めるので、そのぶんPCの負担が減ります(コメント読み上げ・字幕はそのまま使えます)。</div>
+  </div>
+
+  <div id="reactionSection" class="reaction-only">
 
   <div class="row">
     <div>合言葉(視聴者アプリにこの文字列を伝えてください):</div>
@@ -355,6 +364,7 @@
   <div class="row">
     <div class="muted">動作確認用テスト送信(オフにしたものも含め、実際に視聴者から送られたように見た目を確認できます):</div>
     <div class="test-buttons" id="testButtons"></div>
+  </div>
   </div>
 
   <div class="row">
