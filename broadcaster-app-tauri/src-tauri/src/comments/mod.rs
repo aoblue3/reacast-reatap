@@ -110,6 +110,8 @@ pub struct CommentSettings {
     pub reaction_link_max: usize,
     /// 下の字幕に出したレスを翻訳して下に添える(日本語→英語、それ以外→日本語。読み上げない)
     pub subtitle_translate: bool,
+    /// 日本語のレスの翻訳先(Google翻訳の言語コード。既定は英語)。日本語以外のレスは日本語に訳す
+    pub subtitle_translate_target: String,
     // ---- 話した字幕(voice.rs) ----
     /// 話した字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
     pub voice_enabled: bool,
@@ -295,6 +297,7 @@ impl Default for CommentSettings {
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
             reaction_link_max: 2,
             subtitle_translate: false,
+            subtitle_translate_target: "en".into(),
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
             voice_translate: true,
@@ -1398,9 +1401,13 @@ impl CommentEngine {
                 subtitle_json["tid"] = serde_json::json!(tid);
                 let body = post.body.clone();
                 let bridge = bridge.clone();
+                let ja_target = match settings.subtitle_translate_target.trim() {
+                    "" | "ja" => "en".to_string(),
+                    t => t.to_string(),
+                };
                 tauri::async_runtime::spawn(async move {
-                    // 日本語なら英語に、それ以外なら日本語に
-                    let target = if text::has_japanese(&body) { "en" } else { "ja" };
+                    // 日本語なら設定の言語(既定は英語)に、それ以外なら日本語に
+                    let target = if text::has_japanese(&body) { ja_target.as_str() } else { "ja" };
                     match crate::voice::translate_detect(&source::http_client(), &body, target).await {
                         // 翻訳先と同じ言語だった・訳しても同じだった時は出さない
                         Ok((t, src)) if src != target && t.trim() != body.trim() => bridge.push_subtitle_translation(tid, &t),

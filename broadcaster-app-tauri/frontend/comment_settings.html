@@ -300,7 +300,22 @@
         <span class="unit">色</span><input type="color" data-key="style.subtitle.translationColor" />
         <span class="unit">大きさ</span><input type="number" min="30" max="150" step="5" data-percent data-key="style.subtitle.translationScale" /><span class="unit">%(本文に対して)</span>
       </div></div>
-      <div class="hint">下の字幕だけで、日本語のレスは英語に、それ以外のレスは日本語に翻訳して本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。</div>
+      <div class="field"><label>日本語のレスの翻訳先</label><div><select data-key="subtitleTranslateTarget">
+        <option value="en">英語</option>
+        <option value="ko">韓国語</option>
+        <option value="zh-CN">中国語(簡体字)</option>
+        <option value="zh-TW">中国語(繁体字)</option>
+        <option value="es">スペイン語</option>
+        <option value="pt">ポルトガル語</option>
+        <option value="fr">フランス語</option>
+        <option value="de">ドイツ語</option>
+        <option value="it">イタリア語</option>
+        <option value="ru">ロシア語</option>
+        <option value="vi">ベトナム語</option>
+        <option value="th">タイ語</option>
+        <option value="id">インドネシア語</option>
+      </select><span class="unit">日本語以外のレスは、何語でも日本語に翻訳します</span></div></div>
+      <div class="hint">下の字幕だけで、日本語のレスは上で選んだ言語に、それ以外のレスは日本語に翻訳して本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。</div>
       <div class="hint">新しいレスに「&gt;&gt;12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(下の字幕のみ。アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。</div>
       <div class="field"><label>字幕を出し終わるまで次のレスを待つ</label><div><input type="checkbox" data-key="waitForDisplay" /><span class="unit">長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
