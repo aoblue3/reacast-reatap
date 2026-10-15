@@ -321,6 +321,20 @@
     50% { transform: translateY(0) rotate(0deg) scale(0.97,1.03); }
     75% { transform: translateY(-4px) rotate(6deg) scale(1.05,0.95); }
   }
+  /* 🐈: 軽い足取りの小刻みな上下動(走ったり止まったりはprowlモーション側) */
+  @keyframes anim-catstep {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    30% { transform: translateY(-3px) rotate(-3deg); }
+    60% { transform: translateY(0) rotate(2deg); }
+  }
+  /* 🍒: 茎(上側)を支点に振り子のように揺れる。端で少し伸び縮みして弾む感じ */
+  .anim-cherry { transform-origin: 50% 8%; }
+  @keyframes anim-cherry {
+    0%, 100% { transform: rotate(-22deg) scale(1, 1); }
+    25% { transform: rotate(0deg) scale(0.96, 1.05); }
+    50% { transform: rotate(22deg) scale(1, 1); }
+    75% { transform: rotate(0deg) scale(0.96, 1.05); }
+  }
   /* 🐧: 左右に揺れるヨチヨチ歩き */
   @keyframes anim-waddle {
     0%, 100% { transform: rotate(0deg) translateY(0); }

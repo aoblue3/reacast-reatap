@@ -59,6 +59,8 @@
   }
   #box.vertical { writing-mode: vertical-rl; }
   .res-head { display: block; font-size: 0.75em; }
+  /* レスの翻訳(本文の下に1行添える。カスタムCSSでは .translation) */
+  .translation { display: block; margin-top: 0.15em; }
   /* YouTube・Twitchのコメントを書いた人のアイコン(レス番号の位置に出す) */
   .res-head .avatar { width: 1.3em; height: 1.3em; border-radius: 50%; object-fit: cover; vertical-align: -0.3em; margin-right: 0.3em; }
   /* アンカー先のレス(新しいレスの前に、斜体で先に表示する)。カスタムCSSでは #box.quoted */
@@ -206,6 +208,15 @@
         }
       }
       box.appendChild(document.createTextNode(body));
+      // レスの翻訳(届いていれば。1文字ずつ出している途中は、出し終わってから)
+      if (res.translation && !res.aa && !res.typing) {
+        const t = document.createElement('span');
+        t.className = 'translation';
+        t.textContent = res.translation;
+        t.style.color = style.subtitle.translationColor || '#ffe066';
+        t.style.fontSize = `${Math.max(0.3, Number(style.subtitle.translationScale) || 0.75)}em`;
+        box.appendChild(t);
+      }
     }
 
     function show(res, durationMs, replay) {
@@ -229,11 +240,15 @@
         const stepMs = Math.max(16, totalMs / chars.length);
         let shown = 0;
         setContent(res, '');
+        res.typing = true;
         typeTimer = setInterval(() => {
           shown = Math.min(chars.length, shown + Math.max(1, Math.round(16 / stepMs)));
+          if (shown >= chars.length) {
+            clearInterval(typeTimer);
+            res.typing = false;
+          }
           setContent(res, chars.slice(0, shown).join(''));
           fitToStage(false);
-          if (shown >= chars.length) clearInterval(typeTimer);
         }, stepMs);
       }
       box.classList.add('visible');
@@ -295,6 +310,13 @@
         show(msg.res, msg.durationMs, !!msg.replay);
       } else if (msg.type === 'subtitleClear') {
         hide();
+      } else if (msg.type === 'subtitleTranslation' && current && current.tid === msg.tid) {
+        // 今出ている字幕のレスの翻訳が届いた: 本文の下に添える
+        current.translation = msg.text;
+        if (!current.typing) {
+          setContent(current, String(current.body || ''));
+          fitToStage(current.aa);
+        }
       }
     });
     window.addEventListener('resize', () => {

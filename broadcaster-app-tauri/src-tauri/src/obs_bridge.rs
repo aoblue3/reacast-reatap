@@ -215,6 +215,11 @@ impl ObsBridge {
         );
     }
 
+    /// コメント機能: 下の字幕に出したレス(tid)の翻訳を送る(字幕の画面が下に添える)。
+    pub fn push_subtitle_translation(&self, tid: u64, text: &str) {
+        let _ = self.tx.send(serde_json::json!({ "type": "subtitleTranslation", "tid": tid, "text": text }).to_string());
+    }
+
     /// コメント機能: 右のレス一覧に1件追加する。
     pub fn push_comment(&self, res: serde_json::Value) {
         {

@@ -15,6 +15,9 @@
  * 表示する。指定が無ければ常にcharを使う(例: 「草」はランダムで「草」と「w」を
  * 混ぜたいのでこちらを使う)。
  *
+ * blackChance: 0〜1。この確率で、絵文字を色のフィルターで黒くして表示する
+ * (🐈をたまに黒猫にする。黒猫の絵文字はWindows 10のフォントに無いため)。
+ *
  * 並び順について: 種類を問わず追加した順に並んでいて見づらい、という指摘を受け、
  * 「表情・リアクション系(その他全般)」「食べ物系」「動物・生き物系」「短文系」
  * 「マイナス系」の5つの属性ごとにまとめてある。この並び替えはReaCast側の各種
@@ -64,6 +67,7 @@ const EMOJI_SET = [
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },
   { id: 'mango', char: '🥭', label: 'マンゴー', anim: 'mango' },
   { id: 'peach', char: '🍑', label: 'もも', anim: 'peach' },
+  { id: 'cherry', char: '🍒', label: 'さくらんぼ', anim: 'cherry' },
   { id: 'cheers', char: '🍻', label: '乾杯', anim: 'cheers' },
   { id: 'ramen', char: '🍜', label: 'ラーメン', anim: 'ramen' },
   { id: 'sushi', char: '🍣', label: '寿司', anim: 'sushi' },
@@ -75,6 +79,7 @@ const EMOJI_SET = [
   { id: 'penguin', char: '🐧', label: 'ペンギン', anim: 'waddle' },
   { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark' },
   { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink' },
+  { id: 'cat', char: '🐈', label: 'ネコ', anim: 'prowl', blackChance: 0.35 },
 
   // ==================== 短文系(絵文字ではなく文字として色付き表示する。
   // ニコニコ動画のコメントをイメージし、右から左に流れて消えるnicoflow

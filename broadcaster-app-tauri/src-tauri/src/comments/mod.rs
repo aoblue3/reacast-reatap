@@ -108,6 +108,8 @@ pub struct CommentSettings {
     pub reaction_rules: String,
     /// 1件のレスで飛ばすリアクションの最大数
     pub reaction_link_max: usize,
+    /// 下の字幕に出したレスを翻訳して下に添える(日本語→英語、それ以外→日本語。読み上げない)
+    pub subtitle_translate: bool,
     // ---- 話した字幕(voice.rs) ----
     /// 話した字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
     pub voice_enabled: bool,
@@ -232,6 +234,8 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
+    "ねこ|ネコ|猫|にゃー|ニャー|にゃん|ニャン|🐈/cat",
+    "さくらんぼ|サクランボ|チェリー|🍒/cherry",
     "ぶーぶー|ブーブー|🐷/pig",
     "ペンギン|ぺんぎん|🐧/penguin",
     "カエル|ケロケロ|けろけろ|🐸/frog",
@@ -290,6 +294,7 @@ impl Default for CommentSettings {
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
             reaction_link_max: 2,
+            subtitle_translate: false,
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
             voice_translate: true,
@@ -1380,11 +1385,33 @@ impl CommentEngine {
             // 読み上げている間は字幕も出しておく(長いレスでも最大待ち時間まで)
             let shown_ms = display_duration(&post, aa, &settings).max(speech_ms);
             let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
-            bridge.show_subtitle(post.to_json(aa), shown_ms);
+            // お知らせには反応しないが、「テスト表示」(test()のレス)では試せるようにする
+            let linkable = !post.system || post.name == "テスト";
+            // 下の字幕のレスの翻訳: 字幕には番号(tid)を付けて出し、翻訳が返ってきたら
+            // 同じ番号で送る(字幕の画面が、今出ている字幕の翻訳だけを下に添える)。
+            // 読み上げはしない。右のレス一覧・ニコ生風には出さない。
+            static SUBTITLE_TID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+            let tid = (settings.subtitle_translate && linkable && !aa && !post.body.trim().is_empty())
+                .then(|| SUBTITLE_TID.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+            let mut subtitle_json = post.to_json(aa);
+            if let Some(tid) = tid {
+                subtitle_json["tid"] = serde_json::json!(tid);
+                let body = post.body.clone();
+                let bridge = bridge.clone();
+                tauri::async_runtime::spawn(async move {
+                    // 日本語なら英語に、それ以外なら日本語に
+                    let target = if text::has_japanese(&body) { "en" } else { "ja" };
+                    match crate::voice::translate_detect(&source::http_client(), &body, target).await {
+                        // 翻訳先と同じ言語だった・訳しても同じだった時は出さない
+                        Ok((t, src)) if src != target && t.trim() != body.trim() => bridge.push_subtitle_translation(tid, &t),
+                        Ok(_) => {}
+                        Err(e) => log::warn!("字幕の翻訳: {e}"),
+                    }
+                });
+            }
+            bridge.show_subtitle(subtitle_json, shown_ms);
             bridge.push_comment(post.to_json(aa));
             // 本文がルールに当てはまったら、字幕と同時にリアクションも飛ばす(AAは除く)。
-            // お知らせには反応しないが、「テスト表示」(test()のレス)ではルールを試せるようにする
-            let linkable = !post.system || post.name == "テスト";
             if settings.reaction_link && linkable && !aa {
                 for id in text::matched_reactions(&post.body, &compiled.reaction_rules, settings.reaction_link_max) {
                     if let Err(e) = crate::show_reaction(&self.app, &id, "comment") {

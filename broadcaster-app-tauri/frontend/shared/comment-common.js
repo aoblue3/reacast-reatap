@@ -36,6 +36,9 @@
       offsetY: 0,
       // アンカー先のレスを先に表示する時の文字色(斜体で表示する)
       quoteColor: '#d6d6d6',
+      // レスの翻訳(「下の字幕でレスを翻訳する」)の色と、本文に対する大きさ
+      translationColor: '#ffe066',
+      translationScale: 0.75,
       customCss: '',
     },
     aa: {

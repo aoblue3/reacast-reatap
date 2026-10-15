@@ -377,6 +377,28 @@ const ANIM_PRESETS = {
     durationFactor: 1.6,
     glyphAnim: 'waddle',
   },
+  // 🐈 ネコ: 画面を縦横無尽に、走る・止まる・跳びかかるを気ままに繰り返す
+  // (prowlモーション。computeMotionPath参照)。足取りは軽い小刻みな上下動(anim-catstep)。
+  // 黒猫にするかどうかはemoji-set.jsのblackChance(spawnReaction参照)。
+  prowl: {
+    motion: 'prowl',
+    riseFactor: 1,
+    durationFactor: 1.8,
+    glyphAnim: 'catstep',
+    glyphAnimDurationFactor: 0.08,
+    glyphAnimIterations: 20,
+  },
+  // 🍒 さくらんぼ: 上からふわっと降りてきながら、茎を支点に振り子のように揺れる
+  // (anim-cherry)。まわりにキラキラとハートが舞う。
+  cherry: {
+    motion: 'fall',
+    riseFactor: 0.7,
+    durationFactor: 1.2,
+    glyphAnim: 'cherry',
+    glyphAnimDurationFactor: 0.25,
+    glyphAnimIterations: 4,
+    particles: { shape: 'glyph', glyphs: ['✨', '💗', '✨'], count: 5, spread: 36, life: 1200, drift: 'up' },
+  },
   // 🐶 ワンワン: 「ワン!」と吠える勢いのある自己アニメーション(anim-bark)+
   // 吠え声を表す小さな輪(ring)を添える。
   bark: {
@@ -1136,6 +1158,84 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     };
   }
 
+  if (motion === 'prowl') {
+    // 🐈: 猫らしく、画面のあちこちを気ままに縦横無尽に動き回る。「ダッと素早く
+    // 走る」「ぴたっと止まって様子をうかがう」「ぴょんと跳びかかる」をランダムに
+    // つなげる(wanderより速く、上下にも大きく動く)。画面の外へは出ない。
+    const marginX = vw * EDGE_MARGIN_RATIO;
+    const marginY = vh * EDGE_MARGIN_RATIO;
+    const minX = marginX;
+    const maxX = Math.max(minX + 1, vw - marginX - size);
+    const minY = marginY;
+    const maxY = Math.max(minY + 1, vh - marginY - size);
+    const startX = minX + Math.random() * (maxX - minX);
+    const startY = minY + Math.random() * (maxY - minY);
+    const clampX = (x) => Math.min(maxX, Math.max(minX, x));
+    const clampY = (y) => Math.min(maxY, Math.max(minY, y));
+    let curX = startX;
+    let curY = startY;
+    // 🐈は元の絵文字が左を向いているので、右へ進む時に左右反転させる
+    let facingRight = false;
+    const flip = () => `scale(${facingRight ? -1 : 1}, 1)`;
+    const segments = 7;
+    // フェードアウト(表示時間の75%から)までに動きを終えるよう、全体の約7割に収める
+    const unit = (duration * 0.7) / segments;
+    const span = Math.min(vw, vh) * riseFactor;
+    const waypoints = [];
+    let t = 0;
+    // atMsはその区間を動き始める時刻(最初の区間はすぐに始まる)、legMsはその区間の長さ
+    const push = (x, y, legMs, extra = '') => {
+      const leg = Math.max(120, Math.round(legMs));
+      waypoints.push({ atMs: t, legMs: leg, transform: `translate(${x - startX}px, ${y - startY}px) ${flip()}${extra}` });
+      t += leg;
+    };
+    for (let i = 0; i < segments; i++) {
+      const r = Math.random();
+      const angle = Math.random() * Math.PI * 2;
+      if (i > 0 && r < 0.22) {
+        // ぴたっと止まる(少しかがんで様子をうかがう)
+        push(curX, curY, unit * 0.9, ' scale(1.05, 0.92)');
+      } else if (r < 0.5) {
+        // ぴょんと跳びかかる: 弧を描くように、上がってから着地する
+        const dist = span * (0.18 + Math.random() * 0.12);
+        const nx = clampX(curX + Math.cos(angle) * dist);
+        const ny = clampY(curY + Math.sin(angle) * dist * 0.6);
+        facingRight = nx > curX;
+        const peak = Math.min(curY, ny) - span * 0.12;
+        push((curX + nx) / 2, clampY(peak), unit * 0.4, ' rotate(-8deg)');
+        push(nx, ny, unit * 0.4, ' scale(1.08, 0.9)');
+        curX = nx;
+        curY = ny;
+      } else {
+        // ダッと走る: 遠くまで素早く
+        const dist = span * (0.25 + Math.random() * 0.2);
+        const nx = clampX(curX + Math.cos(angle) * dist);
+        const ny = clampY(curY + Math.sin(angle) * dist);
+        facingRight = nx > curX;
+        push(nx, ny, unit * 0.55);
+        curX = nx;
+        curY = ny;
+      }
+    }
+    // 消え始める(表示時間の75%)まで動き続けるよう、全体の時間を合わせて伸ばす
+    const scaleT = t > 0 ? (duration * 0.75) / t : 1;
+    for (const wp of waypoints) {
+      wp.atMs = Math.round(wp.atMs * scaleT);
+      wp.legMs = Math.max(120, Math.round(wp.legMs * scaleT));
+    }
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) scale(1, 1)',
+      // 最初の区間は、出現時の移動時間(moveDuration)で動く
+      moveDuration: waypoints.length ? waypoints[0].legMs : unit * 0.55,
+      easing: 'cubic-bezier(.3,.1,.3,1)',
+      waypoints,
+      endX: curX,
+      endY: curY,
+    };
+  }
+
   // 'rise'(既定): 下から出てきて上に上がっていく
   const startX = Math.random() * (vw - size);
   const startY = vh - size - Math.random() * (vh * 0.3);
@@ -1191,6 +1291,12 @@ function spawnReaction(emojiId) {
     : emoji.char;
   glyph.style.fontSize = `${size}px`;
   glyph.style.lineHeight = '1';
+  // 🐈のように、たまに黒猫にするもの(emoji-set.jsのblackChance)。黒猫の絵文字
+  // (🐈‍⬛)はWindows 10のフォントに無く「🐈⬛」と2つに分かれて表示されるため、
+  // 同じ🐈を色のフィルターで黒くして表す(外側にかけて、自己アニメーションと干渉させない)
+  if (emoji.blackChance && Math.random() < emoji.blackChance) {
+    el.style.filter = 'grayscale(1) brightness(0.32) contrast(1.6)';
+  }
   if (emoji.color) {
     // 絵文字ではなく普通の文字として色指定して表示する項目(草・w等)。
     // 線が細く見づらいとの指摘があったため太字にする。

@@ -193,6 +193,12 @@ pub fn parse_reading_rules(text: &str) -> Vec<ReadingRule> {
         .collect()
 }
 
+/// ひらがな・カタカナ・漢字が入っているか(下の字幕のレスを、日本語なら英語に、
+/// それ以外なら日本語に翻訳するための判定)。
+pub fn has_japanese(text: &str) -> bool {
+    text.chars().any(|c| matches!(c as u32, 0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xFF66..=0xFF9F))
+}
+
 /// コメントとリアクションの連動ルール(1行に「正規表現/リアクションのID」)。
 pub struct ReactionRule {
     re: Regex,
@@ -396,6 +402,15 @@ mod tests {
         assert_eq!(html_to_text(nch), "　　∧＿∧\n　 （　´∀｀）\n\n   （　　　　）");
         // 空白1つだけの行があっても落ちない
         assert_eq!(html_to_text(" a <br> <br> b "), "a\n\nb");
+    }
+
+    #[test]
+    fn detects_japanese_text() {
+        assert!(has_japanese("こんにちは"));
+        assert!(has_japanese("ﾜﾛﾀ"));
+        assert!(has_japanese("GG 草"));
+        assert!(!has_japanese("hello world!"));
+        assert!(!has_japanese("www 888"));
     }
 
     #[test]

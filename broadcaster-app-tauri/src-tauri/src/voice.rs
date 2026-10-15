@@ -358,6 +358,16 @@ fn parse_translation(v: &serde_json::Value) -> Option<String> {
 }
 
 async fn translate(client: &reqwest::Client, text: &str, target: &str) -> Result<String, String> {
+    translate_detect(client, text, target).await.map(|(t, _)| t)
+}
+
+/// 翻訳して、(訳文, Googleが判定した元の言語)を返す。下の字幕のレスの翻訳
+/// (comments)でも使う。元の言語は応答の3番目(例: "ja")。
+pub(crate) async fn translate_detect(
+    client: &reqwest::Client,
+    text: &str,
+    target: &str,
+) -> Result<(String, String), String> {
     let resp = client
         .get("https://translate.googleapis.com/translate_a/single")
         .query(&[("client", "gtx"), ("sl", "auto"), ("tl", target), ("dt", "t"), ("q", text)])
@@ -369,7 +379,9 @@ async fn translate(client: &reqwest::Client, text: &str, target: &str) -> Result
         return Err(format!("翻訳できませんでした(HTTP {})", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| format!("翻訳できませんでした: {e}"))?;
-    parse_translation(&v).ok_or_else(|| "翻訳の結果が空でした".into())
+    let text = parse_translation(&v).ok_or("翻訳の結果が空でした")?;
+    let source = v.get(2).and_then(|s| s.as_str()).unwrap_or_default().to_string();
+    Ok((text, source))
 }
 
 /// 音声認識の画面から届くメッセージを受け取り続ける(起動時に1回だけ呼ぶ)。
