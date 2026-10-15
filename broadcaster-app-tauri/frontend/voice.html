@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" href="data:," />
+<title>ReaCast 話した字幕</title>
+<!--
+  話した字幕のOBS用の画面(ブラウザソース)。voice.rsから
+  {type:"voice", id, original, final} と {type:"voice", id, translation} が届く。
+  話している途中の文字も出し、話し終わったら翻訳を下に出す。しばらく何も
+  届かなければ消す。見た目は設定画面の「話した字幕」タブ(style.voice)。
+-->
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 2% 3%; box-sizing: border-box; }
+  #stage.top { justify-content: flex-start; }
+  #box { max-width: 100%; opacity: 0; transition: opacity 200ms linear; }
+  #box.visible { opacity: 1; }
+  /* カスタムCSSで使えるクラス: .original(話した言葉) .translation(翻訳) */
+  .original, .translation { white-space: pre-wrap; word-break: break-word; line-height: 1.3; }
+  .original.interim { opacity: 0.75; }
+</style>
+</head>
+<body>
+  <div id="stage"><div id="box"><div class="original"></div><div class="translation"></div></div></div>
+  <script src="shared/error-log.js"></script>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    const C = window.CommentCommon;
+    const stage = document.getElementById('stage');
+    const box = document.getElementById('box');
+    const originalEl = box.querySelector('.original');
+    const translationEl = box.querySelector('.translation');
+    let style = C.mergeStyle(null);
+    let currentId = null;
+    let hideTimer = null;
+
+    function applyStyle() {
+      const s = style.voice;
+      const shadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      box.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      box.style.textAlign = s.align || 'center';
+      stage.style.alignItems = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+      stage.classList.toggle('top', s.valign === 'top');
+      originalEl.style.fontSize = `${Number(s.fontSize) || 36}px`;
+      originalEl.style.color = s.color;
+      originalEl.style.fontWeight = s.bold ? 'bold' : 'normal';
+      originalEl.style.textShadow = shadow;
+      translationEl.style.fontSize = `${Number(s.translationFontSize) || 30}px`;
+      translationEl.style.color = s.translationColor;
+      translationEl.style.fontWeight = s.bold ? 'bold' : 'normal';
+      translationEl.style.textShadow = shadow;
+      originalEl.style.display = s.show === 'translation' ? 'none' : '';
+      translationEl.style.display = s.show === 'original' ? 'none' : '';
+      C.applyCustomCss(s.customCss);
+    }
+
+    function keepVisible() {
+      box.classList.add('visible');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => box.classList.remove('visible'), Math.max(1000, Number(style.voice.holdMs) || 6000));
+    }
+
+    function handleVoice(msg) {
+      if (typeof msg.original === 'string') {
+        if (msg.id !== currentId) {
+          // 新しく話し始めた: 前の翻訳を消す
+          currentId = msg.id;
+          translationEl.textContent = '';
+        }
+        originalEl.textContent = msg.original;
+        originalEl.classList.toggle('interim', !msg.final);
+        // 翻訳だけを出す設定では、翻訳が来るまで出さない
+        if (style.voice.show !== 'translation') keepVisible();
+      }
+      if (typeof msg.translation === 'string' && msg.id === currentId) {
+        translationEl.textContent = msg.translation;
+        keepVisible();
+      }
+    }
+
+    applyStyle();
+    C.connectBridge((msg) => {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        applyStyle();
+      } else if (msg.type === 'voice') {
+        handleVoice(msg);
+      }
+    });
+  </script>
+</body>
+</html>

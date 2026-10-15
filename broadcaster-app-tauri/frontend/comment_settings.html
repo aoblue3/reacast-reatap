@@ -207,6 +207,7 @@
     <button data-tab="create">次スレ作成</button>
     <button data-tab="words">NGワード・読み方</button>
     <button data-tab="reactions">リアクション連動</button>
+    <button data-tab="voice">話した字幕</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
     <button data-tab="output">表示先(OBS・デスクトップ)</button>
@@ -406,6 +407,53 @@
       <div class="hint">言葉は「、」で区切ると複数まとめて指定できます。「おつ」のような短い言葉は「ちょうど同じ」(レス全体がその言葉の時だけ)にすると、関係ないレスで反応しにくくなります。</div>
     </section>
 
+    <section data-tab="voice">
+      <div class="hint">配信者が話した言葉を字幕にして、自動で翻訳します。ONにすると、ReaCastがMicrosoft Edgeで音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはMicrosoftのサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。翻訳は仕様変更で使えなくなることがあります。</div>
+      <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
+      <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
+      <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
+        <option value="ja-JP">日本語</option>
+        <option value="en-US">英語</option>
+        <option value="ko-KR">韓国語</option>
+        <option value="zh-CN">中国語(簡体字)</option>
+        <option value="zh-TW">中国語(繁体字)</option>
+      </select></div></div>
+      <div class="field"><label>翻訳する</label><div><input type="checkbox" data-key="voiceTranslate" /></div></div>
+      <div class="field"><label>翻訳先の言葉</label><div><select data-key="voiceTargetLang">
+        <option value="en">英語</option>
+        <option value="ja">日本語</option>
+        <option value="ko">韓国語</option>
+        <option value="zh-CN">中国語(簡体字)</option>
+        <option value="zh-TW">中国語(繁体字)</option>
+        <option value="es">スペイン語</option>
+        <option value="pt">ポルトガル語</option>
+        <option value="fr">フランス語</option>
+        <option value="de">ドイツ語</option>
+        <option value="it">イタリア語</option>
+        <option value="ru">ロシア語</option>
+        <option value="vi">ベトナム語</option>
+        <option value="th">タイ語</option>
+        <option value="id">インドネシア語</option>
+      </select></div></div>
+      <h3>表示(OBSの「ブラウザ」ソース)</h3>
+      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice">コピー</button></div>
+      <div class="field"><label>出すもの</label><div><select data-key="style.voice.show">
+        <option value="both">話した言葉と翻訳</option>
+        <option value="original">話した言葉だけ</option>
+        <option value="translation">翻訳だけ</option>
+      </select></div></div>
+      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.voice.fontFamily" /></div></div>
+      <div class="field"><label>話した言葉の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.fontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.color" /></div></div>
+      <div class="field"><label>翻訳の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.translationFontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.translationColor" /></div></div>
+      <div class="field"><label>太字</label><div><input type="checkbox" data-key="style.voice.bold" /></div></div>
+      <div class="field"><label>縁のサイズ / 色</label><div class="inline"><input type="number" min="0" max="20" step="0.5" data-key="style.voice.outlineWidth" /><span class="unit">px</span><input type="color" data-key="style.voice.outlineColor" /></div></div>
+      <div class="field"><label>文字揃え</label><div><select data-key="style.voice.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
+      <div class="field"><label>縦の位置</label><div><select data-key="style.voice.valign"><option value="bottom">下</option><option value="top">上</option></select></div></div>
+      <div class="field"><label>消えるまでの時間</label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒(話し終わってから)</span></div></div>
+      <h3>カスタムCSS(上級者向け)</h3>
+      <textarea class="css" data-key="style.voice.customCss" placeholder=".translation { font-style: italic; }"></textarea>
+    </section>
+
     <section data-tab="list">
       <div class="field"><label>デザインのプリセット</label><div class="inline">
         <select id="listPreset">
@@ -488,6 +536,7 @@
       <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
       <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
       <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
 
       <h3>デスクトップ字幕(配信者のPCの画面に、読み上げ中のレスを表示)</h3>
       <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>

@@ -50,6 +50,9 @@ const NICO_HTML: &str = include_str!("../../frontend/nico.html");
 const COMMENT_COMMON_JS: &str = include_str!("../../frontend/shared/comment-common.js");
 // OBS上(Tauriの外)では何もしないが、読み込みが404にならないように配信する
 const ERROR_LOG_JS: &str = include_str!("../../frontend/shared/error-log.js");
+// 話した字幕: OBSに表示する画面と、Edgeで開く音声認識の画面(voice.rs)
+const VOICE_HTML: &str = include_str!("../../frontend/voice.html");
+const VOICE_INPUT_HTML: &str = include_str!("../../frontend/voice_input.html");
 
 /// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 100;
@@ -90,6 +93,9 @@ pub struct ObsBridge {
     settings: Arc<Mutex<BridgeSettings>>,
     // コメント機能の現在の状態(settingsと同じく、後から繋いだクライアント用)。
     comments: Arc<Mutex<CommentBridgeState>>,
+    // 話した字幕: Edgeの音声認識の画面(voice_input.html)から届いたメッセージ。
+    // voice.rsが起動時に1回だけ受け取る(take_voice_inbound)
+    voice_inbound: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>>>,
 }
 
 #[derive(Default)]
@@ -126,6 +132,16 @@ impl CommentBridgeState {
 }
 
 impl ObsBridge {
+    /// 話した字幕: 音声認識の画面から届くメッセージの受け口(1回だけ取れる)
+    pub fn take_voice_inbound(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>> {
+        self.voice_inbound.lock().unwrap().take()
+    }
+
+    /// 話した字幕: OBSの字幕の画面(voice.html)に送る
+    pub fn push_voice(&self, msg: serde_json::Value) {
+        let _ = self.tx.send(msg.to_string());
+    }
+
     /// 今つながっているブラウザソース等の数(配信前チェック用)
     pub fn client_count(&self) -> usize {
         self.tx.receiver_count()
@@ -260,14 +276,16 @@ pub fn start(
         no_combo_growth_ids: initial_no_combo_growth_ids,
     }));
     let comments = Arc::new(Mutex::new(CommentBridgeState::default()));
+    let (voice_tx, voice_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
     let bridge = ObsBridge {
         tx: tx.clone(),
         settings: settings.clone(),
         comments: comments.clone(),
+        voice_inbound: Arc::new(Mutex::new(Some(voice_rx))),
     };
 
     tauri::async_runtime::spawn(run_http_server(comments.clone()));
-    tauri::async_runtime::spawn(run_ws_server(tx, settings, comments));
+    tauri::async_runtime::spawn(run_ws_server(tx, settings, comments, voice_tx));
 
     bridge
 }
@@ -354,7 +372,9 @@ Connection: close
         return;
     }
 
-    let (content_type, body): (&str, &str) = match path {
+    // 「?lang=ja-JP」のような後ろの部分は、どの画面を返すかには関係ない
+    let page = path.split('?').next().unwrap_or(path);
+    let (content_type, body): (&str, &str) = match page {
         "/" | "/overlay.html" => ("text/html; charset=utf-8", OVERLAY_HTML),
         "/overlay.js" => ("text/javascript; charset=utf-8", OVERLAY_JS),
         "/shared/emoji-set.js" => ("text/javascript; charset=utf-8", EMOJI_SET_JS),
@@ -363,6 +383,8 @@ Connection: close
         "/nico.html" => ("text/html; charset=utf-8", NICO_HTML),
         "/shared/comment-common.js" => ("text/javascript; charset=utf-8", COMMENT_COMMON_JS),
         "/shared/error-log.js" => ("text/javascript; charset=utf-8", ERROR_LOG_JS),
+        "/voice.html" => ("text/html; charset=utf-8", VOICE_HTML),
+        "/voice_input.html" => ("text/html; charset=utf-8", VOICE_INPUT_HTML),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {
@@ -382,6 +404,7 @@ async fn run_ws_server(
     tx: broadcast::Sender<String>,
     settings: Arc<Mutex<BridgeSettings>>,
     comments: Arc<Mutex<CommentBridgeState>>,
+    voice_tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
 ) {
     let listener = match TcpListener::bind(("127.0.0.1", OBS_WS_PORT)).await {
         Ok(l) => l,
@@ -404,8 +427,20 @@ async fn run_ws_server(
             no_combo_growth_ids: Vec::new(),
         });
         let initial_comments = comments.lock().map(|c| c.initial_messages()).unwrap_or_default();
-        tauri::async_runtime::spawn(handle_ws_connection(socket, rx, initial_settings, initial_comments));
+        tauri::async_runtime::spawn(handle_ws_connection(
+            socket,
+            rx,
+            initial_settings,
+            initial_comments,
+            voice_tx.clone(),
+        ));
     }
+}
+
+/// 話した字幕のメッセージを受け付ける接続元。WebSocketはブラウザの別のサイトからも
+/// 繋げてしまうので、ReaCastが配信している音声認識の画面からの接続だけを信用する。
+fn is_trusted_origin(origin: &str) -> bool {
+    origin == format!("http://127.0.0.1:{OBS_HTTP_PORT}") || origin == format!("http://localhost:{OBS_HTTP_PORT}")
 }
 
 async fn handle_ws_connection(
@@ -413,13 +448,25 @@ async fn handle_ws_connection(
     mut rx: broadcast::Receiver<String>,
     initial_settings: BridgeSettings,
     initial_comments: Vec<String>,
+    voice_tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
 ) {
-    let ws_stream = match tokio_tungstenite::accept_async(socket).await {
+    // 接続元(Originヘッダー)を覚えておく(is_trusted_origin)
+    let origin: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let origin_cb = origin.clone();
+    let callback = move |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                         resp: tokio_tungstenite::tungstenite::handshake::server::Response| {
+        if let Some(o) = req.headers().get("origin").and_then(|v| v.to_str().ok()) {
+            *origin_cb.lock().unwrap() = o.to_string();
+        }
+        Ok(resp)
+    };
+    let ws_stream = match tokio_tungstenite::accept_hdr_async(socket, callback).await {
         Ok(s) => s,
         Err(_) => return,
     };
+    let trusted = is_trusted_origin(&origin.lock().unwrap());
     use futures_util::SinkExt;
-    let (mut write, _read) = futures_util::StreamExt::split(ws_stream);
+    let (mut write, mut read) = futures_util::StreamExt::split(ws_stream);
     // 繋いだ直後に、今の設定を1回送っておく。broadcast channelは過去の
     // メッセージを新規クライアントに配ってくれないため、これが無いとOBS側で
     // ブラウザソースを開き直すたびに既定値に戻って見えてしまう。
@@ -439,18 +486,34 @@ async fn handle_ws_connection(
         }
     }
     loop {
-        match rx.recv().await {
-            Ok(msg) => {
-                if write
-                    .send(tokio_tungstenite::tungstenite::Message::Text(msg))
-                    .await
-                    .is_err()
-                {
-                    break;
+        tokio::select! {
+            msg = rx.recv() => match msg {
+                Ok(msg) => {
+                    if write
+                        .send(tokio_tungstenite::tungstenite::Message::Text(msg))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-            }
-            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            Err(broadcast::error::RecvError::Closed) => break,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
+            incoming = futures_util::StreamExt::next(&mut read) => match incoming {
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+                    // 音声認識の画面からの「聞き取った文字」「状態」だけを受け取る
+                    if trusted {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if matches!(v["type"].as_str(), Some("voiceInput") | Some("voiceStatus")) {
+                                let _ = voice_tx.send(v);
+                            }
+                        }
+                    }
+                }
+                Some(Ok(_)) => {}
+                _ => break,
+            },
         }
     }
 }

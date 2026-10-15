@@ -5,6 +5,7 @@ mod config_store;
 mod connect_code;
 mod obs_bridge;
 mod preflight;
+mod voice;
 pub mod updater;
 
 use config_store::ConfigStore;
@@ -1039,6 +1040,10 @@ pub fn run() {
             if let Err(e) = comments::hotkeys::apply(app.handle(), &comment_settings) {
                 log::warn!("{e}");
             }
+            // 話した字幕: 音声認識の画面からのメッセージを受け取り、ONならEdgeの窓を開く
+            app.manage(voice::VoiceManager::default());
+            voice::start_listener(app.handle().clone());
+            voice::sync(app.handle());
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
@@ -1185,6 +1190,8 @@ pub fn run() {
             comments::comments_post,
             comments::comments_skip,
             preflight::preflight_check,
+            voice::voice_status,
+            voice::voice_reopen,
             backup::export_settings,
             backup::import_settings,
             comments::comments_default_reaction_rules,
@@ -1201,6 +1208,12 @@ pub fn run() {
             comments::comments_pick_exe,
             comments::comments_pick_folder,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // 終了する時に、話した字幕のために開いたEdgeも閉じる
+            if let tauri::RunEvent::Exit = event {
+                voice::stop(app);
+            }
+        });
 }

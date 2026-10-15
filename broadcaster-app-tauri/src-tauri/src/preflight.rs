@@ -100,6 +100,15 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     };
     out.push(speech);
 
+    out.push(if !s.voice_enabled {
+        item("話した字幕", "skip", "使っていません")
+    } else if crate::voice::is_running(&app) {
+        let st = app.state::<crate::voice::VoiceManager>().inner().status_message();
+        item("話した字幕", if st.0 == "error" { "ng" } else { "ok" }, st.1)
+    } else {
+        item("話した字幕", "ng", "音声認識の窓(Edge)が閉じています(設定画面の「音声認識の窓を開き直す」)")
+    });
+
     let clients = app.state::<ObsBridge>().client_count();
     out.push(if clients > 0 {
         item("OBSのブラウザソース", "ok", format!("{clients}個つながっています"))

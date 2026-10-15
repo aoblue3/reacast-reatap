@@ -105,6 +105,25 @@
       instant: false,
       customCss: '',
     },
+    // 話した字幕(voice.html)
+    voice: {
+      fontFamily: 'BIZ UDゴシック',
+      fontSize: 36,
+      bold: true,
+      color: '#ffffff',
+      // 翻訳の文字の大きさ・色
+      translationFontSize: 30,
+      translationColor: '#ffe066',
+      outlineWidth: 3,
+      outlineColor: '#000000',
+      // 'both'=話した言葉と翻訳 / 'original'=話した言葉だけ / 'translation'=翻訳だけ
+      show: 'both',
+      align: 'center',
+      valign: 'bottom',
+      // 話し終わってから字幕を消すまでの時間(ミリ秒)
+      holdMs: 6000,
+      customCss: '',
+    },
   };
 
   function mergeStyle(style) {

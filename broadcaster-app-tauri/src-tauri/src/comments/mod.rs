@@ -105,6 +105,14 @@ pub struct CommentSettings {
     pub reaction_rules: String,
     /// 1件のレスで飛ばすリアクションの最大数
     pub reaction_link_max: usize,
+    // ---- 話した字幕(voice.rs) ----
+    /// 話した字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
+    pub voice_enabled: bool,
+    /// 聞き取る言葉(例: "ja-JP")
+    pub voice_lang: String,
+    /// 話した言葉を翻訳する / 翻訳先の言語(Google翻訳の言語コード。例: "en")
+    pub voice_translate: bool,
+    pub voice_target_lang: String,
     // ---- 字幕 ----
     pub display_ms: u64,
     /// 長いレスほど長く表示する: 1文字あたりに足す時間(0で長さに関係なく一定)
@@ -277,6 +285,10 @@ impl Default for CommentSettings {
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
             reaction_link_max: 2,
+            voice_enabled: false,
+            voice_lang: "ja-JP".into(),
+            voice_translate: true,
+            voice_target_lang: "en".into(),
             display_ms: 3000,
             display_per_char_ms: 80,
             display_max_ms: 12000,
@@ -1562,6 +1574,8 @@ pub fn comments_save_settings(
     }
     engine.apply_settings(settings);
     crate::sync_subtitle_window(&app);
+    // 話した字幕のON/OFF・聞き取る言葉が変わっていれば、Edgeの窓を開く・閉じる・開き直す
+    crate::voice::sync(&app);
     Ok(())
 }
 

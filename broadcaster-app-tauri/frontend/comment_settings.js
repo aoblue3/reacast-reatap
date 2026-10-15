@@ -485,6 +485,23 @@ function renderStatus(s) {
   }
 }
 
+// ---- 話した字幕(音声認識はEdgeの窓で行う。src-tauri/src/voice.rs) ----
+const voiceStatusEl = document.getElementById('voiceStatus');
+function renderVoiceStatus(v) {
+  if (!v || !v.state) return;
+  voiceStatusEl.textContent = v.message || '';
+  voiceStatusEl.style.color =
+    v.state === 'listening' ? 'var(--c-7dff9a)' : v.state === 'error' || v.state === 'unsupported' ? 'var(--c-ff8a8a)' : '';
+}
+invoke('voice_status').then(renderVoiceStatus).catch(() => {});
+listen('voice:status', (e) => renderVoiceStatus(e.payload));
+document.getElementById('voiceReopenBtn').addEventListener('click', async () => {
+  // 入力途中の設定(言語など)も反映してから開き直す
+  clearTimeout(saveTimer);
+  await invoke('comments_save_settings', { settings }).catch(() => {});
+  invoke('voice_reopen').catch(() => {});
+});
+
 // ---- コメントとリアクションの連動 ----
 const reactionRulesMsgEl = document.getElementById('reactionRulesMsg');
 document.getElementById('reactionRulesResetBtn').addEventListener('click', async () => {

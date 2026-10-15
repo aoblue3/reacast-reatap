@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" href="data:," />
+<title>ReaCast 話した字幕(音声認識)</title>
+<!--
+  話した字幕: ReaCastがEdgeで開く音声認識の画面(src-tauri/src/voice.rs)。
+  ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Edgeで開いて
+  聞き取った文字をobs_bridgeのWebSocketでReaCastへ送る。この窓を閉じると止まる。
+-->
+<style>
+  body { margin: 0; padding: 14px; font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif; font-size: 13px; background: #1c1d22; color: #e6e6ea; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  #state { font-weight: bold; }
+  #state.ok { color: #7dff9a; }
+  #state.ng { color: #ff8a8a; }
+  #state.wait { color: #ffd36b; }
+  #text { margin-top: 10px; min-height: 3em; padding: 8px; border-radius: 6px; background: #15161a; white-space: pre-wrap; }
+  .hint { color: #8d909c; font-size: 12px; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>ReaCast 話した字幕</h1>
+  <div>状態: <span id="state" class="wait">準備中…</span></div>
+  <div id="text"></div>
+  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると字幕が止まります)。止める時はReaCastの「話した字幕を使う」をOFFにしてください。</div>
+  <script>
+    'use strict';
+    const WS_URL = 'ws://127.0.0.1:18771';
+    const lang = new URLSearchParams(location.search).get('lang') || 'ja-JP';
+    const stateEl = document.getElementById('state');
+    const textEl = document.getElementById('text');
+    let ws = null;
+    let lastState = null;
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+
+    function setState(state, message) {
+      stateEl.textContent = message;
+      // 最小化していてもタスクバーで状態が分かるように、窓のタイトルにも出す
+      document.title = `話した字幕: ${message}`;
+      stateEl.className = state === 'listening' ? 'ok' : state === 'error' || state === 'unsupported' ? 'ng' : 'wait';
+      lastState = { type: 'voiceStatus', state, message };
+      send(lastState);
+    }
+
+    function connect() {
+      ws = new WebSocket(WS_URL);
+      // 繋がったら今の状態を知らせる(ReaCastの設定画面に表示される)
+      ws.onopen = () => lastState && send(lastState);
+      ws.onclose = () => setTimeout(connect, 1500);
+    }
+    connect();
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setState('unsupported', 'このブラウザは音声認識に対応していません');
+    } else {
+      const rec = new SR();
+      rec.lang = lang;
+      rec.continuous = true;
+      rec.interimResults = true;
+      let fatal = false;
+
+      rec.onstart = () => setState('listening', `聞き取り中(${lang})`);
+      rec.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          const text = r[0].transcript.trim();
+          if (!text) continue;
+          if (r.isFinal) {
+            textEl.textContent = text;
+            send({ type: 'voiceInput', text, final: true });
+          } else {
+            interim += text;
+          }
+        }
+        if (interim) {
+          textEl.textContent = interim;
+          send({ type: 'voiceInput', text: interim, final: false });
+        }
+      };
+      rec.onerror = (e) => {
+        // 黙っている時(no-speech)や途中で切れた時(aborted)は、そのまま続けて聞き直す
+        if (e.error === 'no-speech' || e.error === 'aborted') return;
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          fatal = true;
+          setState('error', 'マイクが使えません(マイクの接続と、Windowsのマイクの許可を確認してください)');
+        } else if (e.error === 'audio-capture') {
+          setState('error', 'マイクが見つかりません');
+        } else if (e.error === 'network') {
+          setState('error', '音声認識のサーバーに繋がりません(インターネット接続を確認してください)');
+        } else {
+          setState('error', `音声認識のエラー: ${e.error}`);
+        }
+      };
+      // ブラウザは一定時間で聞き取りを終えてしまうので、終わったらすぐ聞き直す
+      rec.onend = () => {
+        if (!fatal) setTimeout(() => { try { rec.start(); } catch (_) {} }, 300);
+      };
+      try {
+        rec.start();
+      } catch (err) {
+        setState('error', `音声認識を始められませんでした: ${err.message || err}`);
+      }
+    }
+  </script>
+</body>
+</html>
