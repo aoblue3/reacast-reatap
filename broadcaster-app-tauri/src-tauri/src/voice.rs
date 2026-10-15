@@ -22,6 +22,8 @@ use tauri::{AppHandle, Emitter, Manager};
 pub struct VoiceManager {
     edge: Mutex<Option<(EdgeProcess, String)>>,
     status: Mutex<serde_json::Value>,
+    /// マイクを止めている(ホットキー・ボタン)。止めている間はEdgeの聞き取りも止める
+    muted: std::sync::atomic::AtomicBool,
 }
 
 /// 起動したEdgeのプロセス。Windowsでは、ReaCastと一緒に終わるJobに入れる・
@@ -290,6 +292,30 @@ pub fn sync(app: &AppHandle) {
     }
 }
 
+/// 音声認識の画面に、聞き取りを止める/続けるを伝える
+fn send_control(app: &AppHandle, muted: bool) {
+    app.state::<ObsBridge>()
+        .push_voice(serde_json::json!({ "type": "voiceControl", "listening": !muted }));
+}
+
+/// マイクを止める/再開する(電話・離席の時用。ホットキーと設定画面のボタン)。
+/// 止めている間はEdgeの聞き取り自体を止めるので、声がサーバーにも送られない。
+pub fn toggle_mute(app: &AppHandle) -> bool {
+    let manager = app.state::<VoiceManager>();
+    let muted = !manager.muted.fetch_xor(true, Ordering::SeqCst);
+    log::info!("話した字幕: マイクを{}", if muted { "止めました" } else { "再開しました" });
+    send_control(app, muted);
+    if muted {
+        // 表示中の字幕も消す
+        app.state::<ObsBridge>().push_voice(serde_json::json!({ "type": "voice", "clear": true }));
+        set_status(app, "muted", "マイクを止めています(聞き取っていません)");
+    } else {
+        set_status(app, "wait", "マイクを再開しています…");
+    }
+    let _ = app.emit("voice:muted", muted);
+    muted
+}
+
 /// 音声認識の窓を閉じてから開き直す(設定画面の「開き直す」)。
 pub fn reopen(app: &AppHandle) {
     if let Some((p, _)) = app.state::<VoiceManager>().edge.lock().unwrap().take() {
@@ -348,9 +374,18 @@ pub fn start_listener(app: AppHandle) {
         let mut current_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
         let client = reqwest::Client::new();
         while let Some(msg) = rx.recv().await {
+            let muted = app.state::<VoiceManager>().muted.load(Ordering::SeqCst);
             if msg["type"] == "voiceStatus" {
                 let state = msg["state"].as_str().unwrap_or("wait");
+                // 止めている間に画面が繋ぎ直してきたら(Edgeの再起動など)、改めて止めてもらう
+                if muted && state == "listening" {
+                    send_control(&app, true);
+                    continue;
+                }
                 set_status(&app, state, msg["message"].as_str().unwrap_or_default());
+                continue;
+            }
+            if muted {
                 continue;
             }
             let settings = app.state::<Arc<CommentEngine>>().settings();
@@ -385,7 +420,14 @@ pub fn start_listener(app: AppHandle) {
 
 #[tauri::command]
 pub fn voice_status(manager: tauri::State<VoiceManager>) -> serde_json::Value {
-    manager.status.lock().unwrap().clone()
+    let mut v = manager.status.lock().unwrap().clone();
+    v["muted"] = serde_json::json!(manager.muted.load(Ordering::SeqCst));
+    v
+}
+
+#[tauri::command]
+pub fn voice_toggle_mute(app: AppHandle) -> bool {
+    toggle_mute(&app)
 }
 
 #[tauri::command(async)]

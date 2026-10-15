@@ -104,7 +104,13 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
         item("話した字幕", "skip", "使っていません")
     } else if crate::voice::is_running(&app) {
         let st = app.state::<crate::voice::VoiceManager>().inner().status_message();
-        item("話した字幕", if st.0 == "error" { "ng" } else { "ok" }, st.1)
+        let state = match st.0.as_str() {
+            "error" | "unsupported" => "ng",
+            // マイクを止めたままになっている時は気付けるように
+            "muted" => "warn",
+            _ => "ok",
+        };
+        item("話した字幕", state, st.1)
     } else {
         item("話した字幕", "ng", "音声認識の窓(Edge)が閉じています(設定画面の「音声認識の窓を開き直す」)")
     });
@@ -116,7 +122,10 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
         item("OBSのブラウザソース", "warn", "つながっていません(OBSを使わない場合はこのままで大丈夫です)")
     });
 
-    let hotkeys = [s.hotkey_skip.trim(), s.hotkey_pause.trim()].iter().filter(|k| !k.is_empty()).count();
+    let hotkeys = [s.hotkey_skip.trim(), s.hotkey_pause.trim(), s.hotkey_voice_mute.trim()]
+        .iter()
+        .filter(|k| !k.is_empty())
+        .count();
     out.push(match (hotkeys, comments::hotkeys::apply(&app, &s)) {
         (0, _) => item("ホットキー", "skip", "割り当てていません"),
         (_, Ok(())) => item("ホットキー", "ok", format!("{hotkeys}個使えます")),

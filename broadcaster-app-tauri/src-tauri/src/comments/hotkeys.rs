@@ -4,7 +4,7 @@
 
 use super::{CommentEngine, CommentSettings};
 use std::sync::Arc;
-use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime};
+use tauri::{plugin::TauriPlugin, AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 fn parse(key: &str) -> Option<Shortcut> {
@@ -16,7 +16,7 @@ fn parse(key: &str) -> Option<Shortcut> {
     }
 }
 
-pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
+pub fn plugin() -> TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state != ShortcutState::Pressed {
@@ -30,6 +30,8 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
                 engine.skip();
             } else if parse(&s.hotkey_pause).map(|k| k.id()) == Some(shortcut.id()) {
                 engine.toggle_pause();
+            } else if parse(&s.hotkey_voice_mute).map(|k| k.id()) == Some(shortcut.id()) {
+                crate::voice::toggle_mute(app);
             }
         })
         .build()
@@ -40,7 +42,11 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     let mut errors = Vec::new();
-    for (label, key) in [("スキップ", &s.hotkey_skip), ("一時停止/再開", &s.hotkey_pause)] {
+    for (label, key) in [
+        ("スキップ", &s.hotkey_skip),
+        ("一時停止/再開", &s.hotkey_pause),
+        ("話した字幕のマイク", &s.hotkey_voice_mute),
+    ] {
         if key.trim().is_empty() {
             continue;
         }

@@ -63,6 +63,13 @@
     }
 
     function handleVoice(msg) {
+      // マイクを止めた時: 表示中の字幕をすぐ消す
+      if (msg.clear) {
+        clearTimeout(hideTimer);
+        box.classList.remove('visible');
+        currentId = null;
+        return;
+      }
       if (typeof msg.original === 'string') {
         if (msg.id !== currentId) {
           // 新しく話し始めた: 前の翻訳を消す

@@ -493,8 +493,21 @@ function renderVoiceStatus(v) {
   voiceStatusEl.style.color =
     v.state === 'listening' ? 'var(--c-7dff9a)' : v.state === 'error' || v.state === 'unsupported' ? 'var(--c-ff8a8a)' : '';
 }
-invoke('voice_status').then(renderVoiceStatus).catch(() => {});
+const voiceMuteBtn = document.getElementById('voiceMuteBtn');
+function renderVoiceMuted(muted) {
+  voiceMuteBtn.textContent = muted ? 'マイクを再開する' : 'マイクを止める';
+  voiceMuteBtn.classList.toggle('secondary', !!muted);
+}
+voiceMuteBtn.addEventListener('click', () => invoke('voice_toggle_mute').then(renderVoiceMuted).catch(() => {}));
+invoke('voice_status')
+  .then((v) => {
+    renderVoiceStatus(v);
+    renderVoiceMuted(v && v.muted);
+  })
+  .catch(() => {});
 listen('voice:status', (e) => renderVoiceStatus(e.payload));
+// ホットキーで切り替えた時もボタンの表示を合わせる
+listen('voice:muted', (e) => renderVoiceMuted(e.payload));
 document.getElementById('voiceReopenBtn').addEventListener('click', async () => {
   // 入力途中の設定(言語など)も反映してから開き直す
   clearTimeout(saveTimer);
@@ -769,9 +782,18 @@ const pauseBtn = document.getElementById('pauseBtn');
 pauseBtn.addEventListener('click', () => invoke('comments_toggle_pause').catch(() => {}));
 document.getElementById('skipBtn').addEventListener('click', () => invoke('comments_skip').catch(() => {}));
 
-const hotkeyMsgEl = document.getElementById('hotkeyMsg');
-const HOTKEY_HINT = hotkeyMsgEl.textContent;
-let hotkeyCapturing = null; // 割り当て中の設定項目名("hotkeySkip" | "hotkeyPause")
+// ホットキーの案内・エラーは、「読み上げ」タブと「話した字幕」タブの両方に出す
+const hotkeyMsgEls = [...document.querySelectorAll('.hotkey-msg')];
+for (const el of hotkeyMsgEls) el.dataset.hint = el.textContent;
+function showHotkeyMsg(text) {
+  for (const el of hotkeyMsgEls) {
+    el.textContent = text || el.dataset.hint;
+    el.style.color = text ? 'var(--c-ff8a8a)' : '';
+  }
+}
+let hotkeyCapturing = null; // 割り当て中の設定項目名(HOTKEY_KEYSのどれか)
+const HOTKEY_LABELS = { hotkeySkip: 'スキップ', hotkeyPause: '一時停止/再開', hotkeyVoiceMute: '話した字幕のマイク' };
+const HOTKEY_KEYS = Object.keys(HOTKEY_LABELS);
 let hotkeyCaptureTimer = null;
 
 function formatHotkeyLabel(shortcut) {
@@ -804,11 +826,9 @@ function shortcutFromEvent(e) {
 async function applyHotkeys() {
   try {
     await invoke('comments_apply_hotkeys');
-    hotkeyMsgEl.textContent = HOTKEY_HINT;
-    hotkeyMsgEl.style.color = '';
+    showHotkeyMsg('');
   } catch (err) {
-    hotkeyMsgEl.textContent = String(err);
-    hotkeyMsgEl.style.color = 'var(--c-ff8a8a)';
+    showHotkeyMsg(String(err));
   }
 }
 
@@ -837,11 +857,10 @@ function onHotkeyCaptureKeydown(e) {
   const shortcut = shortcutFromEvent(e);
   if (!shortcut) return;
   const key = hotkeyCapturing;
-  const other = key === 'hotkeySkip' ? 'hotkeyPause' : 'hotkeySkip';
+  const used = HOTKEY_KEYS.filter((k) => k !== key).find((k) => settings[k] === shortcut);
   (async () => {
-    if (settings[other] === shortcut) {
-      hotkeyMsgEl.textContent = `「${formatHotkeyLabel(shortcut)}」は既にもう一方に割り当てられています`;
-      hotkeyMsgEl.style.color = 'var(--c-ff8a8a)';
+    if (used) {
+      showHotkeyMsg(`「${formatHotkeyLabel(shortcut)}」は既に「${HOTKEY_LABELS[used]}」に割り当てられています`);
       return;
     }
     await saveHotkey(key, shortcut);

@@ -1192,6 +1192,7 @@ pub fn run() {
             preflight::preflight_check,
             voice::voice_status,
             voice::voice_reopen,
+            voice::voice_toggle_mute,
             backup::export_settings,
             backup::import_settings,
             comments::comments_default_reaction_rules,
