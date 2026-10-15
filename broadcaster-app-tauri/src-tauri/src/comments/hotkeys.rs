@@ -31,7 +31,9 @@ pub fn plugin() -> TauriPlugin<tauri::Wry> {
             } else if parse(&s.hotkey_pause).map(|k| k.id()) == Some(shortcut.id()) {
                 engine.toggle_pause();
             } else if parse(&s.hotkey_voice_mute).map(|k| k.id()) == Some(shortcut.id()) {
-                crate::voice::toggle_mute(app);
+                crate::voice::set_muted(app, true);
+            } else if parse(&s.hotkey_voice_unmute).map(|k| k.id()) == Some(shortcut.id()) {
+                crate::voice::set_muted(app, false);
             }
         })
         .build()
@@ -45,7 +47,8 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
     for (label, key) in [
         ("スキップ", &s.hotkey_skip),
         ("一時停止/再開", &s.hotkey_pause),
-        ("話した字幕のマイク", &s.hotkey_voice_mute),
+        ("マイクを止める", &s.hotkey_voice_mute),
+        ("マイクを再開", &s.hotkey_voice_unmute),
     ] {
         if key.trim().is_empty() {
             continue;

@@ -792,7 +792,12 @@ function showHotkeyMsg(text) {
   }
 }
 let hotkeyCapturing = null; // 割り当て中の設定項目名(HOTKEY_KEYSのどれか)
-const HOTKEY_LABELS = { hotkeySkip: 'スキップ', hotkeyPause: '一時停止/再開', hotkeyVoiceMute: '話した字幕のマイク' };
+const HOTKEY_LABELS = {
+  hotkeySkip: 'スキップ',
+  hotkeyPause: '一時停止/再開',
+  hotkeyVoiceMute: 'マイクを止める',
+  hotkeyVoiceUnmute: 'マイクを再開',
+};
 const HOTKEY_KEYS = Object.keys(HOTKEY_LABELS);
 let hotkeyCaptureTimer = null;
 

@@ -412,8 +412,9 @@
       <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
       <div class="field"><label>マイク</label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button><span class="unit">電話や離席の時に。止めている間は聞き取り自体を止め、表示中の字幕も消します</span></div></div>
-      <div class="field"><label>ホットキー: マイクを止める/再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
-      <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+M)。</div>
+      <div class="field"><label>ホットキー: マイクを止める</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
+      <div class="field"><label>ホットキー: マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
+      <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: 止める Ctrl+Alt+M、再開 Ctrl+Alt+N)。押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。</div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
         <option value="en-US">英語</option>
@@ -452,7 +453,8 @@
       <div class="field"><label>縁のサイズ / 色</label><div class="inline"><input type="number" min="0" max="20" step="0.5" data-key="style.voice.outlineWidth" /><span class="unit">px</span><input type="color" data-key="style.voice.outlineColor" /></div></div>
       <div class="field"><label>文字揃え</label><div><select data-key="style.voice.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
       <div class="field"><label>縦の位置</label><div><select data-key="style.voice.valign"><option value="bottom">下</option><option value="top">上</option></select></div></div>
-      <div class="field"><label>消えるまでの時間</label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒(話し終わってから)</span></div></div>
+      <div class="field"><label>同時に出す段落の数</label><div><input type="number" min="1" max="5" data-key="style.voice.maxBlocks" /><span class="unit">話し終わった1文(+翻訳)を1段落として、最近のものをこの数だけ積み上げて残します</span></div></div>
+      <div class="field"><label>最低表示時間</label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒。長い文は、翻訳を読み切れるように自動でもっと長く出します</span></div></div>
       <h3>カスタムCSS(上級者向け)</h3>
       <textarea class="css" data-key="style.voice.customCss" placeholder=".translation { font-style: italic; }"></textarea>
     </section>

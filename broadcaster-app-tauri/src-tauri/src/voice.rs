@@ -298,11 +298,20 @@ fn send_control(app: &AppHandle, muted: bool) {
         .push_voice(serde_json::json!({ "type": "voiceControl", "listening": !muted }));
 }
 
-/// マイクを止める/再開する(電話・離席の時用。ホットキーと設定画面のボタン)。
-/// 止めている間はEdgeの聞き取り自体を止めるので、声がサーバーにも送られない。
+/// マイクを止める/再開する(設定画面のボタン)。
 pub fn toggle_mute(app: &AppHandle) -> bool {
+    let muted = app.state::<VoiceManager>().muted.load(Ordering::SeqCst);
+    set_muted(app, !muted)
+}
+
+/// マイクを止める(true)/再開する(false)。電話・離席の時用(ホットキーは止める・
+/// 再開が別々のキー)。止めている間はEdgeの聞き取り自体を止めるので、声が
+/// サーバーにも送られない。すでにその状態なら何もしない。
+pub fn set_muted(app: &AppHandle, muted: bool) -> bool {
     let manager = app.state::<VoiceManager>();
-    let muted = !manager.muted.fetch_xor(true, Ordering::SeqCst);
+    if manager.muted.swap(muted, Ordering::SeqCst) == muted {
+        return muted;
+    }
     log::info!("話した字幕: マイクを{}", if muted { "止めました" } else { "再開しました" });
     send_control(app, muted);
     if muted {

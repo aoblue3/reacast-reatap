@@ -6,92 +6,159 @@
 <title>ReaCast 話した字幕</title>
 <!--
   話した字幕のOBS用の画面(ブラウザソース)。voice.rsから
-  {type:"voice", id, original, final} と {type:"voice", id, translation} が届く。
-  話している途中の文字も出し、話し終わったら翻訳を下に出す。しばらく何も
-  届かなければ消す。見た目は設定画面の「話した字幕」タブ(style.voice)。
+  {type:"voice", id, original, final} と {type:"voice", id, translation}、
+  マイクを止めた時は {type:"voice", clear:true} が届く。
+  話し終わった1文を「段落」(話した言葉+翻訳)として、最近のものを数段だけ
+  積み上げて残す。続けて話しても前の段落はすぐには消えず、文の長さに合わせて
+  読み切れるだけの時間は出しておく(海外の人が翻訳を読む時間)。段落の数を
+  超えた時と、表示時間が過ぎた時に古いものから消える。話している途中の文字は
+  一番下の段落に薄く出る。見た目は設定画面の「話した字幕」タブ(style.voice)。
 -->
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
   #stage { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 2% 3%; box-sizing: border-box; }
   #stage.top { justify-content: flex-start; }
-  #box { max-width: 100%; opacity: 0; transition: opacity 200ms linear; }
-  #box.visible { opacity: 1; }
-  /* カスタムCSSで使えるクラス: .original(話した言葉) .translation(翻訳) */
+  #blocks { max-width: 100%; display: flex; flex-direction: column; }
+  /* カスタムCSSで使えるクラス: .block(段落) .original(話した言葉) .translation(翻訳) */
+  .block { opacity: 0; transition: opacity 250ms linear; }
+  .block + .block { margin-top: 0.35em; }
+  .block.visible { opacity: 1; }
+  .block.leaving { opacity: 0; transition: opacity 500ms linear; }
   .original, .translation { white-space: pre-wrap; word-break: break-word; line-height: 1.3; }
-  .original.interim { opacity: 0.75; }
+  .original.interim { opacity: 0.7; }
 </style>
 </head>
 <body>
-  <div id="stage"><div id="box"><div class="original"></div><div class="translation"></div></div></div>
+  <div id="stage"><div id="blocks"></div></div>
   <script src="shared/error-log.js"></script>
   <script src="shared/comment-common.js"></script>
   <script>
     'use strict';
     const C = window.CommentCommon;
     const stage = document.getElementById('stage');
-    const box = document.getElementById('box');
-    const originalEl = box.querySelector('.original');
-    const translationEl = box.querySelector('.translation');
+    const blocksEl = document.getElementById('blocks');
     let style = C.mergeStyle(null);
-    let currentId = null;
-    let hideTimer = null;
+    // 表示中の段落 {id, el, original, translation, final, hideAt}(古い順)
+    let blocks = [];
+    let tickTimer = null;
 
-    function applyStyle() {
+    function applyStageStyle() {
       const s = style.voice;
-      const shadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
-      box.style.fontFamily = C.cssFontFamily(s.fontFamily);
-      box.style.textAlign = s.align || 'center';
+      blocksEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      blocksEl.style.textAlign = s.align || 'center';
       stage.style.alignItems = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
       stage.classList.toggle('top', s.valign === 'top');
-      originalEl.style.fontSize = `${Number(s.fontSize) || 36}px`;
-      originalEl.style.color = s.color;
-      originalEl.style.fontWeight = s.bold ? 'bold' : 'normal';
-      originalEl.style.textShadow = shadow;
-      translationEl.style.fontSize = `${Number(s.translationFontSize) || 30}px`;
-      translationEl.style.color = s.translationColor;
-      translationEl.style.fontWeight = s.bold ? 'bold' : 'normal';
-      translationEl.style.textShadow = shadow;
-      originalEl.style.display = s.show === 'translation' ? 'none' : '';
-      translationEl.style.display = s.show === 'original' ? 'none' : '';
       C.applyCustomCss(s.customCss);
+      for (const b of blocks) styleBlock(b);
     }
 
-    function keepVisible() {
-      box.classList.add('visible');
-      clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => box.classList.remove('visible'), Math.max(1000, Number(style.voice.holdMs) || 6000));
+    function styleBlock(b) {
+      const s = style.voice;
+      const shadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      const [o, t] = b.el.children;
+      o.style.fontSize = `${Number(s.fontSize) || 36}px`;
+      o.style.color = s.color;
+      o.style.fontWeight = s.bold ? 'bold' : 'normal';
+      o.style.textShadow = shadow;
+      t.style.fontSize = `${Number(s.translationFontSize) || 30}px`;
+      t.style.color = s.translationColor;
+      t.style.fontWeight = s.bold ? 'bold' : 'normal';
+      t.style.textShadow = shadow;
+      o.style.display = s.show === 'translation' || !b.original ? 'none' : '';
+      t.style.display = s.show === 'original' || !b.translation ? 'none' : '';
+      // 翻訳だけを出す設定では、翻訳が来るまでその段落は出さない
+      const ready = s.show === 'translation' ? !!b.translation : !!b.original;
+      b.el.classList.toggle('visible', ready && !b.el.classList.contains('leaving'));
+    }
+
+    /** 文の長さに合わせた表示時間。日本語は1文字0.15秒、翻訳(英語など)は1文字0.09秒を
+     * 目安に(慣れない言葉を読む人向けに少し長め)、どちらか長い方。「最低表示時間」
+     * より短くはしない(最長30秒)。 */
+    function readTimeMs(b) {
+      const s = style.voice;
+      const min = Math.max(1000, Number(s.holdMs) || 6000);
+      const orig = s.show === 'translation' ? 0 : 2000 + b.original.length * 150;
+      const trans = s.show === 'original' ? 0 : 2000 + (b.translation || '').length * 90;
+      return Math.min(30000, Math.max(min, orig, trans));
+    }
+
+    function removeBlock(b) {
+      blocks = blocks.filter((x) => x !== b);
+      b.el.classList.add('leaving');
+      b.el.classList.remove('visible');
+      setTimeout(() => b.el.remove(), 550);
+    }
+
+    function tick() {
+      const now = Date.now();
+      for (const b of blocks.slice()) {
+        if (b.hideAt <= now) removeBlock(b);
+      }
+      if (!blocks.length) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+      }
+    }
+
+    function ensureTick() {
+      if (!tickTimer) tickTimer = setInterval(tick, 250);
+    }
+
+    function getBlock(id) {
+      let b = blocks.find((x) => x.id === id);
+      if (b) return b;
+      const el = document.createElement('div');
+      el.className = 'block';
+      el.append(Object.assign(document.createElement('div'), { className: 'original' }));
+      el.append(Object.assign(document.createElement('div'), { className: 'translation' }));
+      blocksEl.appendChild(el);
+      b = { id, el, original: '', translation: '', final: false, hideAt: Infinity };
+      blocks.push(b);
+      return b;
+    }
+
+    /** 話し終わった段落が設定の数を超えたら、古いものから消す。話している途中の段落は
+     * 数えない(数えると、話し始めた瞬間に1つ前の文が消えて読めなくなるため)。 */
+    function enforceMaxBlocks() {
+      const max = Math.max(1, Math.min(5, Number(style.voice.maxBlocks) || 3));
+      const finals = blocks.filter((b) => b.final);
+      while (finals.length > max) removeBlock(finals.shift());
     }
 
     function handleVoice(msg) {
-      // マイクを止めた時: 表示中の字幕をすぐ消す
+      // マイクを止めた時: 全部すぐ消す
       if (msg.clear) {
-        clearTimeout(hideTimer);
-        box.classList.remove('visible');
-        currentId = null;
+        for (const b of blocks.slice()) removeBlock(b);
         return;
       }
       if (typeof msg.original === 'string') {
-        if (msg.id !== currentId) {
-          // 新しく話し始めた: 前の翻訳を消す
-          currentId = msg.id;
-          translationEl.textContent = '';
-        }
-        originalEl.textContent = msg.original;
-        originalEl.classList.toggle('interim', !msg.final);
-        // 翻訳だけを出す設定では、翻訳が来るまで出さない
-        if (style.voice.show !== 'translation') keepVisible();
+        const b = getBlock(msg.id);
+        b.original = msg.original;
+        b.final = !!msg.final;
+        b.el.children[0].textContent = msg.original;
+        b.el.children[0].classList.toggle('interim', !msg.final);
+        // 話している途中は消さない(ただし途中で切れた時のために10秒で消す)
+        b.hideAt = Date.now() + (b.final ? readTimeMs(b) : 10000);
+        styleBlock(b);
+        if (b.final) enforceMaxBlocks();
       }
-      if (typeof msg.translation === 'string' && msg.id === currentId) {
-        translationEl.textContent = msg.translation;
-        keepVisible();
+      if (typeof msg.translation === 'string') {
+        const b = blocks.find((x) => x.id === msg.id);
+        if (!b) return;
+        b.translation = msg.translation;
+        b.el.children[1].textContent = msg.translation;
+        // 翻訳が付いたら、翻訳を読み切れるまで出しておく
+        b.hideAt = Date.now() + readTimeMs(b);
+        styleBlock(b);
       }
+      ensureTick();
     }
 
-    applyStyle();
+    applyStageStyle();
     C.connectBridge((msg) => {
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
-        applyStyle();
+        applyStageStyle();
       } else if (msg.type === 'voice') {
         handleVoice(msg);
       }

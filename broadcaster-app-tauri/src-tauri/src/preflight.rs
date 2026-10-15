@@ -122,7 +122,12 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
         item("OBSのブラウザソース", "warn", "つながっていません(OBSを使わない場合はこのままで大丈夫です)")
     });
 
-    let hotkeys = [s.hotkey_skip.trim(), s.hotkey_pause.trim(), s.hotkey_voice_mute.trim()]
+    let hotkeys = [
+        s.hotkey_skip.trim(),
+        s.hotkey_pause.trim(),
+        s.hotkey_voice_mute.trim(),
+        s.hotkey_voice_unmute.trim(),
+    ]
         .iter()
         .filter(|k| !k.is_empty())
         .count();

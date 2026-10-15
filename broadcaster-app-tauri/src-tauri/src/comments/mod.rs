@@ -92,8 +92,9 @@ pub struct CommentSettings {
     /// 読み上げの「スキップ」「一時停止/再開」のホットキー(空なら使わない。hotkeys.rs)
     pub hotkey_skip: String,
     pub hotkey_pause: String,
-    /// 話した字幕のマイクを止める/再開するホットキー(voice.rs)
+    /// 話した字幕のマイクを止める / 再開するホットキー(別々のキー。voice.rs)
     pub hotkey_voice_mute: String,
+    pub hotkey_voice_unmute: String,
     pub reading_rules: String,
     /// v1.5.6で増やした既定の読み方を足し終えたか。保存済みの設定に無い時は
     /// false(=これから足す)、新しく作った設定ではtrue(load_settings参照)
@@ -282,6 +283,7 @@ impl Default for CommentSettings {
             hotkey_skip: String::new(),
             hotkey_pause: String::new(),
             hotkey_voice_mute: String::new(),
+            hotkey_voice_unmute: String::new(),
             reading_rules: DEFAULT_READING_RULES.join("\n"),
             reading_presets_v2: true,
             ng_words: String::new(),
