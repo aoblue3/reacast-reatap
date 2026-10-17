@@ -966,8 +966,6 @@ pub fn run() {
     tauri::Builder::default()
         // コメント機能の「参照」ボタン(読み上げソフト・アイコンのフォルダを選ぶ)用
         .plugin(tauri_plugin_dialog::init())
-        // 読み上げのスキップ・一時停止のホットキー(comments/hotkeys.rs)
-        .plugin(comments::hotkeys::plugin())
         .setup(|app| {
             // 多重起動防止。2回目の起動を検知したら、既存のコントロールパネルを
             // 前面に出すだけにする(オーバーレイ・接続が重複するのを防ぐ)。

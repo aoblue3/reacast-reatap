@@ -281,7 +281,7 @@
       <div class="hint">文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
       <div class="field"><label>ホットキー: スキップ</label><div class="inline"><input type="text" readonly data-hotkey="hotkeySkip" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeySkip">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeySkip">解除</button></div></div>
       <div class="field"><label>ホットキー: 一時停止/再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyPause" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyPause">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyPause">解除</button></div></div>
-      <div class="hint hotkey-msg" id="hotkeyMsg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+S)。スキップは字幕と待ち時間を飛ばすだけで、読み上げソフトに渡し済みの声は止まりません(民安★TALK側で止めてください)。</div>
+      <div class="hint hotkey-msg" id="hotkeyMsg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+S)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。スキップは字幕と待ち時間を飛ばすだけで、読み上げソフトに渡し済みの声は止まりません(民安★TALK側で止めてください)。</div>
       <div class="field"><label>1件の最大待ち時間</label><div><input type="number" min="0" step="1000" data-key="maxWaitMs" /><span class="unit">ミリ秒(0で無制限)。これより長くかかるレスは、読み上げをこの時間に収まる所で打ち切って「以下略」を付け、次のレスへ進みます</span></div></div>
       <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
     </section>
@@ -435,7 +435,7 @@
       <div class="field"><label>マイク</label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button><span class="unit">電話や離席の時に。止めている間は聞き取り自体を止め、表示中の字幕も消します</span></div></div>
       <div class="field"><label>ホットキー: マイクを止める</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
       <div class="field"><label>ホットキー: マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
-      <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: 止める Ctrl+Alt+M、再開 Ctrl+Alt+N)。押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。</div>
+      <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: 止める Ctrl+Alt+M、再開 Ctrl+Alt+N)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。</div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
         <option value="en-US">英語</option>

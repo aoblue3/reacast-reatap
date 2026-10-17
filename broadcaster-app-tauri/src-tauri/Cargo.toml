@@ -44,8 +44,6 @@ encoding_rs = "0.8"
 regex = "1"
 # コメント機能の「参照」ボタン(ファイル・フォルダ選択ダイアログ)用
 tauri-plugin-dialog = "2"
-# コメント機能の読み上げスキップ・一時停止のホットキー(comments/hotkeys.rs)
-tauri-plugin-global-shortcut = "2"
 
 # 自動アップデートの差し替え処理(updater.rs参照)で、PowerShell等の
 # スクリプトエンジンを使わずネイティブに「旧プロセスの終了待ち」を行うために使う。
@@ -57,4 +55,7 @@ windows = { version = "0.62", features = [
     "Win32_Security",
     "Win32_System_JobObjects",
     "Win32_UI_WindowsAndMessaging",
+    # ホットキーのためのキーボードの見張り(comments/hotkeys.rs)
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
 ] }
