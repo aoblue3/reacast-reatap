@@ -370,6 +370,27 @@ mod win {
         }
     }
 
+    /// 最前面に出し直す(他の「常に最前面」のウィンドウに抜かれていたら取り返す)。
+    /// アクティブにはしない。別スレッドから呼ぶので待たずに頼むだけにする。
+    pub fn reassert_topmost(hwnd_raw: isize) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+            SWP_NOSIZE,
+        };
+        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS,
+            );
+        }
+    }
+
     /// このウィンドウ(リアクションバー)がクリックされてもOS側のフォーカス
     /// (アクティブウィンドウ)を一切奪わないようにする。
     ///
@@ -540,6 +561,12 @@ pub fn get_active_window() -> Option<WindowInfo> {
 #[allow(dead_code)]
 pub fn set_window_owner(our_hwnd_raw: isize, owner_hwnd_raw: isize) {
     win::set_window_owner(our_hwnd_raw, owner_hwnd_raw);
+}
+
+/// 指定ウィンドウ(リアクションバー)を最前面に出し直す。Windows以外では使わない。
+#[cfg(target_os = "windows")]
+pub fn reassert_topmost(hwnd_raw: isize) {
+    win::reassert_topmost(hwnd_raw);
 }
 
 /// 指定ウィンドウ(pcwmp/PCRPlayer側)をフォアグラウンドに戻す。

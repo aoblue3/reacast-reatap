@@ -187,6 +187,42 @@ fn overlay_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, Ph
     apply_overlay_region(monitor_pos, monitor_size, read_overlay_region(&store))
 }
 
+/// 最前面に出し直す(他の「常に最前面」のウィンドウに抜かれていたら取り返す)。
+///
+/// 重要: 以前は`win.set_always_on_top(true)`を定期的に呼んでいたが、tauri(tao)は
+/// 「最前面」の指定が変わった時しかWindowsに伝えない(すでにtrueなら何もしない)
+/// ため、2秒おき・150msおきの取り直しが実際には一度も効いていなかった。
+/// 長く起動していると、後から最前面になったゲームや配信ソフトの窓の裏に
+/// リアクションが隠れたままになる不具合の原因。Win32のSetWindowPos(HWND_TOPMOST)を
+/// 直接呼ぶ。別スレッドから呼ぶので、待たずに頼むだけにする(SWP_ASYNCWINDOWPOS)。
+pub(crate) fn reassert_topmost(win: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        };
+        // tauriが使っているwindowsクレートとこちらのものは版が違うことがあるので、
+        // HWNDは数値にしてから渡す
+        if let Ok(h) = win.hwnd() {
+            let hwnd = HWND(h.0 as isize as *mut core::ffi::c_void);
+            unsafe {
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS,
+                );
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = win.set_always_on_top(true);
+}
+
 /// オーバーレイウィンドウが本来の位置・サイズからずれていたら戻す。
 ///
 /// 経緯: マルチモニター環境でPCがスリープすると、その間にモニターの電源が
@@ -589,13 +625,17 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                 if !bursting {
                     realign_overlay_window(&reassert_handle, &win);
                 }
-                let _ = win.set_always_on_top(true);
+                reassert_topmost(&win);
                 // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
                 // 最前面ウィンドウに隠される)で、2秒おきに位置と最前面を直す
                 if !bursting {
                     if let Some(sub) = reassert_handle.get_webview_window("subtitle") {
                         realign_subtitle_window(&reassert_handle, &sub);
-                        let _ = sub.set_always_on_top(true);
+                        // 何かの拍子に隠れたままになっていたら出し直す
+                        if matches!(sub.is_visible(), Ok(false)) {
+                            let _ = sub.show();
+                        }
+                        reassert_topmost(&sub);
                     }
                 }
             }
@@ -941,7 +981,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             // (2秒おきの定期的な取り直し(create_overlay_window参照)だけだと、
             // ちょうど裏に回っている数秒の間にリアクションが飛んできて見逃されて
             // しまう可能性があるため、表示のたびにも念のため取り直す)。
-            let _ = win.set_always_on_top(true);
+            reassert_topmost(&win);
             // アニメーション自体は最長でも5秒程度で終わる(overlay.jsのanimationDurationMs
             // 参照)。この間はTopmostReasserterのバーストモードに入り、150ms間隔で
             // 最前面を取り直し続けることで、アニメーション再生中に「常に最前面」設定の
@@ -1045,8 +1085,14 @@ pub fn run() {
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
-                    // setup()はメインスレッドで動くので、字幕ウィンドウの作成は別スレッドから
-                    std::thread::spawn(move || sync_subtitle_window(&h));
+                    // setup()はメインスレッドで動くので、字幕ウィンドウの作成は別スレッドから。
+                    // 起動の途中(アプリの準備が終わる前)に作ると、字幕の窓が見えないまま
+                    // になることがあった(PCの再起動直後・自動アップデートの再起動直後に
+                    // 報告あり。チェックを入れ直すと直った)ので、少し待ってから作る
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(2500));
+                        sync_subtitle_window(&h);
+                    });
                 }
             }
 

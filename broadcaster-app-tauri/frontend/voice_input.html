@@ -93,6 +93,8 @@
 
       rec.onstart = () => setState('listening', `聞き取り中(${lang})`);
       rec.onresult = (e) => {
+        // 聞き取れているなら、通信は大丈夫
+        networkErrors = [];
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i];
@@ -110,9 +112,19 @@
           send({ type: 'voiceInput', text: interim, final: false });
         }
       };
+      // 「サーバーに繋がらない」が起きた時刻(直近2分)。黙っている間にEdge側が
+      // 接続を切ると数十秒おきに起きるが、すぐ聞き直して戻るので、それだけでは
+      // エラーとして出さない(2分に3回以上続いた時だけ本当の通信トラブルとして出す)
+      let networkErrors = [];
       rec.onerror = (e) => {
         // 黙っている時(no-speech)や途中で切れた時(aborted)は、そのまま続けて聞き直す
         if (e.error === 'no-speech' || e.error === 'aborted') return;
+        if (e.error === 'network') {
+          const now = Date.now();
+          networkErrors = networkErrors.filter((t) => now - t < 120000);
+          networkErrors.push(now);
+          if (networkErrors.length < 3) return;
+        }
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           fatal = true;
           setState('error', 'マイクが使えません(マイクの接続と、Windowsのマイクの許可を確認してください)');

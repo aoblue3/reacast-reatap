@@ -509,6 +509,15 @@ fn position_bar_window(
     // 位置を更新するたび(0.25秒おき)に最前面を取り直す。ただし根本的な対策は
     // フロントエンド側で「対象と重ならない位置に配置する」ことにしてあるので、
     // これはあくまで最後の保険(画面の都合でどうしても重ねて置くしかない場合)。
+    //
+    // 重要: 以前は`win.set_always_on_top(true)`を呼んでいたが、tauri(tao)は「最前面」の
+    // 指定が変わった時しかWindowsに伝えない(すでにtrueなら何もしない)ため、取り直しが
+    // 実際には効いていなかった。Win32のSetWindowPos(HWND_TOPMOST)を直接呼ぶ。
+    #[cfg(target_os = "windows")]
+    if let Ok(h) = win.hwnd() {
+        pcwmp::reassert_topmost(h.0 as isize);
+    }
+    #[cfg(not(target_os = "windows"))]
     let _ = win.set_always_on_top(true);
     Ok(())
 }

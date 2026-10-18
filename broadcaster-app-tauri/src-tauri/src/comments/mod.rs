@@ -1907,6 +1907,13 @@ pub fn comments_desktop_adjust(
             }
         }
     }
+    // 位置の調整を始める時は、字幕の窓を作り直す(窓が見えないままになっていた時でも、
+    // 「マウスで位置を調整」を押せば必ず出るように)
+    if on {
+        if let Some(win) = app.get_webview_window("subtitle") {
+            let _ = win.destroy();
+        }
+    }
     engine.set_adjusting(on);
     crate::sync_subtitle_window(&app);
     let _ = app.emit("subtitle:adjust", on);

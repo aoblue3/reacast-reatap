@@ -103,7 +103,8 @@ const LIST_SAMPLES = [
   { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:09.33 ID:ghi', body: 'おつかれ', aa: false, icon: null },
 ];
 function renderListPreview() {
-  if (!listPreview || !listPreview.contentWindow) return;
+  // 設定を読み込む前にプレビューの画面が読み込み終わることがある(その時は読み込み後に描く)
+  if (!settings || !listPreview || !listPreview.contentWindow) return;
   listPreview.contentWindow.postMessage({ type: 'commentStyle', style: settings.style }, '*');
   listPreview.contentWindow.postMessage({ type: 'commentHistory', items: LIST_SAMPLES }, '*');
 }
