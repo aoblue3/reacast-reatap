@@ -204,6 +204,7 @@ const COMMAND_PRESETS = {
 };
 let ttsListedFor = null; // 声の一覧を取得した接続先(取り直しを避ける)
 let ttsDevicesListed = false;
+let ttsExeCheckedFor = null; // exeの場所を探したソフト
 
 function isHttpEngine(engine) {
   return Object.prototype.hasOwnProperty.call(TTS_DEFAULT_URL, engine);
@@ -222,7 +223,7 @@ function renderEngineBoxes() {
     const show =
       kind === 'http' ? http
       : kind === 'voicevox-only' ? http && engine !== 'coeiroink'
-      : kind === 'test' ? engine !== 'command'
+      : kind === 'test' || kind === 'launch' ? engine !== 'command'
       : kind === engine;
     box.style.display = show ? '' : 'none';
   }
@@ -238,6 +239,29 @@ function renderEngineBoxes() {
       ttsDevicesListed = true;
       fetchDevices();
     }
+  }
+  if (engine !== 'command' && ttsExeCheckedFor !== engine) {
+    ttsExeCheckedFor = engine;
+    findExe(true);
+  }
+}
+
+/** 読み上げソフトのexeを探して、見つかった場所を表示する。指定欄が空なら覚えておく
+ * (起動中のプロセスから見つかった場所は、ソフトを閉じた後の自動起動に使うため)。 */
+async function findExe(quiet) {
+  const msg = document.getElementById('ttsExeMsg');
+  const found = await invoke('tts_find_exe', { settings }).catch(() => null);
+  if (found) {
+    if (!settings.ttsExePath || !quiet) {
+      settings.ttsExePath = found;
+      writeField(document.getElementById('ttsExePath'), found);
+      scheduleSave();
+    }
+    msg.textContent = `見つかりました: ${found}`;
+  } else if (!settings.ttsExePath) {
+    msg.textContent = '見つかりませんでした。ソフトを起動してから「自動で探す」を押すか、「参照...」で場所を指定してください。';
+  } else if (!quiet) {
+    msg.textContent = '自動では見つかりませんでした(指定した場所を使います)。';
   }
 }
 
@@ -297,6 +321,7 @@ async function fetchDevices() {
 document.getElementById('speechEngine').addEventListener('change', () => {
   // ソフトが変わると接続先も声の番号も別物になるので、選び直してもらう
   settings.ttsUrl = '';
+  settings.ttsExePath = '';
   settings.ttsSpeaker = '';
   settings.ttsSpeakerYoutube = '';
   settings.ttsSpeakerTwitch = '';
@@ -326,6 +351,15 @@ for (const btn of document.querySelectorAll('[data-reset]')) {
 }
 document.getElementById('ttsFetchSpeakers').addEventListener('click', () => fetchSpeakers(false));
 document.getElementById('ttsFetchDevices').addEventListener('click', fetchDevices);
+document.getElementById('ttsFindExe').addEventListener('click', () => findExe(false));
+document.getElementById('ttsPickExe').addEventListener('click', async () => {
+  const path = await invoke('comments_pick_exe').catch(() => null);
+  if (!path) return;
+  settings.ttsExePath = path;
+  document.getElementById('ttsExeMsg').textContent = '';
+  renderFields();
+  scheduleSave();
+});
 for (const btn of document.querySelectorAll('[data-command-preset]')) {
   btn.addEventListener('click', () => {
     Object.assign(settings, COMMAND_PRESETS[btn.dataset.commandPreset]);

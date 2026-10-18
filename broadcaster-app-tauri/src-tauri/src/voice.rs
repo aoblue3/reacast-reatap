@@ -105,7 +105,7 @@ impl EdgeProcess {
 /// Edgeは起動時の「最小化」の指定を無視して前に出てくるので、窓が出たらすぐ
 /// 最小化する(最小化しても聞き取りは続くことを確認済み)。
 #[cfg(target_os = "windows")]
-fn minimize_when_shown(pid: u32) {
+pub(crate) fn minimize_when_shown(pid: u32) {
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsWindowVisible, ShowWindow, SW_MINIMIZE,

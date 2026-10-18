@@ -1241,6 +1241,7 @@ pub fn run() {
             tts::tts_list_speakers,
             tts::tts_list_devices,
             tts::tts_test,
+            tts::tts_find_exe,
             backup::export_settings,
             backup::import_settings,
             comments::comments_default_reaction_rules,

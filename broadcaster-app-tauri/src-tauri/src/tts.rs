@@ -316,14 +316,27 @@ pub fn play_wav(wav: Vec<u8>, s: &CommentSettings) -> Result<u64, String> {
     play(wav, &s.tts_device)
 }
 
-/// 棒読みちゃんに読ませる(終わるのは待たない)。
+/// 棒読みちゃんに読ませる(終わるのは待たない)。起動していなければ起動してから。
 pub fn speak_bouyomi(s: &CommentSettings, text: &str) {
     let (s, text) = (s.clone(), text.to_string());
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = talk_bouyomi(&s, &text).await {
-            log::warn!("{e}");
+        if talk_bouyomi(&s, &text).await.is_err() && ensure_running(&s, Duration::from_secs(30)).await.is_ok() {
+            if let Err(e) = talk_bouyomi(&s, &text).await {
+                log::warn!("{e}");
+            }
         }
     });
+}
+
+/// 音声を作る。読み上げソフトに繋がらない時は(自動起動がONなら)起動を待ってからもう一度。
+pub async fn synthesize_or_launch(s: &CommentSettings, text: &str, source: &str) -> Result<Option<(Vec<u8>, u64)>, String> {
+    match synthesize(s, text, source).await {
+        Err(e) if s.tts_auto_launch && !is_alive(s).await => {
+            ensure_running(s, Duration::from_secs(60)).await.map_err(|le| format!("{e}({le})"))?;
+            synthesize(s, text, source).await
+        }
+        r => r,
+    }
 }
 
 /// スキップ: ReaCastが鳴らしている声を止める。棒読みちゃんには「スキップ」を頼む。
@@ -340,15 +353,188 @@ pub fn skip(s: &CommentSettings) {
 /// 設定画面の「試しに読み上げ」用: 作ってすぐ鳴らす。
 async fn speak(s: &CommentSettings, text: &str, source: &str) -> Result<(), String> {
     if engine_kind(s) == EngineKind::Bouyomi {
+        ensure_running(s, Duration::from_secs(30)).await?;
         return talk_bouyomi(s, text).await;
     }
-    if let Some((wav, _)) = synthesize(s, text, source).await? {
+    if let Some((wav, _)) = synthesize_or_launch(s, text, source).await? {
         play_wav(wav, s)?;
     }
     Ok(())
 }
 
+// ---------------- 読み上げソフトの自動起動 ----------------
+
+/// そのソフトのexeの名前(起動中のプロセスから場所を探す用)
+fn exe_names(engine: &str) -> &'static [&'static str] {
+    match engine {
+        "voicevox" => &["VOICEVOX.exe"],
+        "aivisspeech" => &["AivisSpeech.exe"],
+        "sharevox" => &["SHAREVOX.exe"],
+        "coeiroink" => &["COEIROINKv2.exe", "COEIROINK.exe"],
+        "coeiroinkv1" => &["COEIROINK.exe"],
+        "bouyomi" => &["BouyomiChan.exe"],
+        _ => &[],
+    }
+}
+
+/// インストーラーが入れる標準の場所(COEIROINK・棒読みちゃんはzipを好きな所に
+/// 展開するソフトなので、起動中のプロセスから探すか、場所を指定してもらう)
+fn install_candidates(engine: &str) -> Vec<std::path::PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from);
+    let pf = std::env::var_os("ProgramFiles").map(std::path::PathBuf::from);
+    let (dir, exe) = match engine {
+        "voicevox" => ("VOICEVOX", "VOICEVOX.exe"),
+        "aivisspeech" => ("AivisSpeech", "AivisSpeech.exe"),
+        "sharevox" => ("SHAREVOX", "SHAREVOX.exe"),
+        _ => return Vec::new(),
+    };
+    let mut v = Vec::new();
+    if let Some(l) = local {
+        v.push(l.join("Programs").join(dir).join(exe));
+    }
+    if let Some(p) = pf {
+        v.push(p.join(dir).join(exe));
+    }
+    v
+}
+
+/// 起動中のプロセスから、その名前のexeの場所を探す。
+#[cfg(windows)]
+fn running_exe(names: &[&str]) -> Option<std::path::PathBuf> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    if names.is_empty() {
+        return None;
+    }
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut found = None;
+        let mut ok = Process32FirstW(snap, &mut entry).is_ok();
+        while ok {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+            if names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, entry.th32ProcessID) {
+                    let mut buf = [0u16; 1024];
+                    let mut size = buf.len() as u32;
+                    if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut size).is_ok() {
+                        found = Some(std::path::PathBuf::from(String::from_utf16_lossy(&buf[..size as usize])));
+                    }
+                    let _ = CloseHandle(h);
+                }
+                if found.is_some() {
+                    break;
+                }
+            }
+            ok = Process32NextW(snap, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snap);
+        found
+    }
+}
+
+#[cfg(not(windows))]
+fn running_exe(_names: &[&str]) -> Option<std::path::PathBuf> {
+    None
+}
+
+/// 読み上げソフトのexeの場所: 設定で指定した場所 → 起動中のプロセス → 標準のインストール先。
+pub fn find_exe(s: &CommentSettings) -> Option<std::path::PathBuf> {
+    let custom = s.tts_exe_path.trim().trim_matches('"');
+    if !custom.is_empty() {
+        let p = std::path::PathBuf::from(custom);
+        return p.is_file().then_some(p);
+    }
+    running_exe(exe_names(&s.speech_engine)).or_else(|| install_candidates(&s.speech_engine).into_iter().find(|p| p.is_file()))
+}
+
+/// 読み上げソフトが受付中か(接続先のポートに繋がるか)。
+async fn is_alive(s: &CommentSettings) -> bool {
+    let Ok(url) = reqwest::Url::parse(&base_url(s)) else { return false };
+    let host = url.host_str().unwrap_or("127.0.0.1").to_string();
+    let port = url.port_or_known_default().unwrap_or(80);
+    matches!(
+        tokio::time::timeout(Duration::from_millis(800), tokio::net::TcpStream::connect((host.as_str(), port))).await,
+        Ok(Ok(_))
+    )
+}
+
+/// 最後に自動で起動した時刻(起動に時間がかかる間に何度も起動しないように)
+static LAST_LAUNCH: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+/// 読み上げソフトが起動していなければ起動して、受付を始めるまで最大`wait`待つ。
+/// 自動起動がOFF・コマンドで渡す方式の時は何もしない。
+pub async fn ensure_running(s: &CommentSettings, wait: Duration) -> Result<(), String> {
+    if engine_kind(s) == EngineKind::Command || !s.tts_auto_launch {
+        return Ok(());
+    }
+    if is_alive(s).await {
+        return Ok(());
+    }
+    let recently = LAST_LAUNCH.lock().unwrap().map(|t| t.elapsed() < Duration::from_secs(90)).unwrap_or(false);
+    if !recently {
+        let exe = find_exe(s).ok_or("読み上げソフトの場所が分かりません(「読み上げ」タブでソフトの場所を指定してください)")?;
+        log::info!("読み上げソフトを起動します: {}", exe.display());
+        let mut cmd = std::process::Command::new(&exe);
+        if let Some(dir) = exe.parent() {
+            cmd.current_dir(dir);
+        }
+        let child = cmd.spawn().map_err(|e| format!("読み上げソフトを起動できませんでした({}): {e}", exe.display()))?;
+        *LAST_LAUNCH.lock().unwrap() = Some(std::time::Instant::now());
+        // 配信の画面の前に出てこないよう、窓が出たら最小化する
+        #[cfg(windows)]
+        crate::voice::minimize_when_shown(child.id());
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+        });
+    }
+    let until = std::time::Instant::now() + wait;
+    while std::time::Instant::now() < until {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if is_alive(s).await {
+            // 受付を始めた直後は準備中のことがあるので少し待つ
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            return Ok(());
+        }
+    }
+    Err("読み上げソフトの起動を待ちましたが、まだ準備ができていません".into())
+}
+
+/// 設定が変わった時・ReaCastの起動時に呼ぶ: 使う設定なら、裏で起動しておく。
+pub fn launch_in_background(s: &CommentSettings) {
+    if !s.speech_enabled || engine_kind(s) == EngineKind::Command || !s.tts_auto_launch {
+        return;
+    }
+    // 設定を保存するたびに呼ばれるので、確かめている最中なら重ねない
+    static CHECKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if CHECKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let s = s.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = ensure_running(&s, Duration::from_secs(90)).await {
+            log::warn!("{e}");
+        }
+        CHECKING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
 // ---------------- 設定画面から使うコマンド ----------------
+
+/// 読み上げソフトのexeの場所を探す(設定画面の「自動で探す」)。指定欄は見ずに探す。
+#[tauri::command(async)]
+pub fn tts_find_exe(settings: CommentSettings) -> Option<String> {
+    let mut s = settings;
+    s.tts_exe_path.clear();
+    find_exe(&s).map(|p| p.display().to_string())
+}
 
 /// 声の一覧([{id, name}])。idは設定のtts_speakerにそのまま入れる値。
 #[tauri::command]
@@ -481,6 +667,20 @@ mod tests {
         let ms = wav_duration_ms(&wav).unwrap();
         eprintln!("{} bytes, {ms} ms", wav.len());
         assert!(ms > 300 && ms < 5000);
+    }
+
+    #[test]
+    #[ignore] // 起動中のVOICEVOXの場所を見つけられるか
+    fn finds_voicevox_exe() {
+        let mut s = CommentSettings::default();
+        s.speech_engine = "voicevox".into();
+        let p = find_exe(&s).expect("VOICEVOXが見つからない");
+        eprintln!("{}", p.display());
+        assert!(p.ends_with("VOICEVOX.exe"));
+        assert!(tauri::async_runtime::block_on(is_alive(&s)));
+        // 起動済みなら何もしないで戻る
+        tauri::async_runtime::block_on(ensure_running(&s, Duration::from_secs(1))).unwrap();
+        assert!(LAST_LAUNCH.lock().unwrap().is_none());
     }
 
     #[test]

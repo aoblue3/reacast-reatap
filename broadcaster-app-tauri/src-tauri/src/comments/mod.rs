@@ -95,6 +95,10 @@ pub struct CommentSettings {
     pub speech_engine: String,
     /// 読み上げソフトの接続先(空欄ならそのソフトの既定のアドレス)
     pub tts_url: String,
+    /// 読み上げソフト(VOICEVOX等・棒読みちゃん)が起動していなければ自動で起動する
+    pub tts_auto_launch: bool,
+    /// 自動で起動するexeの場所(空欄なら起動中のプロセス・標準のインストール先から探す)
+    pub tts_exe_path: String,
     /// 声(VOICEVOX互換はスタイルの番号、COEIROINK v2は「UUID:スタイル番号」)。
     /// YouTube・Twitchのコメントは別の声にもできる(空欄なら共通の声)
     pub tts_speaker: String,
@@ -314,6 +318,8 @@ impl Default for CommentSettings {
             max_wait_ms: 20000,
             speech_engine: "command".into(),
             tts_url: String::new(),
+            tts_auto_launch: true,
+            tts_exe_path: String::new(),
             tts_speaker: String::new(),
             tts_speaker_youtube: String::new(),
             tts_speaker_twitch: String::new(),
@@ -610,6 +616,8 @@ impl CommentEngine {
             ("youtube", settings.icon_folder_youtube.clone()),
             ("twitch", settings.icon_folder_twitch.clone()),
         ];
+        // VOICEVOX等を使う設定なら、起動していなければ裏で起動しておく(ReaCastの起動時も通る)
+        crate::tts::launch_in_background(&settings);
         {
             let mut st = self.state.lock().unwrap();
             st.settings = settings;
@@ -1436,7 +1444,7 @@ impl CommentEngine {
             // 本当の長さだけ字幕を出して待つ(目安の時間ではなく)
             let mut wav = None;
             if crate::tts::plays_itself(&settings) && !spoken.trim().is_empty() {
-                match crate::tts::synthesize(&settings, &spoken, &post.source).await {
+                match crate::tts::synthesize_or_launch(&settings, &spoken, &post.source).await {
                     Ok(Some((w, ms))) => {
                         speech_ms = ms + 150;
                         wav = Some(w);

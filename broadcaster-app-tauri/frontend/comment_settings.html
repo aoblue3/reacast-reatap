@@ -294,8 +294,14 @@
         </select>
       </div></div>
 
+      <div class="engine-box" data-engine="launch">
+        <div class="field"><label>起動していなければ自動で起動</label><div><input type="checkbox" data-key="ttsAutoLaunch" /><span class="unit">ReaCastの起動時と、読み上げる時に起動していなければ起動します(窓は最小化)</span></div></div>
+        <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="ttsExePath" id="ttsExePath" /><button class="secondary" id="ttsPickExe">参照...</button><button class="secondary" id="ttsFindExe">自動で探す</button></div></div>
+        <div class="hint" id="ttsExeMsg">空欄なら、起動中のソフトや標準のインストール先から自動で探します。</div>
+      </div>
+
       <div class="engine-box" data-engine="http">
-        <div class="hint" style="margin-top:0">読み上げソフトを起動しておくだけで使えます。ReaCastが音声を受け取って鳴らすので、読み終わる時間が正確に分かり、字幕と声がずれません。スキップすると声も止まります。</div>
+        <div class="hint" style="margin-top:0">ReaCastが音声を受け取って鳴らすので、読み終わる時間が正確に分かり、字幕と声がずれません。スキップすると声も止まります。</div>
         <div class="field"><label>接続先</label><div class="inline"><input type="text" data-key="ttsUrl" id="ttsUrl" style="width: 260px" /><span class="unit">空欄なら既定(<span id="ttsDefaultUrl"></span>)</span></div></div>
         <div class="field"><label>声</label><div class="inline"><select data-key="ttsSpeaker" data-speaker-select data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchSpeakers">声の一覧を取得</button></div></div>
         <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
