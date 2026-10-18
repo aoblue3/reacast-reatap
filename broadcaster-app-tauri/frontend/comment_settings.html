@@ -318,13 +318,14 @@
           <div class="hint" id="randomVoicesMsg"></div>
           <div class="hint">YouTube・Twitchのコメントの声を指定している時は、そちらが優先されます。話速などのスライダーはどの声にも共通です。</div>
         </div>
-        <div class="field"><label>話速</label><div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>音高</label><div class="slider-row"><input type="range" min="-0.15" max="0.15" step="0.01" data-key="ttsPitch" data-default="0" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>抑揚</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsIntonation" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>開始無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>終了無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field" id="paramsEngineRow"><label>調整するソフト</label><div class="inline"><select id="ttsParamsEngine"></select><span class="unit">ランダムで混ぜたソフトごとに、話速や音量を別々に調整できます</span></div></div>
+        <div class="field"><label>話速</label><div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-param="speed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>音高</label><div class="slider-row"><input type="range" min="-0.15" max="0.15" step="0.01" data-key="ttsPitch" data-param="pitch" data-default="0" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>抑揚</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsIntonation" data-param="intonation" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-param="volume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>開始無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-param="preSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>終了無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-param="postSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-param="pauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="hint">開始無音・終了無音は秒。間の長さはVOICEVOX・AivisSpeechなど対応しているソフトだけ効きます。</div>
         <div class="field"><label>音の出力先</label><div class="inline"><select data-key="ttsDevice" id="ttsDevice" data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchDevices">更新</button></div></div>
         <div class="hint">VB-CABLEなどの仮想オーディオデバイスを選ぶと、OBSで読み上げの音だけを別に取り込めます。</div>

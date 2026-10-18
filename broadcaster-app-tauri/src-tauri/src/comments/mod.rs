@@ -29,6 +29,26 @@ use tokio::sync::Notify;
 
 pub const SETTINGS_KEY: &str = "commentSettings";
 
+/// 読み上げソフトごとの話速・音高などの調整(ランダムで別々のソフトの声を混ぜた時に、
+/// ソフトごとに音量や速さを揃えられるように)
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TtsParams {
+    pub speed: f64,
+    pub pitch: f64,
+    pub intonation: f64,
+    pub volume: f64,
+    pub pre_silence: f64,
+    pub post_silence: f64,
+    pub pause_scale: f64,
+}
+
+impl Default for TtsParams {
+    fn default() -> Self {
+        Self { speed: 1.0, pitch: 0.0, intonation: 1.0, volume: 1.0, pre_silence: 0.1, post_silence: 0.1, pause_scale: 1.0 }
+    }
+}
+
 /// ランダムに使う声の1つ(読み上げソフト・声・割合)。別々のソフトの声を混ぜられる
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase", default)]
@@ -124,7 +144,9 @@ pub struct CommentSettings {
     pub tts_speaker: String,
     pub tts_speaker_youtube: String,
     pub tts_speaker_twitch: String,
-    /// 話速・音高・抑揚・音量・開始無音(秒)・終了無音(秒)・間の長さ
+    /// 読み上げソフトごとの調整(無いソフトは下のtts_speed等を使う)
+    pub tts_engine_params: std::collections::BTreeMap<String, TtsParams>,
+    /// 話速・音高・抑揚・音量・開始無音(秒)・終了無音(秒)・間の長さ(v1.5.13までの共通の調整)
     pub tts_speed: f64,
     pub tts_pitch: f64,
     pub tts_intonation: f64,
@@ -347,6 +369,7 @@ impl Default for CommentSettings {
             tts_speaker: String::new(),
             tts_speaker_youtube: String::new(),
             tts_speaker_twitch: String::new(),
+            tts_engine_params: Default::default(),
             tts_speed: 1.0,
             tts_pitch: 0.0,
             tts_intonation: 1.0,

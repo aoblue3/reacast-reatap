@@ -195,6 +195,21 @@ fn is_http_engine(engine: &str) -> bool {
 /// 3. それ以外は共通の声
 /// `person`は同じ人を見分ける文字列(掲示板はID、配信サイトは名前。空なら毎回ランダム)。
 pub fn pick_voice(s: &CommentSettings, source: &str, person: &str) -> CommentSettings {
+    let mut v = pick_speaker(s, source, person);
+    // 声のソフトの調整(話速・音量など)を使う
+    if let Some(p) = s.tts_engine_params.get(&v.speech_engine) {
+        v.tts_speed = p.speed;
+        v.tts_pitch = p.pitch;
+        v.tts_intonation = p.intonation;
+        v.tts_volume = p.volume;
+        v.tts_pre_silence = p.pre_silence;
+        v.tts_post_silence = p.post_silence;
+        v.tts_pause_scale = p.pause_scale;
+    }
+    v
+}
+
+fn pick_speaker(s: &CommentSettings, source: &str, person: &str) -> CommentSettings {
     let mut v = s.clone();
     let per = match source {
         "youtube" => s.tts_speaker_youtube.trim(),
@@ -770,6 +785,25 @@ mod tests {
         // YouTubeの声を指定していればそちらが優先
         s.tts_speaker_youtube = "8".into();
         assert_eq!(pick_voice(&s, "youtube", "x").tts_speaker, "8");
+    }
+
+    #[test]
+    fn uses_params_of_the_picked_engine() {
+        use crate::comments::{RandomVoice, TtsParams};
+        let mut s = CommentSettings::default();
+        s.speech_engine = "voicevox".into();
+        s.tts_speed = 1.1;
+        // 調整が無いソフトは共通の値
+        assert_eq!(pick_voice(&s, "bbs", "").tts_speed, 1.1);
+        s.tts_engine_params.insert("voicevox".into(), TtsParams { speed: 1.3, volume: 0.8, ..Default::default() });
+        s.tts_engine_params.insert("coeiroink".into(), TtsParams { speed: 0.9, volume: 1.5, ..Default::default() });
+        s.tts_random = true;
+        s.tts_random_voices = vec![RandomVoice { engine: "coeiroink".into(), speaker: "u:1".into(), weight: 1 }];
+        let v = pick_voice(&s, "bbs", "");
+        assert_eq!((v.speech_engine.as_str(), v.tts_speed, v.tts_volume), ("coeiroink", 0.9, 1.5));
+        s.tts_random = false;
+        let v = pick_voice(&s, "bbs", "");
+        assert_eq!((v.speech_engine.as_str(), v.tts_speed, v.tts_volume), ("voicevox", 1.3, 0.8));
     }
 
     #[test]

@@ -63,6 +63,7 @@ function writeField(el, value) {
 }
 
 function renderFields() {
+  bindParamSliders();
   for (const el of fields) writeField(el, getPath(settings, el.dataset.key));
   renderHotkeys();
   renderRuleEditors();
@@ -222,7 +223,7 @@ function renderEngineBoxes() {
     const kind = box.dataset.engine;
     const show =
       kind === 'http' ? http
-      : kind === 'voicevox-only' ? http && engine !== 'coeiroink'
+      : kind === 'voicevox-only' ? http && (paramsEngine || engine) !== 'coeiroink'
       : kind === 'test' || kind === 'launch' ? engine !== 'command'
       : kind === engine;
     box.style.display = show ? '' : 'none';
@@ -248,6 +249,57 @@ function renderEngineBoxes() {
     findExe(true);
   }
 }
+
+// ---- 読み上げソフトごとの話速・音量など(ttsEngineParams) ----
+const PARAM_LEGACY = {
+  speed: 'ttsSpeed', pitch: 'ttsPitch', intonation: 'ttsIntonation', volume: 'ttsVolume',
+  preSilence: 'ttsPreSilence', postSilence: 'ttsPostSilence', pauseScale: 'ttsPauseScale',
+};
+let paramsEngine = null; // スライダーで調整しているソフト
+
+/** 声に使っているソフト(共通の声のソフト + ランダムの声のソフト) */
+function usedEngines() {
+  const list = [];
+  if (isHttpEngine(settings.speechEngine)) list.push(settings.speechEngine);
+  if (settings.ttsRandom) {
+    for (const v of randomVoices()) if (v.engine && !list.includes(v.engine)) list.push(v.engine);
+  }
+  return list;
+}
+
+/** スライダーを、選んでいるソフトの調整(ttsEngineParams.<ソフト>.<項目>)に結び付ける。
+ * まだ調整が無いソフトは、これまでの共通の値から始める。 */
+function bindParamSliders() {
+  if (!settings) return;
+  const engines = usedEngines();
+  if (!engines.includes(paramsEngine)) paramsEngine = engines[0] || null;
+  const sel = document.getElementById('ttsParamsEngine');
+  sel.textContent = '';
+  for (const e of engines) {
+    const o = document.createElement('option');
+    o.value = e;
+    o.textContent = (RANDOM_ENGINES.find(([id]) => id === e) || [e, e === 'voicevoxcompat' ? 'VOICEVOX互換' : e])[1];
+    sel.appendChild(o);
+  }
+  sel.value = paramsEngine || '';
+  // 1つのソフトしか使っていない時は選ぶ欄を出さない
+  document.getElementById('paramsEngineRow').style.display = engines.length > 1 ? '' : 'none';
+  if (!paramsEngine) return;
+  if (!settings.ttsEngineParams || typeof settings.ttsEngineParams !== 'object') settings.ttsEngineParams = {};
+  if (!settings.ttsEngineParams[paramsEngine]) {
+    const p = {};
+    for (const [f, legacy] of Object.entries(PARAM_LEGACY)) p[f] = Number(settings[legacy] ?? document.querySelector(`[data-param="${f}"]`).dataset.default);
+    settings.ttsEngineParams[paramsEngine] = p;
+  }
+  for (const el of document.querySelectorAll('[data-param]')) {
+    el.dataset.key = `ttsEngineParams.${paramsEngine}.${el.dataset.param}`;
+  }
+}
+
+document.getElementById('ttsParamsEngine').addEventListener('change', (e) => {
+  paramsEngine = e.target.value;
+  renderFields();
+});
 
 /** 読み上げソフトごとのexeの場所 */
 function exePaths() {
@@ -358,7 +410,7 @@ function renderRandomVoices() {
     eng.addEventListener('change', () => {
       v.engine = eng.value;
       v.speaker = '';
-      renderRandomVoices();
+      renderFields();
       scheduleSave();
     });
     const sp = document.createElement('select');
@@ -401,7 +453,7 @@ function renderRandomVoices() {
     del.textContent = '削除';
     del.addEventListener('click', () => {
       voices.splice(i, 1);
-      renderRandomVoices();
+      renderFields();
       scheduleSave();
     });
     row.append(eng, sp, w, pct, del);
@@ -427,10 +479,10 @@ function renderRandomVoices() {
 document.getElementById('randomAddBtn').addEventListener('click', () => {
   const engine = RANDOM_ENGINES.some(([id]) => id === settings.speechEngine) ? settings.speechEngine : 'voicevox';
   randomVoices().push({ engine, speaker: '', weight: 50 });
-  renderRandomVoices();
+  renderFields();
   scheduleSave();
 });
-document.getElementById('ttsRandom').addEventListener('change', renderEngineBoxes);
+document.getElementById('ttsRandom').addEventListener('change', renderFields);
 
 async function fetchDevices() {
   const sel = document.getElementById('ttsDevice');
