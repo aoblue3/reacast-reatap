@@ -1,6 +1,6 @@
 //! 話した字幕(配信者が話した言葉を字幕にして、自動で翻訳する)。
 //!
-//! ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Edgeを
+//! ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Chrome(無ければEdge)を
 //! 専用の小さな窓(--app)で開いて音声認識の画面(frontend/voice_input.html)を
 //! 動かす。聞き取った文字はobs_bridgeのWebSocketで届き、OBSの「話した字幕」の
 //! 画面(frontend/voice.html)へ送る。話し終わった文はGoogle翻訳(非公式の
@@ -59,7 +59,7 @@ impl EdgeProcess {
             .join(" ");
         let mut wide: Vec<u16> = line.encode_utf16().chain(std::iter::once(0)).collect();
         let job = unsafe {
-            let job = CreateJobObjectW(None, PCWSTR::null()).map_err(|e| format!("Edgeを起動できませんでした: {e}"))?;
+            let job = CreateJobObjectW(None, PCWSTR::null()).map_err(|e| format!("ブラウザを起動できませんでした: {e}"))?;
             let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             let _ = SetInformationJobObject(
@@ -92,7 +92,7 @@ impl EdgeProcess {
                 &si,
                 &mut pi,
             )
-            .map_err(|e| format!("Edgeを起動できませんでした: {e}"))?;
+            .map_err(|e| format!("ブラウザを起動できませんでした: {e}"))?;
             // Edgeが子プロセスを作る前にJobに入れておく
             let _ = AssignProcessToJobObject(job, pi.hProcess);
             ResumeThread(pi.hThread);
@@ -218,7 +218,7 @@ impl EdgeProcess {
             .args(args)
             .spawn()
             .map(|c| Self(std::sync::Mutex::new(c)))
-            .map_err(|e| format!("Edgeを起動できませんでした: {e}"))
+            .map_err(|e| format!("ブラウザを起動できませんでした: {e}"))
     }
     fn is_running(&self) -> bool {
         matches!(self.0.lock().unwrap().try_wait(), Ok(None))
@@ -238,14 +238,26 @@ impl VoiceManager {
     }
 }
 
-fn edge_path() -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    for var in ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"] {
-        if let Ok(base) = std::env::var(var) {
-            candidates.push(PathBuf::from(base).join(r"Microsoft\Edge\Application\msedge.exe"));
+/// 音声認識に使うブラウザ: (exeの場所, 名前, プロフィールのフォルダ名)。
+/// Chromeがあれば優先する。Edgeの音声認識は、プロフィールごとに使った時間を記録して
+/// (Local Stateのspeech_recognition_limiter)、約10時間で使えなくなる(エラー「network」
+/// になる。本人のPCで2026-10-18に発生)ため。Chromeが無ければEdge。
+fn browser_path() -> Option<(PathBuf, &'static str, &'static str)> {
+    let browsers = [
+        (r"Google\Chrome\Application\chrome.exe", "Chrome", "voice-chrome"),
+        (r"Microsoft\Edge\Application\msedge.exe", "Edge", "voice-edge"),
+    ];
+    for (rel, name, profile) in browsers {
+        for var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+            if let Ok(base) = std::env::var(var) {
+                let p = PathBuf::from(base).join(rel);
+                if p.exists() {
+                    return Some((p, name, profile));
+                }
+            }
         }
     }
-    candidates.into_iter().find(|p| p.exists())
+    None
 }
 
 fn input_url(s: &CommentSettings) -> String {
@@ -267,12 +279,9 @@ fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
 }
 
 fn launch(app: &AppHandle, url: &str) -> Result<EdgeProcess, String> {
-    let edge = edge_path().ok_or("Microsoft Edgeが見つかりません")?;
-    let profile = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("voice-edge");
+    let (exe, name, profile) = browser_path().ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
+    log::info!("話した字幕: {name}で開きます");
+    let profile = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join(profile);
     let args: Vec<String> = [
         format!("--app={url}"),
         format!("--user-data-dir={}", profile.display()),
@@ -287,7 +296,7 @@ fn launch(app: &AppHandle, url: &str) -> Result<EdgeProcess, String> {
         "--disable-backgrounding-occluded-windows".into(),
     ]
     .into();
-    EdgeProcess::spawn(&edge, &args)
+    EdgeProcess::spawn(&exe, &args)
 }
 
 /// 設定に合わせて、Edgeの音声認識の窓を開く・閉じる・開き直す。
@@ -311,7 +320,7 @@ pub fn sync(app: &AppHandle) {
     match want {
         Some(url) => match launch(app, &url) {
             Ok(child) => {
-                log::info!("話した字幕: Edgeを開きました");
+                log::info!("話した字幕: 音声認識の窓を開きました");
                 set_status(app, "wait", "音声認識の窓を開いています…");
                 *manager.edge.lock().unwrap() = Some((child, url));
             }

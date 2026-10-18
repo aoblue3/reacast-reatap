@@ -511,7 +511,7 @@
     </section>
 
     <section data-tab="voice">
-      <div class="hint">配信者が話した言葉を字幕にして、自動で翻訳します。ONにすると、ReaCastがMicrosoft Edgeで音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはMicrosoftのサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。翻訳は仕様変更で使えなくなることがあります。</div>
+      <div class="hint">配信者が話した言葉を字幕にして、自動で翻訳します。ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。Edgeの音声認識は合計で約10時間使うと使えなくなることがあるので、Chromeを入れておくのがおすすめです。聞き取りはGoogle(EdgeならMicrosoft)のサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。翻訳は仕様変更で使えなくなることがあります。</div>
       <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
       <div class="field"><label>マイク</label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button><span class="unit">電話や離席の時に。止めている間は聞き取り自体を止め、表示中の字幕も消します</span></div></div>
