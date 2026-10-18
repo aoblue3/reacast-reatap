@@ -518,6 +518,12 @@
       <div class="field"><label>ホットキー: マイクを止める</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
       <div class="field"><label>ホットキー: マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
       <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: 止める Ctrl+Alt+M、再開 Ctrl+Alt+N)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。</div>
+      <div class="field"><label>音声認識に使うブラウザ</label><div><select data-key="voiceBrowser">
+        <option value="auto">自動(Chromeがあれば Chrome)</option>
+        <option value="chrome">Google Chrome</option>
+        <option value="edge">Microsoft Edge</option>
+      </select></div></div>
+      <div class="hint">聞き取りの精度はブラウザで違います。Edge(Microsoftの音声認識)は日本語の精度が高めですが、合計で約10時間使うと使えなくなることがあります。Chrome(Googleの音声認識)はその制限が見当たりません。選んだブラウザが入っていない時は、もう一方を使います。</div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
         <option value="en-US">英語</option>

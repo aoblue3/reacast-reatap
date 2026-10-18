@@ -189,6 +189,9 @@ pub struct CommentSettings {
     pub voice_enabled: bool,
     /// 聞き取る言葉(例: "ja-JP")
     pub voice_lang: String,
+    /// 音声認識に使うブラウザ: "auto"(Chromeがあれば優先) / "chrome" / "edge"。
+    /// Edge(Microsoftの音声認識)は精度が高めだが、約10時間で使えなくなることがある
+    pub voice_browser: String,
     /// 話した言葉を翻訳する / 翻訳先の言語(Google翻訳の言語コード。例: "en")
     pub voice_translate: bool,
     pub voice_target_lang: String,
@@ -396,6 +399,7 @@ impl Default for CommentSettings {
             subtitle_translate_target: "en".into(),
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
+            voice_browser: "auto".into(),
             voice_translate: true,
             voice_target_lang: "en".into(),
             display_ms: 3000,

@@ -242,11 +242,11 @@ impl VoiceManager {
 /// Chromeがあれば優先する。Edgeの音声認識は、プロフィールごとに使った時間を記録して
 /// (Local Stateのspeech_recognition_limiter)、約10時間で使えなくなる(エラー「network」
 /// になる。本人のPCで2026-10-18に発生)ため。Chromeが無ければEdge。
-fn browser_path() -> Option<(PathBuf, &'static str, &'static str)> {
-    let browsers = [
-        (r"Google\Chrome\Application\chrome.exe", "Chrome", "voice-chrome"),
-        (r"Microsoft\Edge\Application\msedge.exe", "Edge", "voice-edge"),
-    ];
+/// `choice`は設定のvoice_browser("chrome"/"edge"なら、それが無い時だけもう一方)。
+fn browser_path(choice: &str) -> Option<(PathBuf, &'static str, &'static str)> {
+    let chrome = (r"Google\Chrome\Application\chrome.exe", "Chrome", "voice-chrome");
+    let edge = (r"Microsoft\Edge\Application\msedge.exe", "Edge", "voice-edge");
+    let browsers = if choice == "edge" { [edge, chrome] } else { [chrome, edge] };
     for (rel, name, profile) in browsers {
         for var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
             if let Ok(base) = std::env::var(var) {
@@ -278,8 +278,8 @@ fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
     let _ = app.emit("voice:status", v);
 }
 
-fn launch(app: &AppHandle, url: &str) -> Result<EdgeProcess, String> {
-    let (exe, name, profile) = browser_path().ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
+fn launch(app: &AppHandle, url: &str, choice: &str) -> Result<EdgeProcess, String> {
+    let (exe, name, profile) = browser_path(choice).ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
     log::info!("話した字幕: {name}で開きます");
     let profile = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join(profile);
     let args: Vec<String> = [
@@ -308,7 +308,8 @@ pub fn sync(app: &AppHandle) {
     if edge.as_ref().is_some_and(|(p, _)| !p.is_running()) {
         *edge = None;
     }
-    let want = settings.voice_enabled.then(|| input_url(&settings));
+    // ブラウザの選択もURLに入れておく(変えたら開き直す。画面側は使わない)
+    let want = settings.voice_enabled.then(|| format!("{}&browser={}", input_url(&settings), settings.voice_browser));
     // 同じ設定で開いているなら何もしない
     if matches!((&*edge, &want), (Some((_, url)), Some(w)) if url == w) {
         return;
@@ -318,7 +319,7 @@ pub fn sync(app: &AppHandle) {
     }
     drop(edge);
     match want {
-        Some(url) => match launch(app, &url) {
+        Some(url) => match launch(app, &url, &settings.voice_browser) {
             Ok(child) => {
                 log::info!("話した字幕: 音声認識の窓を開きました");
                 set_status(app, "wait", "音声認識の窓を開いています…");
