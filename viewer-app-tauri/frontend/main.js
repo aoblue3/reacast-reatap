@@ -618,43 +618,30 @@ async function findGlobalHotkeyConflict(shortcut, excludeProfileId, excludeEmoji
 
 /**
  * 現在「接続する」状態(activeProfileIds)にあるすべてのプロファイルの
- * ホットキーを、実際にOS側のグローバルショートカットとして一括で登録し直す。
+ * ホットキーを、Rust側(hotkeys.rs)へ一括で渡し直す。割り当ては常にこの
+ * メインウィンドウからだけ、全プロファイル分をまとめて渡す(バーごとに渡すと
+ * 他のプロファイルの分が消えてしまうため)。
  *
- * 重要: tauri-plugin-global-shortcutは登録済みショートカットをアプリ全体で
- * 1つのマップとして管理しており(プラグイン本体のソースコードで確認済み)、
- * ウィンドウ単位の分離は無い。そのため、もし各バーウィンドウ(bar.js)が
- * 自分の分だけのつもりでgs.unregisterAll()を呼んでしまうと、他プロファイルの
- * バーが登録した分まで巻き添えで消えてしまう。この問題を避けるため、
- * ホットキーの実際のOS登録・解除はこのメインウィンドウ(main.js)からのみ、
- * 常に「全部消してから全部登録し直す」形で一括して行う(以前の単一配信者接続
- * 時代の実装と同じ考え方を、複数プロファイル分に拡張したもの)。
- *
- * 押された時に呼ぶハンドラでは、実際のリアクション送信(連打防止のdebounceや
- * WebSocket送信)はそのプロファイルのバー自身に任せる(バーごとに独立した
- * relayClientを持っているため)。ここではsend_hotkey_reactionコマンド経由で
- * 対象のバーウィンドウに"hotkey-reaction"イベントを転送するだけでよい。
+ * 押された時の実際のリアクション送信(連打防止のdebounceやWebSocket送信)は、
+ * そのプロファイルのバー自身に任せる(バーごとに独立したrelayClientを持って
+ * いるため)。Rust側は対象のバーウィンドウに"hotkey-reaction"イベントを送るだけ。
  */
 async function applyAllHotkeys() {
-  const gs = window.__TAURI__.globalShortcut;
-  if (!gs) return; // Windows以外の開発環境などでプラグインが無い場合は何もしない
-  try {
-    await gs.unregisterAll();
-  } catch {
-    // 失敗しても続行(登録し直しで上書きされることを期待する)
-  }
+  // 2026-10: Windowsのグローバルショートカットはキーを横取りして、そのキーで文字が
+  // 打てなくなるため、Rust側のキーを横取りしない見張り(hotkeys.rs)に切り替えた。
+  // 接続中の全プロファイルの割り当てを1つの一覧にして渡すと、押された時にRust側が
+  // 対象のバーへ"hotkey-reaction"を送る(send_hotkey_reactionと同じイベント)。
+  const list = [];
   for (const profileId of activeProfileIds) {
     const map = await getProfileSetting(profileId, 'hotkeys', {});
     for (const [emojiId, shortcut] of Object.entries(map || {})) {
-      try {
-        await gs.register(shortcut, (event) => {
-          if (event.state === 'Pressed') {
-            invoke('send_hotkey_reaction', { label: `bar-${profileId}`, emojiId });
-          }
-        });
-      } catch (err) {
-        console.error(`ホットキー "${shortcut}" (${emojiId}, ${profileId}) の登録に失敗しました`, err);
-      }
+      if (shortcut) list.push({ shortcut, label: `bar-${profileId}`, emojiId });
     }
+  }
+  try {
+    await invoke('set_hotkeys', { list });
+  } catch (err) {
+    console.error('ホットキーの設定に失敗しました', err);
   }
 }
 
@@ -708,24 +695,7 @@ function hotkeyCaptureKeydownListener(e) {
       }
       return;
     }
-    // OS側がこのキーの組み合わせを実際に受け付けるかを、試しに登録して
-    // すぐ解除することで確認する(他のアプリで既に使われている等の理由で
-    // 拒否されることがある)。捕捉開始時(startHotkeyCapture)に既存の
-    // ホットキーはすべて解除済みなので、この試験登録は必ずクリーンな状態に
-    // 対して行われる。
-    const gs = window.__TAURI__.globalShortcut;
-    if (gs) {
-      try {
-        await gs.register(shortcut, () => {});
-        await gs.unregister(shortcut);
-      } catch (err) {
-        if (errEl) {
-          errEl.textContent = `「${formatHotkeyLabel(shortcut)}」は登録できませんでした(他のアプリで使用中の可能性があります)`;
-        }
-        console.error(err);
-        return;
-      }
-    }
+    // (キーを横取りしない方式になったので、他のアプリで使われているキーでも割り当てられる)
     const map = await getProfileSetting(profileId, 'hotkeys', {});
     map[emojiId] = shortcut;
     await setProfileSetting(profileId, 'hotkeys', map);
@@ -735,19 +705,12 @@ function hotkeyCaptureKeydownListener(e) {
   })();
 }
 
-/** ホットキーの捕捉(キー入力待ち)を開始する。
- *
- * 重要: 捕捉開始時に、今現在OS側へ登録済みの全ホットキー(すべての接続中
- * プロファイル分)を一旦すべて解除する。これをしないと、「既に別のリアクション
- * (別の配信者のものも含む)に割り当て済みのキー」を捕捉しようと押した瞬間、
- * そのキー入力はOS側のグローバルショートカットのグラブに奪われてしまい、
- * この画面のkeydownリスナーまで届かず反応しなくなることがある。 */
+/** ホットキーの捕捉(キー入力待ち)を開始する。捕捉している間は、割り当て済みの
+ * キーを押してもリアクションが飛ばないよう、ホットキーの反応を止めておく
+ * (suspend_hotkeys。終わったらapplyAllHotkeysで戻る)。 */
 async function startHotkeyCapture(profileId, emojiId) {
   if (!hotkeyCapturing) {
-    const gs = window.__TAURI__.globalShortcut;
-    if (gs) {
-      try { await gs.unregisterAll(); } catch { /* 無視 */ }
-    }
+    try { await invoke('suspend_hotkeys'); } catch { /* 無視 */ }
     document.addEventListener('keydown', hotkeyCaptureKeydownListener, true);
   }
   hotkeyCapturing = { profileId, emojiId };

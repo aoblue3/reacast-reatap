@@ -11,10 +11,6 @@
     "core:window:allow-hide",
     "core:window:allow-close",
     "core:window:allow-set-theme",
-    "core:window:allow-start-dragging",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
-    "global-shortcut:allow-unregister-all",
-    "global-shortcut:allow-is-registered"
+    "core:window:allow-start-dragging"
   ]
 }

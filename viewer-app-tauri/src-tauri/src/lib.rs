@@ -1,6 +1,7 @@
 mod applog;
 mod backup;
 mod config_store;
+mod hotkeys;
 mod pcwmp;
 pub mod updater;
 
@@ -712,13 +713,8 @@ pub fn run() {
             applog::install_panic_hook();
             applog::log_startup();
 
-            // ホットキー(グローバルショートカット)機能。個々のキー割り当ての
-            // 登録・解除はフロントエンド(main.js)側からJS API
-            // (window.__TAURI__.globalShortcut.register/unregister)を直接呼んで
-            // 動的に行うので、ここではプラグイン自体を有効化するだけでよい
-            // (アプリ起動時点で固定のショートカットを登録する必要はない)。
-            app.handle()
-                .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+            // ホットキーは、キーを横取りしない低レベルのキーボードフックで見張る
+            // (hotkeys.rs。割り当てはmain.jsからset_hotkeysで渡される)。
 
             let app_data_dir = app.path().app_data_dir()?;
             let config_path = app_data_dir.join("viewer-config.json");
@@ -839,6 +835,8 @@ pub fn run() {
             close_bar_window,
             notify_profile_settings_changed,
             send_hotkey_reaction,
+            hotkeys::set_hotkeys,
+            hotkeys::suspend_hotkeys,
             start_manual_pick,
             cancel_manual_pick,
             updater::check_for_update,

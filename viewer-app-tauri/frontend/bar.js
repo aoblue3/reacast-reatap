@@ -298,15 +298,9 @@ function connectRelay(relayHost, relayPort) {
   relayClient.connect();
 }
 
-// 重要: このウィンドウ自身はOS側のグローバルショートカット登録
-// (gs.register/unregisterAll)を一切行わない。tauri-plugin-global-shortcutは
-// 登録済みショートカットをアプリ全体で1つのマップとして管理しているため、
-// バーごとに自分のホットキーだけを登録・解除しているつもりでも、
-// unregisterAll()は他プロファイルの分まで巻き添えで消してしまう
-// (実機検証ではなく、プラグイン本体のソースコード確認で判明)。そのため、
-// ホットキーの実際のOS登録はメインウィンドウ(main.js)に一本化してあり、
-// メインウィンドウで押されたホットキーは"hotkey-reaction"イベント経由で
-// このウィンドウに転送されてくる(lib.rsのsend_hotkey_reaction参照)。
+// このウィンドウ自身はホットキーの割り当てを行わない。割り当てはメインウィンドウ
+// (main.jsのapplyAllHotkeys)が全プロファイル分をまとめてRust側(hotkeys.rs)に
+// 渡し、押されたホットキーは"hotkey-reaction"イベントでこのウィンドウに届く。
 // ここではそれを受けてonClickEmoji()を呼ぶだけでよい。
 // hotkeyMap自体はボタン下のバッジ表示(どのキーが割り当てられているか)の
 // ためだけに読み込む(reloadProfileSettings参照)。
