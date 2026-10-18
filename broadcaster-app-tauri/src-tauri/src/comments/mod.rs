@@ -89,6 +89,32 @@ pub struct CommentSettings {
     /// 1件のレスで待つ最大の時間(ミリ秒、0で無制限)。長いレスは読み上げをこの時間に
     /// 収まる所で打ち切って(「以下略」)、字幕もこの時間で次のレスへ進む
     pub max_wait_ms: u64,
+    /// 読み上げソフト(tts.rs)。"command"=コマンドで渡す(民安★TALK・SofTalkなど)、
+    /// "voicevox"/"coeiroinkv1"/"sharevox"/"aivisspeech"/"voicevoxcompat"=VOICEVOX互換、
+    /// "coeiroink"=COEIROINK v2、"bouyomi"=棒読みちゃん
+    pub speech_engine: String,
+    /// 読み上げソフトの接続先(空欄ならそのソフトの既定のアドレス)
+    pub tts_url: String,
+    /// 声(VOICEVOX互換はスタイルの番号、COEIROINK v2は「UUID:スタイル番号」)。
+    /// YouTube・Twitchのコメントは別の声にもできる(空欄なら共通の声)
+    pub tts_speaker: String,
+    pub tts_speaker_youtube: String,
+    pub tts_speaker_twitch: String,
+    /// 話速・音高・抑揚・音量・開始無音(秒)・終了無音(秒)・間の長さ
+    pub tts_speed: f64,
+    pub tts_pitch: f64,
+    pub tts_intonation: f64,
+    pub tts_volume: f64,
+    pub tts_pre_silence: f64,
+    pub tts_post_silence: f64,
+    pub tts_pause_scale: f64,
+    /// 音の出力先(空欄ならWindowsの既定。仮想オーディオデバイスを選べばOBSで別に取り込める)
+    pub tts_device: String,
+    /// 棒読みちゃんの声(0=棒読みちゃんの設定どおり)・速度・音程・音量(-1=棒読みちゃんの設定どおり)
+    pub bouyomi_voice: i32,
+    pub bouyomi_speed: i32,
+    pub bouyomi_tone: i32,
+    pub bouyomi_volume: i32,
     /// 読み上げの「スキップ」「一時停止/再開」のホットキー(空なら使わない。hotkeys.rs)
     pub hotkey_skip: String,
     pub hotkey_pause: String,
@@ -286,6 +312,23 @@ impl Default for CommentSettings {
             max_chars: 270,
             speech_ms_per_char: 160,
             max_wait_ms: 20000,
+            speech_engine: "command".into(),
+            tts_url: String::new(),
+            tts_speaker: String::new(),
+            tts_speaker_youtube: String::new(),
+            tts_speaker_twitch: String::new(),
+            tts_speed: 1.0,
+            tts_pitch: 0.0,
+            tts_intonation: 1.0,
+            tts_volume: 1.0,
+            tts_pre_silence: 0.1,
+            tts_post_silence: 0.1,
+            tts_pause_scale: 1.0,
+            tts_device: String::new(),
+            bouyomi_voice: 0,
+            bouyomi_speed: -1,
+            bouyomi_tone: -1,
+            bouyomi_volume: -1,
             hotkey_skip: String::new(),
             hotkey_pause: String::new(),
             hotkey_voice_mute: String::new(),
@@ -526,10 +569,12 @@ impl CommentEngine {
         CommentStatus { paused: st.paused, ..st.status.clone() }
     }
 
-    /// 今のレスの字幕を消し、待ち時間を打ち切って次のレスへ進む。読み上げソフトに
-    /// 渡し済みの声は止められない(民安★TALK側で止める)。
+    /// 今のレスの字幕を消し、待ち時間を打ち切って次のレスへ進む。ReaCastが鳴らしている
+    /// 声(VOICEVOX等)と棒読みちゃんは止める。コマンドで渡し済みの声は止められない
+    /// (民安★TALK側で止める)。
     pub fn skip(&self) {
         log::info!("読み上げをスキップ");
+        crate::tts::skip(&self.settings());
         self.bridge().clear_subtitle();
         self.skip.notify_waiters();
     }
@@ -1381,10 +1426,34 @@ impl CommentEngine {
                 }
             }
 
-            let speaking = settings.speech_enabled && !settings.command_path.trim().is_empty();
+            let engine = crate::tts::engine_kind(&settings);
+            let speaking = settings.speech_enabled
+                && (engine != crate::tts::EngineKind::Command || !settings.command_path.trim().is_empty());
             let spoken = if speaking { speech_text(&post, aa, &settings, &compiled) } else { String::new() };
             let spoken = fit_speech_to_max_wait(spoken, &settings);
-            let speech_ms = speech_duration(&spoken, &settings);
+            let mut speech_ms = speech_duration(&spoken, &settings);
+            // ReaCastが鳴らす読み上げソフト(VOICEVOX等)は、字幕を出す前に音声を作っておき、
+            // 本当の長さだけ字幕を出して待つ(目安の時間ではなく)
+            let mut wav = None;
+            if crate::tts::plays_itself(&settings) && !spoken.trim().is_empty() {
+                match crate::tts::synthesize(&settings, &spoken, &post.source).await {
+                    Ok(Some((w, ms))) => {
+                        speech_ms = ms + 150;
+                        wav = Some(w);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        // 読み上げソフトが起動していない等。声は出ないので待たない
+                        log::warn!("読み上げ: {e}");
+                        speech_ms = 0;
+                    }
+                }
+            }
+            // 長すぎる時は最大待ち時間で次へ(声もそこで止める)
+            let cut_speech = settings.max_wait_ms > 0 && speech_ms > settings.max_wait_ms;
+            if cut_speech {
+                speech_ms = settings.max_wait_ms;
+            }
             // 読み上げている間は字幕も出しておく(長いレスでも最大待ち時間まで)
             let shown_ms = display_duration(&post, aa, &settings).max(speech_ms);
             let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
@@ -1428,11 +1497,24 @@ impl CommentEngine {
             }
 
             if !spoken.trim().is_empty() {
-                run_speech_command(&settings, &post, &spoken);
+                match engine {
+                    crate::tts::EngineKind::Command => run_speech_command(&settings, &post, &spoken),
+                    crate::tts::EngineKind::Bouyomi => crate::tts::speak_bouyomi(&settings, &spoken),
+                    _ => {
+                        if let Some(w) = wav {
+                            if let Err(e) = crate::tts::play_wav(w, &settings) {
+                                log::warn!("読み上げ: {e}");
+                            }
+                        }
+                    }
+                }
             }
 
             let interval = next_interval(backlog, shown_ms, speech_ms, &settings);
             self.wait_or_skip(interval).await;
+            if cut_speech && crate::tts::plays_itself(&settings) {
+                crate::tts::stop();
+            }
         }
     }
 }

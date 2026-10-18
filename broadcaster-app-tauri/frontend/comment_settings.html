@@ -183,6 +183,13 @@
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
   }
   textarea.css { min-height: 110px; }
+  /* 読み上げソフトごとの設定(選んだソフトのものだけ出す) */
+  .engine-box { border: 1px solid var(--c-3a3d47); border-radius: 6px; padding: 10px 12px 4px; margin: 4px 0 12px; }
+  .slider-row { display: grid; grid-template-columns: 1fr 52px auto; gap: 8px; align-items: center; max-width: 460px; }
+  .slider-row input[type=range] { width: 100%; }
+  .slider-row output { text-align: right; font-variant-numeric: tabular-nums; }
+  .slider-row button { padding: 2px 8px; font-size: 12px; }
+  .speech-select { min-width: 260px; max-width: 100%; }
 </style>
 <script src="shared/theme.js"></script>
 </head>
@@ -270,18 +277,75 @@
 
     <section data-tab="speech">
       <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
-      <div class="field"><label>読み上げソフト(コマンドライン引渡し)</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
-      <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
-      <div class="hint">#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。既定の「#Res#」なら、vrx.exe(民安★TALK)には本文だけが渡り、レス番号や名前は読み上げません。本文はシェルを通さずそのまま1つの引数として渡します。</div>
+      <div class="field"><label>読み上げソフト</label><div>
+        <select data-key="speechEngine" id="speechEngine" class="speech-select">
+          <optgroup label="ReaCastが直接つないで鳴らす(おすすめ)">
+            <option value="voicevox">VOICEVOX</option>
+            <option value="coeiroink">COEIROINK(v2)</option>
+            <option value="coeiroinkv1">COEIROINK(v1)</option>
+            <option value="aivisspeech">AivisSpeech</option>
+            <option value="sharevox">SHAREVOX</option>
+            <option value="voicevoxcompat">その他のVOICEVOX互換ソフト(接続先を入力)</option>
+          </optgroup>
+          <optgroup label="ソフトに読ませる">
+            <option value="bouyomi">棒読みちゃん(HTTP連携)</option>
+            <option value="command">コマンドで渡す(民安★TALK・SofTalk・その他)</option>
+          </optgroup>
+        </select>
+      </div></div>
+
+      <div class="engine-box" data-engine="http">
+        <div class="hint" style="margin-top:0">読み上げソフトを起動しておくだけで使えます。ReaCastが音声を受け取って鳴らすので、読み終わる時間が正確に分かり、字幕と声がずれません。スキップすると声も止まります。</div>
+        <div class="field"><label>接続先</label><div class="inline"><input type="text" data-key="ttsUrl" id="ttsUrl" style="width: 260px" /><span class="unit">空欄なら既定(<span id="ttsDefaultUrl"></span>)</span></div></div>
+        <div class="field"><label>声</label><div class="inline"><select data-key="ttsSpeaker" data-speaker-select data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchSpeakers">声の一覧を取得</button></div></div>
+        <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
+        <div class="field"><label>声(Twitchのコメント)</label><div><select data-key="ttsSpeakerTwitch" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
+        <div class="hint" id="ttsSpeakerMsg"></div>
+        <div class="field"><label>話速</label><div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>音高</label><div class="slider-row"><input type="range" min="-0.15" max="0.15" step="0.01" data-key="ttsPitch" data-default="0" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>抑揚</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsIntonation" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>開始無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field"><label>終了無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+        <div class="hint">開始無音・終了無音は秒。間の長さはVOICEVOX・AivisSpeechなど対応しているソフトだけ効きます。</div>
+        <div class="field"><label>音の出力先</label><div class="inline"><select data-key="ttsDevice" id="ttsDevice" data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchDevices">更新</button></div></div>
+        <div class="hint">VB-CABLEなどの仮想オーディオデバイスを選ぶと、OBSで読み上げの音だけを別に取り込めます。</div>
+      </div>
+
+      <div class="engine-box" data-engine="bouyomi">
+        <div class="hint" style="margin-top:0">棒読みちゃんの「基本設定」→「アプリケーション連携」で「HTTP連携」を有効にしてください(既定のポートは50080)。</div>
+        <div class="field"><label>接続先</label><div class="inline"><input type="text" data-key="ttsUrl" style="width: 260px" /><span class="unit">空欄なら既定(http://127.0.0.1:50080)</span></div></div>
+        <div class="field"><label>声</label><div><select data-key="bouyomiVoice" data-int>
+          <option value="0">棒読みちゃんの設定どおり</option>
+          <option value="1">女性1</option><option value="2">女性2</option>
+          <option value="3">男性1</option><option value="4">男性2</option>
+          <option value="5">中性</option><option value="6">ロボット</option>
+          <option value="7">機械1</option><option value="8">機械2</option>
+        </select></div></div>
+        <div class="field"><label>速度</label><div><input type="number" min="-1" max="300" data-key="bouyomiSpeed" /><span class="unit">50〜300(-1で棒読みちゃんの設定どおり)</span></div></div>
+        <div class="field"><label>音程</label><div><input type="number" min="-1" max="200" data-key="bouyomiTone" /><span class="unit">50〜200(-1で棒読みちゃんの設定どおり)</span></div></div>
+        <div class="field"><label>音量</label><div><input type="number" min="-1" max="100" data-key="bouyomiVolume" /><span class="unit">0〜100(-1で棒読みちゃんの設定どおり)</span></div></div>
+      </div>
+
+      <div class="engine-box" data-engine="command">
+        <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
+        <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
+        <div class="field"><label>よく使う設定</label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button></div></div>
+        <div class="hint">#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。<br>VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。SofTalkは「SofTalk」を押してから、ソフトの場所をsoftalkw.exe(またはSofTalk.exe)に合わせてください。</div>
+      </div>
+
+      <div class="field" data-engine="test"><label>試しに読み上げ</label><div class="inline"><input type="text" id="ttsTestText" value="テストです。こんにちは、ReaCastです。" style="width: 280px" /><button id="ttsTestBtn">読み上げる</button></div></div>
+      <div class="hint" id="ttsTestMsg"></div>
       <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>レス読み上げ間隔(ターボモード)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>ターボを開始するレス件数</label><div><input type="number" min="1" data-key="turboThreshold" /><span class="unit">順番待ちがこの件数以上溜まったら短い間隔にします</span></div></div>
       <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /><span class="unit">ONにすると本文の前に番号を付けて渡します(既定OFF)</span></div></div>
       <div class="field"><label>読み上げ時間の目安</label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
-      <div class="hint">文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
+      <div class="hint">VOICEVOXなどReaCastが直接鳴らすソフトでは本当の長さを使うので、この目安は長いレスを「以下略」で打ち切る時だけに使います。<br>文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
       <div class="field"><label>ホットキー: スキップ</label><div class="inline"><input type="text" readonly data-hotkey="hotkeySkip" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeySkip">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeySkip">解除</button></div></div>
       <div class="field"><label>ホットキー: 一時停止/再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyPause" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyPause">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyPause">解除</button></div></div>
-      <div class="hint hotkey-msg" id="hotkeyMsg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+S)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。スキップは字幕と待ち時間を飛ばすだけで、読み上げソフトに渡し済みの声は止まりません(民安★TALK側で止めてください)。</div>
+      <div class="hint hotkey-msg" id="hotkeyMsg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+S)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。スキップすると字幕と待ち時間を飛ばし、VOICEVOX等・棒読みちゃんの声も止めます(コマンドで渡した声は止まらないので、民安★TALK側で止めてください)。</div>
       <div class="field"><label>1件の最大待ち時間</label><div><input type="number" min="0" step="1000" data-key="maxWaitMs" /><span class="unit">ミリ秒(0で無制限)。これより長くかかるレスは、読み上げをこの時間に収まる所で打ち切って「以下略」を付け、次のレスへ進みます</span></div></div>
       <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
     </section>

@@ -5,6 +5,7 @@ mod config_store;
 mod connect_code;
 mod obs_bridge;
 mod preflight;
+mod tts;
 mod voice;
 pub mod updater;
 
@@ -1237,6 +1238,9 @@ pub fn run() {
             voice::voice_status,
             voice::voice_reopen,
             voice::voice_toggle_mute,
+            tts::tts_list_speakers,
+            tts::tts_list_devices,
+            tts::tts_test,
             backup::export_settings,
             backup::import_settings,
             comments::comments_default_reaction_rules,

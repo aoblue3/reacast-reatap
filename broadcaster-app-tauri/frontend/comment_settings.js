@@ -37,7 +37,8 @@ function setPath(obj, path, value) {
 
 function readField(el) {
   if (el.type === 'checkbox') return el.checked;
-  if (el.type === 'number') {
+  if (el.hasAttribute('data-int')) return Number(el.value) | 0;
+  if (el.type === 'number' || el.type === 'range') {
     const n = Number(el.value);
     if (!Number.isFinite(n)) return undefined;
     return el.hasAttribute('data-percent') ? n / 100 : n;
@@ -47,16 +48,25 @@ function readField(el) {
 
 function writeField(el, value) {
   if (el.type === 'checkbox') el.checked = !!value;
-  else if (el.type === 'number') {
+  else if (el.type === 'number' || el.type === 'range') {
     const n = Number(value);
     el.value = Number.isFinite(n) ? String(el.hasAttribute('data-percent') ? Math.round(n * 1000) / 10 : n) : '';
+  } else if (el.hasAttribute('data-keep-unknown') && value != null && value !== '' && !Array.from(el.options).some((o) => o.value === String(value))) {
+    // 一覧をまだ取得していない声・出力先も、保存済みの値として表示しておく
+    const o = document.createElement('option');
+    o.value = String(value);
+    o.textContent = `(保存済み: ${value})`;
+    el.appendChild(o);
+    el.value = String(value);
   } else el.value = value == null ? '' : String(value);
+  if (el.type === 'range') updateRangeOutput(el);
 }
 
 function renderFields() {
   for (const el of fields) writeField(el, getPath(settings, el.dataset.key));
   renderHotkeys();
   renderRuleEditors();
+  renderEngineBoxes();
   monitorSelect.value = settings.desktopMonitorId || '';
   const r = settings.desktopRect;
   document.getElementById('desktopRectInfo').textContent = r
@@ -177,6 +187,164 @@ for (const btn of document.querySelectorAll('[data-copy]')) {
     }
   });
 }
+
+// ---- 読み上げソフト(tts.rs) ----
+const TTS_DEFAULT_URL = {
+  voicevox: 'http://127.0.0.1:50021',
+  coeiroink: 'http://127.0.0.1:50032',
+  coeiroinkv1: 'http://127.0.0.1:50031',
+  aivisspeech: 'http://127.0.0.1:10101',
+  sharevox: 'http://127.0.0.1:50025',
+  voicevoxcompat: 'http://127.0.0.1:50021',
+};
+const COMMAND_PRESETS = {
+  tamiyasu: { commandPath: 'C:\\tamiyasuex\\vrx.exe', commandArgs: '#Res#' },
+  // /X:1=SofTalkの画面を出さない、/W:は最後に置く(それ以降が読み上げる文字)
+  softalk: { commandPath: 'C:\\softalk\\softalkw.exe', commandArgs: '/X:1 /W:#Res#' },
+};
+let ttsListedFor = null; // 声の一覧を取得した接続先(取り直しを避ける)
+let ttsDevicesListed = false;
+
+function isHttpEngine(engine) {
+  return Object.prototype.hasOwnProperty.call(TTS_DEFAULT_URL, engine);
+}
+
+function updateRangeOutput(el) {
+  const out = el.parentElement.querySelector('output');
+  if (out) out.textContent = Number(el.value).toFixed(2);
+}
+
+function renderEngineBoxes() {
+  const engine = settings.speechEngine || 'command';
+  const http = isHttpEngine(engine);
+  for (const box of document.querySelectorAll('[data-engine]')) {
+    const kind = box.dataset.engine;
+    const show =
+      kind === 'http' ? http
+      : kind === 'voicevox-only' ? http && engine !== 'coeiroink'
+      : kind === 'test' ? engine !== 'command'
+      : kind === engine;
+    box.style.display = show ? '' : 'none';
+  }
+  if (http) {
+    document.getElementById('ttsDefaultUrl').textContent = TTS_DEFAULT_URL[engine];
+    // 開いた時・ソフトを切り替えた時は、黙って声の一覧を取ってみる(起動していなければそのまま)
+    const key = `${engine} ${settings.ttsUrl || ''}`;
+    if (ttsListedFor !== key) {
+      ttsListedFor = key;
+      fetchSpeakers(true);
+    }
+    if (!ttsDevicesListed) {
+      ttsDevicesListed = true;
+      fetchDevices();
+    }
+  }
+}
+
+function fillSpeakerSelects(list) {
+  for (const sel of document.querySelectorAll('select[data-speaker-select]')) {
+    sel.textContent = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = sel.hasAttribute('data-allow-same') ? '上の「声」と同じ' : '(選んでください)';
+    sel.appendChild(none);
+    for (const sp of list) {
+      const o = document.createElement('option');
+      o.value = sp.id;
+      o.textContent = sp.name;
+      sel.appendChild(o);
+    }
+    writeField(sel, getPath(settings, sel.dataset.key));
+  }
+}
+
+async function fetchSpeakers(quiet) {
+  const msg = document.getElementById('ttsSpeakerMsg');
+  if (!quiet) msg.textContent = '取得中…';
+  try {
+    const list = await invoke('tts_list_speakers', { settings });
+    fillSpeakerSelects(list);
+    // まだ声を選んでいなければ、最初の声にしておく
+    if (!settings.ttsSpeaker && list.length) {
+      settings.ttsSpeaker = list[0].id;
+      fillSpeakerSelects(list);
+      scheduleSave();
+    }
+    msg.textContent = `${list.length}種類の声があります。`;
+  } catch (e) {
+    fillSpeakerSelects([]);
+    msg.textContent = quiet ? '読み上げソフトを起動してから「声の一覧を取得」を押してください。' : String(e);
+  }
+}
+
+async function fetchDevices() {
+  const sel = document.getElementById('ttsDevice');
+  const names = await invoke('tts_list_devices').catch(() => []);
+  sel.textContent = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = 'Windowsの既定の出力先';
+  sel.appendChild(def);
+  for (const n of names) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    sel.appendChild(o);
+  }
+  writeField(sel, settings.ttsDevice);
+}
+
+document.getElementById('speechEngine').addEventListener('change', () => {
+  // ソフトが変わると接続先も声の番号も別物になるので、選び直してもらう
+  settings.ttsUrl = '';
+  settings.ttsSpeaker = '';
+  settings.ttsSpeakerYoutube = '';
+  settings.ttsSpeakerTwitch = '';
+  document.getElementById('ttsSpeakerMsg').textContent = '';
+  document.getElementById('ttsTestMsg').textContent = '';
+  renderFields();
+  scheduleSave();
+});
+// 接続先を変えたら、入力が落ち着いてから一覧を取り直す
+let ttsUrlTimer = null;
+for (const el of document.querySelectorAll('input[data-key="ttsUrl"]')) {
+  el.addEventListener('input', () => {
+    clearTimeout(ttsUrlTimer);
+    ttsUrlTimer = setTimeout(renderFields, 800);
+  });
+}
+for (const el of document.querySelectorAll('input[type=range][data-key]')) {
+  el.addEventListener('input', () => updateRangeOutput(el));
+}
+for (const btn of document.querySelectorAll('[data-reset]')) {
+  btn.addEventListener('click', () => {
+    const el = btn.parentElement.querySelector('input[type=range]');
+    el.value = el.dataset.default;
+    onFieldChange(el);
+    updateRangeOutput(el);
+  });
+}
+document.getElementById('ttsFetchSpeakers').addEventListener('click', () => fetchSpeakers(false));
+document.getElementById('ttsFetchDevices').addEventListener('click', fetchDevices);
+for (const btn of document.querySelectorAll('[data-command-preset]')) {
+  btn.addEventListener('click', () => {
+    Object.assign(settings, COMMAND_PRESETS[btn.dataset.commandPreset]);
+    renderFields();
+    scheduleSave();
+  });
+}
+document.getElementById('ttsTestBtn').addEventListener('click', async () => {
+  const text = document.getElementById('ttsTestText').value.trim();
+  const msg = document.getElementById('ttsTestMsg');
+  if (!text) return;
+  msg.textContent = '読み上げ中…';
+  try {
+    await invoke('tts_test', { settings, text });
+    msg.textContent = '';
+  } catch (e) {
+    msg.textContent = String(e);
+  }
+});
 
 // ---- 参照ボタン ----
 document.getElementById('pickExeBtn').addEventListener('click', async () => {
