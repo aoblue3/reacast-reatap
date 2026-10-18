@@ -183,14 +183,62 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-/// 取得元(掲示板・YouTube・Twitch)ごとの声。空欄なら共通の声。
-fn speaker_for(s: &CommentSettings, source: &str) -> String {
+/// ReaCastが鳴らすHTTPの読み上げソフトか(ランダムの声に使えるソフト)
+fn is_http_engine(engine: &str) -> bool {
+    matches!(engine, "voicevox" | "coeiroinkv1" | "sharevox" | "aivisspeech" | "voicevoxcompat" | "coeiroink")
+}
+
+/// このレスを読む声を決めて、その声で読むための設定(読み上げソフト・接続先・声)を返す。
+/// 1. 取得元(YouTube・Twitch)ごとの声が指定されていればそれ
+/// 2. ランダムがONなら、割合に応じてランダムに(同じ人には同じ声、も選べる)。
+///    別の読み上げソフトの声なら、そのソフトの既定の接続先で
+/// 3. それ以外は共通の声
+/// `person`は同じ人を見分ける文字列(掲示板はID、配信サイトは名前。空なら毎回ランダム)。
+pub fn pick_voice(s: &CommentSettings, source: &str, person: &str) -> CommentSettings {
+    let mut v = s.clone();
     let per = match source {
         "youtube" => s.tts_speaker_youtube.trim(),
         "twitch" => s.tts_speaker_twitch.trim(),
         _ => "",
     };
-    if per.is_empty() { s.tts_speaker.trim() } else { per }.to_string()
+    if !per.is_empty() {
+        v.tts_speaker = per.to_string();
+        return v;
+    }
+    if !s.tts_random {
+        return v;
+    }
+    let voices: Vec<_> = s
+        .tts_random_voices
+        .iter()
+        .filter(|r| r.weight > 0 && !r.speaker.trim().is_empty() && is_http_engine(&r.engine))
+        .collect();
+    let total: u64 = voices.iter().map(|r| r.weight as u64).sum();
+    if total == 0 {
+        return v;
+    }
+    let roll = if s.tts_random_by_person && !person.trim().is_empty() {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        person.trim().hash(&mut h);
+        h.finish() % total
+    } else {
+        use rand::Rng;
+        rand::thread_rng().gen_range(0..total)
+    };
+    let mut acc = 0u64;
+    for r in voices {
+        acc += r.weight as u64;
+        if roll < acc {
+            if r.engine != s.speech_engine {
+                v.speech_engine = r.engine.clone();
+                v.tts_url = String::new();
+            }
+            v.tts_speaker = r.speaker.trim().to_string();
+            break;
+        }
+    }
+    v
 }
 
 async fn synth_voicevox(s: &CommentSettings, text: &str, speaker: &str) -> Result<Vec<u8>, String> {
@@ -301,10 +349,11 @@ pub fn plays_itself(s: &CommentSettings) -> bool {
 
 /// 読み上げの音声(WAV)を作ってもらう。ReaCastが鳴らすソフトでなければNone。
 /// 字幕を出す前に作っておき、長さ(wav_duration_ms)に合わせて字幕を出しておく。
-pub async fn synthesize(s: &CommentSettings, text: &str, source: &str) -> Result<Option<(Vec<u8>, u64)>, String> {
-    let wav = match engine_kind(s) {
-        EngineKind::VoicevoxCompat => synth_voicevox(s, text, &speaker_for(s, source)).await?,
-        EngineKind::CoeiroinkV2 => synth_coeiroink(s, text, &speaker_for(s, source)).await?,
+/// `v`はpick_voiceで声を決めた後の設定。
+async fn synthesize(v: &CommentSettings, text: &str) -> Result<Option<(Vec<u8>, u64)>, String> {
+    let wav = match engine_kind(v) {
+        EngineKind::VoicevoxCompat => synth_voicevox(v, text, &v.tts_speaker).await?,
+        EngineKind::CoeiroinkV2 => synth_coeiroink(v, text, &v.tts_speaker).await?,
         _ => return Ok(None),
     };
     let ms = wav_duration_ms(&wav).ok_or("読み上げソフトから届いた音声の形式が分かりません")?;
@@ -329,11 +378,18 @@ pub fn speak_bouyomi(s: &CommentSettings, text: &str) {
 }
 
 /// 音声を作る。読み上げソフトに繋がらない時は(自動起動がONなら)起動を待ってからもう一度。
-pub async fn synthesize_or_launch(s: &CommentSettings, text: &str, source: &str) -> Result<Option<(Vec<u8>, u64)>, String> {
-    match synthesize(s, text, source).await {
-        Err(e) if s.tts_auto_launch && !is_alive(s).await => {
-            ensure_running(s, Duration::from_secs(60)).await.map_err(|le| format!("{e}({le})"))?;
-            synthesize(s, text, source).await
+/// 声はpick_voiceで決める(`source`・`person`はその材料)。
+pub async fn synthesize_or_launch(
+    s: &CommentSettings,
+    text: &str,
+    source: &str,
+    person: &str,
+) -> Result<Option<(Vec<u8>, u64)>, String> {
+    let v = pick_voice(s, source, person);
+    match synthesize(&v, text).await {
+        Err(e) if v.tts_auto_launch && !is_alive(&v).await => {
+            ensure_running(&v, Duration::from_secs(60)).await.map_err(|le| format!("{e}({le})"))?;
+            synthesize(&v, text).await
         }
         r => r,
     }
@@ -356,7 +412,7 @@ async fn speak(s: &CommentSettings, text: &str, source: &str) -> Result<(), Stri
         ensure_running(s, Duration::from_secs(30)).await?;
         return talk_bouyomi(s, text).await;
     }
-    if let Some((wav, _)) = synthesize_or_launch(s, text, source).await? {
+    if let Some((wav, _)) = synthesize_or_launch(s, text, source, "").await? {
         play_wav(wav, s)?;
     }
     Ok(())
@@ -446,7 +502,7 @@ fn running_exe(_names: &[&str]) -> Option<std::path::PathBuf> {
 
 /// 読み上げソフトのexeの場所: 設定で指定した場所 → 起動中のプロセス → 標準のインストール先。
 pub fn find_exe(s: &CommentSettings) -> Option<std::path::PathBuf> {
-    let custom = s.tts_exe_path.trim().trim_matches('"');
+    let custom = s.tts_exe_paths.get(&s.speech_engine).map(|p| p.trim().trim_matches('"')).unwrap_or_default();
     if !custom.is_empty() {
         let p = std::path::PathBuf::from(custom);
         return p.is_file().then_some(p);
@@ -466,7 +522,8 @@ async fn is_alive(s: &CommentSettings) -> bool {
 }
 
 /// 最後に自動で起動した時刻(起動に時間がかかる間に何度も起動しないように)
-static LAST_LAUNCH: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+/// 読み上げソフトごと(ランダムで別々のソフトの声を混ぜた時は、それぞれ起動する)
+static LAST_LAUNCH: Mutex<Option<std::collections::HashMap<String, std::time::Instant>>> = Mutex::new(None);
 
 /// 読み上げソフトが起動していなければ起動して、受付を始めるまで最大`wait`待つ。
 /// 自動起動がOFF・コマンドで渡す方式の時は何もしない。
@@ -477,7 +534,13 @@ pub async fn ensure_running(s: &CommentSettings, wait: Duration) -> Result<(), S
     if is_alive(s).await {
         return Ok(());
     }
-    let recently = LAST_LAUNCH.lock().unwrap().map(|t| t.elapsed() < Duration::from_secs(90)).unwrap_or(false);
+    let recently = LAST_LAUNCH
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|m| m.get(&s.speech_engine))
+        .map(|t| t.elapsed() < Duration::from_secs(90))
+        .unwrap_or(false);
     if !recently {
         let exe = find_exe(s).ok_or("読み上げソフトの場所が分かりません(「読み上げ」タブでソフトの場所を指定してください)")?;
         log::info!("読み上げソフトを起動します: {}", exe.display());
@@ -486,7 +549,7 @@ pub async fn ensure_running(s: &CommentSettings, wait: Duration) -> Result<(), S
             cmd.current_dir(dir);
         }
         let child = cmd.spawn().map_err(|e| format!("読み上げソフトを起動できませんでした({}): {e}", exe.display()))?;
-        *LAST_LAUNCH.lock().unwrap() = Some(std::time::Instant::now());
+        LAST_LAUNCH.lock().unwrap().get_or_insert_with(Default::default).insert(s.speech_engine.clone(), std::time::Instant::now());
         // 配信の画面の前に出てこないよう、窓が出たら最小化する
         #[cfg(windows)]
         crate::voice::minimize_when_shown(child.id());
@@ -517,10 +580,23 @@ pub fn launch_in_background(s: &CommentSettings) {
     if CHECKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return;
     }
-    let s = s.clone();
+    // ランダムの声で別の読み上げソフトも使うなら、そのソフトも起動しておく
+    let mut targets = vec![s.clone()];
+    if s.tts_random && plays_itself(s) {
+        for r in &s.tts_random_voices {
+            if r.weight > 0 && is_http_engine(&r.engine) && targets.iter().all(|t| t.speech_engine != r.engine) {
+                let mut t = s.clone();
+                t.speech_engine = r.engine.clone();
+                t.tts_url = String::new();
+                targets.push(t);
+            }
+        }
+    }
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = ensure_running(&s, Duration::from_secs(90)).await {
-            log::warn!("{e}");
+        for t in &targets {
+            if let Err(e) = ensure_running(t, Duration::from_secs(90)).await {
+                log::warn!("{e}");
+            }
         }
         CHECKING.store(false, std::sync::atomic::Ordering::SeqCst);
     });
@@ -532,7 +608,7 @@ pub fn launch_in_background(s: &CommentSettings) {
 #[tauri::command(async)]
 pub fn tts_find_exe(settings: CommentSettings) -> Option<String> {
     let mut s = settings;
-    s.tts_exe_path.clear();
+    s.tts_exe_paths.remove(&s.speech_engine);
     find_exe(&s).map(|p| p.display().to_string())
 }
 
@@ -657,6 +733,46 @@ mod tests {
     }
 
     #[test]
+    fn picks_random_voice_by_weight() {
+        use crate::comments::RandomVoice;
+        let mut s = CommentSettings::default();
+        s.speech_engine = "voicevox".into();
+        s.tts_speaker = "3".into();
+        s.tts_url = "http://192.168.0.5:50021".into();
+        // ランダムOFFなら共通の声
+        assert_eq!(pick_voice(&s, "bbs", "").tts_speaker, "3");
+        s.tts_random = true;
+        s.tts_random_voices = vec![
+            RandomVoice { engine: "voicevox".into(), speaker: "1".into(), weight: 80 },
+            RandomVoice { engine: "coeiroink".into(), speaker: "uuid:0".into(), weight: 20 },
+            RandomVoice { engine: "voicevox".into(), speaker: "9".into(), weight: 0 },
+        ];
+        let mut zunda = 0;
+        for _ in 0..2000 {
+            let v = pick_voice(&s, "bbs", "");
+            match v.tts_speaker.as_str() {
+                "1" => {
+                    zunda += 1;
+                    assert_eq!(v.tts_url, "http://192.168.0.5:50021");
+                }
+                "uuid:0" => {
+                    assert_eq!(v.speech_engine, "coeiroink");
+                    assert_eq!(v.tts_url, ""); // 別のソフトは既定の接続先
+                }
+                other => panic!("割合0の声が選ばれた: {other}"),
+            }
+        }
+        assert!((1450..1750).contains(&zunda), "{zunda}");
+        // 同じ人には同じ声
+        s.tts_random_by_person = true;
+        let first = pick_voice(&s, "bbs", "ID:abcd1234").tts_speaker;
+        assert!((0..50).all(|_| pick_voice(&s, "bbs", "ID:abcd1234").tts_speaker == first));
+        // YouTubeの声を指定していればそちらが優先
+        s.tts_speaker_youtube = "8".into();
+        assert_eq!(pick_voice(&s, "youtube", "x").tts_speaker, "8");
+    }
+
+    #[test]
     #[ignore] // 実際にVOICEVOXへ繋ぐ(VOICEVOXを起動してから cargo test -- --ignored)
     fn synthesizes_with_voicevox() {
         let mut s = CommentSettings::default();
@@ -680,7 +796,7 @@ mod tests {
         assert!(tauri::async_runtime::block_on(is_alive(&s)));
         // 起動済みなら何もしないで戻る
         tauri::async_runtime::block_on(ensure_running(&s, Duration::from_secs(1))).unwrap();
-        assert!(LAST_LAUNCH.lock().unwrap().is_none());
+        assert!(LAST_LAUNCH.lock().unwrap().as_ref().map(|m| m.is_empty()).unwrap_or(true));
     }
 
     #[test]
@@ -690,7 +806,7 @@ mod tests {
         s.speech_engine = "voicevox".into();
         s.tts_speaker = "3".into();
         s.tts_volume = 0.0;
-        let (wav, ms) = tauri::async_runtime::block_on(synthesize(&s, "無音のテスト", "bbs")).unwrap().unwrap();
+        let (wav, ms) = tauri::async_runtime::block_on(synthesize(&s, "無音のテスト")).unwrap().unwrap();
         assert_eq!(play_wav(wav, &s).unwrap(), ms);
         assert!(!tts_list_devices().is_empty());
         std::thread::sleep(Duration::from_millis(300));

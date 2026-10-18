@@ -26,20 +26,30 @@ pub struct VoiceManager {
     muted: std::sync::atomic::AtomicBool,
 }
 
-/// 起動したEdgeのプロセス。Windowsでは、ReaCastと一緒に終わるJobに入れる・
-/// 「最小化・アクティブにしない」を指定する、のためにCreateProcessWを直接使う
-/// (Commandのshow_windowはまだ安定版のRustで使えない)。ただしEdgeはこの指定を
-/// 無視して前に出てくるので、窓が出たらすぐ最小化もする(minimize_when_shown)。
+/// 起動したEdge。Windowsでは、起動するたびに専用のJobを作ってその中で動かし、
+/// Job単位で見張る・閉じる。Edgeは起動したプロセスがすぐ別のプロセスを立ち上げて
+/// 終わることがある(2026-10のEdgeの更新以降、本人のPCで発生)ため、最初の
+/// プロセスだけを見ていると「閉じられた」と勘違いして、設定を保存するたびに
+/// 窓を開き直してしまう。Jobの中のプロセスは、後から立ち上がった分も含めて
+/// まとめて数えられ、まとめて終わらせられる。JobはKILL_ON_JOB_CLOSEなので、
+/// ReaCastが(落ちた時も含めて)終わればEdgeも終わる。
+/// CreateProcessWを直接使うのは、Jobに入れてから動かすため(止めた状態で起動する)。
 #[cfg(target_os = "windows")]
-struct EdgeProcess(isize);
+struct EdgeProcess {
+    job: isize,
+}
 
 #[cfg(target_os = "windows")]
 impl EdgeProcess {
     fn spawn(exe: &std::path::Path, args: &[String]) -> Result<Self, String> {
         use windows::core::{PCWSTR, PWSTR};
         use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
         use windows::Win32::System::Threading::{
-            CreateProcessW, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
+            CreateProcessW, ResumeThread, CREATE_SUSPENDED, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
         };
         // 引数は全部""で囲む(パスに空白が入っていても大丈夫なように)
         let line = std::iter::once(exe.display().to_string())
@@ -48,6 +58,19 @@ impl EdgeProcess {
             .collect::<Vec<_>>()
             .join(" ");
         let mut wide: Vec<u16> = line.encode_utf16().chain(std::iter::once(0)).collect();
+        let job = unsafe {
+            let job = CreateJobObjectW(None, PCWSTR::null()).map_err(|e| format!("Edgeを起動できませんでした: {e}"))?;
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let _ = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            job
+        };
+        let me = Self { job: job.0 as isize };
         const SW_SHOWMINNOACTIVE: u16 = 7;
         let si = STARTUPINFOW {
             cb: std::mem::size_of::<STARTUPINFOW>() as u32,
@@ -56,8 +79,6 @@ impl EdgeProcess {
             ..Default::default()
         };
         let mut pi = PROCESS_INFORMATION::default();
-        // 止めた状態で起動して、ReaCastと一緒に終わるJobに入れてから動かす
-        // (Edgeが子プロセスを作る前に入れておくため)
         unsafe {
             CreateProcessW(
                 PCWSTR::null(),
@@ -65,72 +86,110 @@ impl EdgeProcess {
                 None,
                 None,
                 false,
-                windows::Win32::System::Threading::CREATE_SUSPENDED,
+                CREATE_SUSPENDED,
                 None,
                 PCWSTR::null(),
                 &si,
                 &mut pi,
             )
-        }
-        .map_err(|e| format!("Edgeを起動できませんでした: {e}"))?;
-        unsafe {
-            if let Some(job) = kill_with_reacast_job() {
-                let _ = windows::Win32::System::JobObjects::AssignProcessToJobObject(job, pi.hProcess);
-            }
-            windows::Win32::System::Threading::ResumeThread(pi.hThread);
+            .map_err(|e| format!("Edgeを起動できませんでした: {e}"))?;
+            // Edgeが子プロセスを作る前にJobに入れておく
+            let _ = AssignProcessToJobObject(job, pi.hProcess);
+            ResumeThread(pi.hThread);
             let _ = CloseHandle(pi.hThread);
+            let _ = CloseHandle(pi.hProcess);
         }
-        minimize_when_shown(pi.dwProcessId);
-        Ok(Self(pi.hProcess.0 as isize))
+        // Edgeは起動時の「最小化」の指定を無視して前に出てくるので、窓が出たら最小化する
+        let raw = me.job;
+        minimize_window_when_shown(move |pid| process_in_job(pid, raw));
+        Ok(me)
     }
 
     fn handle(&self) -> windows::Win32::Foundation::HANDLE {
-        windows::Win32::Foundation::HANDLE(self.0 as *mut core::ffi::c_void)
+        windows::Win32::Foundation::HANDLE(self.job as *mut core::ffi::c_void)
     }
 
+    /// Jobの中にまだ動いているプロセスがあるか(窓が閉じられたら0になる)
     fn is_running(&self) -> bool {
-        use windows::Win32::Foundation::WAIT_TIMEOUT;
-        use windows::Win32::System::Threading::WaitForSingleObject;
-        unsafe { WaitForSingleObject(self.handle(), 0) == WAIT_TIMEOUT }
+        use windows::Win32::System::JobObjects::{
+            JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+        };
+        let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        let ok = unsafe {
+            QueryInformationJobObject(
+                Some(self.handle()),
+                JobObjectBasicAccountingInformation,
+                &mut info as *mut _ as *mut core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                None,
+            )
+        };
+        ok.is_ok() && info.ActiveProcesses > 0
     }
 
     fn kill(&self) {
-        use windows::Win32::System::Threading::TerminateProcess;
         unsafe {
-            let _ = TerminateProcess(self.handle(), 0);
+            let _ = windows::Win32::System::JobObjects::TerminateJobObject(self.handle(), 0);
         }
     }
 }
 
-/// Edgeは起動時の「最小化」の指定を無視して前に出てくるので、窓が出たらすぐ
-/// 最小化する(最小化しても聞き取りは続くことを確認済み)。
+/// そのプロセスがJobに入っているか
+#[cfg(target_os = "windows")]
+fn process_in_job(pid: u32, job: isize) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::IsProcessInJob;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    unsafe {
+        let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false };
+        let mut result = windows::core::BOOL(0);
+        let ok = IsProcessInJob(h, Some(HANDLE(job as *mut core::ffi::c_void)), &mut result).is_ok();
+        let _ = CloseHandle(h);
+        ok && result.as_bool()
+    }
+}
+
+/// 起動したソフト(そのプロセスID)の窓が出たら最小化する(読み上げソフトの自動起動用)。
 #[cfg(target_os = "windows")]
 pub(crate) fn minimize_when_shown(pid: u32) {
+    minimize_window_when_shown(move |p| p == pid);
+}
+
+/// 条件に合うプロセスの窓が出たら、すぐ最小化する(最小化しても聞き取りは
+/// 続くことを確認済み)。最大10秒待つ。
+#[cfg(target_os = "windows")]
+fn minimize_window_when_shown(matches: impl Fn(u32) -> bool + Send + 'static) {
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsWindowVisible, ShowWindow, SW_MINIMIZE,
     };
+    struct Search<'a> {
+        matches: &'a dyn Fn(u32) -> bool,
+        found: isize,
+    }
     std::thread::spawn(move || {
         unsafe extern "system" fn find(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
-            let target = &mut *(lparam.0 as *mut (u32, isize));
+            let search = &mut *(lparam.0 as *mut Search);
+            if !IsWindowVisible(hwnd).as_bool() {
+                return true.into();
+            }
             let mut pid = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
-            if pid == target.0 && IsWindowVisible(hwnd).as_bool() {
-                target.1 = hwnd.0 as isize;
+            if (search.matches)(pid) {
+                search.found = hwnd.0 as isize;
                 return false.into();
             }
             true.into()
         }
-        // 窓が出るまで最大10秒待つ
         for _ in 0..50 {
             std::thread::sleep(std::time::Duration::from_millis(200));
-            let mut target: (u32, isize) = (pid, 0);
+            let mut search = Search { matches: &matches, found: 0 };
             unsafe {
-                let _ = EnumWindows(Some(find), LPARAM(&mut target as *mut (u32, isize) as isize));
+                let _ = EnumWindows(Some(find), LPARAM(&mut search as *mut Search as isize));
             }
-            if target.1 != 0 {
+            if search.found != 0 {
                 unsafe {
-                    let _ = ShowWindow(HWND(target.1 as *mut core::ffi::c_void), SW_MINIMIZE);
+                    let _ = ShowWindow(HWND(search.found as *mut core::ffi::c_void), SW_MINIMIZE);
                 }
                 return;
             }
@@ -138,37 +197,10 @@ pub(crate) fn minimize_when_shown(pid: u32) {
     });
 }
 
-/// ReaCastが(落ちた時も含めて)終わると、中のプロセスがまとめて終わるJob。
-/// 話した字幕のEdgeをここに入れて、ReaCastを閉じたのにEdgeの窓だけ残る
-/// (次に起動した時に同じプロフィールのEdgeが2つになる)ことを防ぐ。
-/// ハンドルはReaCastが終わるまで閉じない(閉じるとその時点で中が終わる)。
-#[cfg(target_os = "windows")]
-fn kill_with_reacast_job() -> Option<windows::Win32::Foundation::HANDLE> {
-    use windows::core::PCWSTR;
-    use windows::Win32::System::JobObjects::{
-        CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-    static JOB: std::sync::OnceLock<Option<isize>> = std::sync::OnceLock::new();
-    let raw = *JOB.get_or_init(|| unsafe {
-        let job = CreateJobObjectW(None, PCWSTR::null()).ok()?;
-        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        SetInformationJobObject(
-            job,
-            JobObjectExtendedLimitInformation,
-            &info as *const _ as *const core::ffi::c_void,
-            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-        )
-        .ok()?;
-        Some(job.0 as isize)
-    });
-    raw.map(|r| windows::Win32::Foundation::HANDLE(r as *mut core::ffi::c_void))
-}
-
 #[cfg(target_os = "windows")]
 impl Drop for EdgeProcess {
     fn drop(&mut self) {
+        // KILL_ON_JOB_CLOSEなので、閉じればJobの中のEdgeも終わる
         unsafe {
             let _ = windows::Win32::Foundation::CloseHandle(self.handle());
         }
@@ -474,5 +506,31 @@ mod tests {
             .unwrap();
         eprintln!("{t}");
         assert!(!t.is_empty());
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod job_tests {
+    use super::*;
+
+    /// 起動したプロセスが別のプロセスを立ち上げてすぐ終わっても(Edgeの起動と同じ)、
+    /// 動いていると分かり、まとめて終わらせられる
+    #[test]
+    fn tracks_relaunched_children_via_job() {
+        let p = EdgeProcess::spawn(
+            std::path::Path::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            &[
+                "-NoProfile".into(),
+                "-Command".into(),
+                "Start-Process ping -ArgumentList '-n','30','127.0.0.1' -WindowStyle Hidden".into(),
+            ],
+        )
+        .unwrap();
+        // PowerShellはすぐ終わるが、pingが残っている
+        std::thread::sleep(std::time::Duration::from_millis(4000));
+        assert!(p.is_running());
+        p.kill();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(!p.is_running());
     }
 }

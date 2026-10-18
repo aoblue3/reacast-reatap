@@ -227,6 +227,8 @@ function renderEngineBoxes() {
       : kind === engine;
     box.style.display = show ? '' : 'none';
   }
+  document.getElementById('ttsExePath').value = exePaths()[engine] || '';
+  document.getElementById('randomVoicesBox').style.display = settings.ttsRandom ? '' : 'none';
   if (http) {
     document.getElementById('ttsDefaultUrl').textContent = TTS_DEFAULT_URL[engine];
     // 開いた時・ソフトを切り替えた時は、黙って声の一覧を取ってみる(起動していなければそのまま)
@@ -239,6 +241,7 @@ function renderEngineBoxes() {
       ttsDevicesListed = true;
       fetchDevices();
     }
+    renderRandomVoices();
   }
   if (engine !== 'command' && ttsExeCheckedFor !== engine) {
     ttsExeCheckedFor = engine;
@@ -246,23 +249,30 @@ function renderEngineBoxes() {
   }
 }
 
-/** 読み上げソフトのexeを探して、見つかった場所を表示する。指定欄が空なら覚えておく
- * (起動中のプロセスから見つかった場所は、ソフトを閉じた後の自動起動に使うため)。 */
-async function findExe(quiet) {
-  const msg = document.getElementById('ttsExeMsg');
-  const found = await invoke('tts_find_exe', { settings }).catch(() => null);
-  if (found) {
-    if (!settings.ttsExePath || !quiet) {
-      settings.ttsExePath = found;
-      writeField(document.getElementById('ttsExePath'), found);
-      scheduleSave();
-    }
-    msg.textContent = `見つかりました: ${found}`;
-  } else if (!settings.ttsExePath) {
-    msg.textContent = '見つかりませんでした。ソフトを起動してから「自動で探す」を押すか、「参照...」で場所を指定してください。';
-  } else if (!quiet) {
-    msg.textContent = '自動では見つかりませんでした(指定した場所を使います)。';
+/** 読み上げソフトごとのexeの場所 */
+function exePaths() {
+  if (!settings.ttsExePaths || typeof settings.ttsExePaths !== 'object') settings.ttsExePaths = {};
+  return settings.ttsExePaths;
+}
+
+/** 読み上げソフトのexeを探す。指定が無ければ見つかった場所を覚えておく(起動中の
+ * プロセスから見つかった場所は、ソフトを閉じた後の自動起動に使うため)。
+ * engineを省くと今選んでいるソフト(結果を画面に出す)。 */
+async function findExe(quiet, engine) {
+  const current = !engine;
+  engine = engine || settings.speechEngine;
+  const found = await invoke('tts_find_exe', { settings: { ...settings, speechEngine: engine } }).catch(() => null);
+  const paths = exePaths();
+  if (found && (!paths[engine] || !quiet)) {
+    paths[engine] = found;
+    if (current) document.getElementById('ttsExePath').value = found;
+    scheduleSave();
   }
+  if (!current) return;
+  const msg = document.getElementById('ttsExeMsg');
+  if (found) msg.textContent = `見つかりました: ${found}`;
+  else if (!paths[engine]) msg.textContent = '見つかりませんでした。ソフトを起動してから「自動で探す」を押すか、「参照...」で場所を指定してください。';
+  else if (!quiet) msg.textContent = '自動では見つかりませんでした(指定した場所を使います)。';
 }
 
 function fillSpeakerSelects(list) {
@@ -282,11 +292,22 @@ function fillSpeakerSelects(list) {
   }
 }
 
+// 読み上げソフトごとの声の一覧(ランダムの声の欄で使い回す)
+const speakerCache = {};
+
+/** そのソフトの声の一覧を取る(今選んでいるソフトなら接続先の指定も使う)。 */
+async function listSpeakers(engine) {
+  const url = engine === settings.speechEngine ? settings.ttsUrl : '';
+  const list = await invoke('tts_list_speakers', { settings: { ...settings, speechEngine: engine, ttsUrl: url } });
+  speakerCache[engine] = list;
+  return list;
+}
+
 async function fetchSpeakers(quiet) {
   const msg = document.getElementById('ttsSpeakerMsg');
   if (!quiet) msg.textContent = '取得中…';
   try {
-    const list = await invoke('tts_list_speakers', { settings });
+    const list = await listSpeakers(settings.speechEngine);
     fillSpeakerSelects(list);
     // まだ声を選んでいなければ、最初の声にしておく
     if (!settings.ttsSpeaker && list.length) {
@@ -295,11 +316,121 @@ async function fetchSpeakers(quiet) {
       scheduleSave();
     }
     msg.textContent = `${list.length}種類の声があります。`;
+    renderRandomVoices();
   } catch (e) {
     fillSpeakerSelects([]);
     msg.textContent = quiet ? '読み上げソフトを起動してから「声の一覧を取得」を押してください。' : String(e);
   }
 }
+
+// ---- ランダムの声(割合つきの一覧。別々の読み上げソフトの声を混ぜられる) ----
+const RANDOM_ENGINES = [
+  ['voicevox', 'VOICEVOX'],
+  ['coeiroink', 'COEIROINK(v2)'],
+  ['coeiroinkv1', 'COEIROINK(v1)'],
+  ['aivisspeech', 'AivisSpeech'],
+  ['sharevox', 'SHAREVOX'],
+];
+const randomFetching = new Set();
+
+function randomVoices() {
+  if (!Array.isArray(settings.ttsRandomVoices)) settings.ttsRandomVoices = [];
+  return settings.ttsRandomVoices;
+}
+
+function renderRandomVoices() {
+  const box = document.getElementById('randomVoices');
+  if (!box || !settings.ttsRandom) return;
+  const voices = randomVoices();
+  const total = voices.reduce((a, v) => a + (Number(v.weight) > 0 ? Number(v.weight) : 0), 0);
+  box.textContent = '';
+  voices.forEach((v, i) => {
+    const row = document.createElement('div');
+    row.className = 'random-row';
+    const eng = document.createElement('select');
+    for (const [id, label] of RANDOM_ENGINES) {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = label;
+      eng.appendChild(o);
+    }
+    eng.value = v.engine;
+    eng.addEventListener('change', () => {
+      v.engine = eng.value;
+      v.speaker = '';
+      renderRandomVoices();
+      scheduleSave();
+    });
+    const sp = document.createElement('select');
+    const list = speakerCache[v.engine];
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = list ? '(選んでください)' : '(ソフトを起動すると一覧が出ます)';
+    sp.appendChild(none);
+    for (const s of list || []) {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.name;
+      sp.appendChild(o);
+    }
+    if (v.speaker && !(list || []).some((s) => s.id === v.speaker)) {
+      const o = document.createElement('option');
+      o.value = v.speaker;
+      o.textContent = `(保存済み: ${v.speaker})`;
+      sp.appendChild(o);
+    }
+    sp.value = v.speaker || '';
+    sp.addEventListener('change', () => {
+      v.speaker = sp.value;
+      scheduleSave();
+    });
+    const w = document.createElement('input');
+    w.type = 'number';
+    w.min = '0';
+    w.value = String(v.weight ?? 0);
+    const pct = document.createElement('span');
+    pct.className = 'unit';
+    pct.textContent = total > 0 && v.weight > 0 ? `${Math.round((v.weight / total) * 100)}%` : '0%';
+    w.addEventListener('input', () => {
+      v.weight = Math.max(0, Math.floor(Number(w.value) || 0));
+      scheduleSave();
+    });
+    w.addEventListener('change', renderRandomVoices);
+    const del = document.createElement('button');
+    del.className = 'secondary';
+    del.textContent = '削除';
+    del.addEventListener('click', () => {
+      voices.splice(i, 1);
+      renderRandomVoices();
+      scheduleSave();
+    });
+    row.append(eng, sp, w, pct, del);
+    box.appendChild(row);
+    // まだ一覧が無いソフトは取りに行く(起動していればそのソフトのexeの場所も覚える)
+    if (!list && !randomFetching.has(v.engine)) {
+      randomFetching.add(v.engine);
+      const engine = v.engine;
+      listSpeakers(engine)
+        .then(() => {
+          findExe(true, engine);
+          renderRandomVoices();
+        })
+        .catch(() => {})
+        .finally(() => setTimeout(() => randomFetching.delete(engine), 5000));
+    }
+  });
+  document.getElementById('randomVoicesMsg').textContent = voices.length
+    ? '割合は数字の比率です(合計が100でなくても大丈夫)。0にすると使いません。'
+    : '「声を追加」で、ランダムに使う声を足してください(一覧が空のうちは上の「声」で読みます)。';
+}
+
+document.getElementById('randomAddBtn').addEventListener('click', () => {
+  const engine = RANDOM_ENGINES.some(([id]) => id === settings.speechEngine) ? settings.speechEngine : 'voicevox';
+  randomVoices().push({ engine, speaker: '', weight: 50 });
+  renderRandomVoices();
+  scheduleSave();
+});
+document.getElementById('ttsRandom').addEventListener('change', renderEngineBoxes);
 
 async function fetchDevices() {
   const sel = document.getElementById('ttsDevice');
@@ -321,12 +452,12 @@ async function fetchDevices() {
 document.getElementById('speechEngine').addEventListener('change', () => {
   // ソフトが変わると接続先も声の番号も別物になるので、選び直してもらう
   settings.ttsUrl = '';
-  settings.ttsExePath = '';
   settings.ttsSpeaker = '';
   settings.ttsSpeakerYoutube = '';
   settings.ttsSpeakerTwitch = '';
   document.getElementById('ttsSpeakerMsg').textContent = '';
   document.getElementById('ttsTestMsg').textContent = '';
+  document.getElementById('ttsExeMsg').textContent = '';
   renderFields();
   scheduleSave();
 });
@@ -352,10 +483,14 @@ for (const btn of document.querySelectorAll('[data-reset]')) {
 document.getElementById('ttsFetchSpeakers').addEventListener('click', () => fetchSpeakers(false));
 document.getElementById('ttsFetchDevices').addEventListener('click', fetchDevices);
 document.getElementById('ttsFindExe').addEventListener('click', () => findExe(false));
+document.getElementById('ttsExePath').addEventListener('input', (e) => {
+  exePaths()[settings.speechEngine] = e.target.value;
+  scheduleSave();
+});
 document.getElementById('ttsPickExe').addEventListener('click', async () => {
   const path = await invoke('comments_pick_exe').catch(() => null);
   if (!path) return;
-  settings.ttsExePath = path;
+  exePaths()[settings.speechEngine] = path;
   document.getElementById('ttsExeMsg').textContent = '';
   renderFields();
   scheduleSave();

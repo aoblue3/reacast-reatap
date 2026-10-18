@@ -190,6 +190,9 @@
   .slider-row output { text-align: right; font-variant-numeric: tabular-nums; }
   .slider-row button { padding: 2px 8px; font-size: 12px; }
   .speech-select { min-width: 260px; max-width: 100%; }
+  .random-row, .random-head { display: grid; grid-template-columns: 140px minmax(180px, 1fr) 80px 44px auto; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .random-head { font-size: 12px; color: var(--c-8d909c); }
+  .random-row select, .random-row input { width: 100%; }
 </style>
 <script src="shared/theme.js"></script>
 </head>
@@ -296,7 +299,7 @@
 
       <div class="engine-box" data-engine="launch">
         <div class="field"><label>起動していなければ自動で起動</label><div><input type="checkbox" data-key="ttsAutoLaunch" /><span class="unit">ReaCastの起動時と、読み上げる時に起動していなければ起動します(窓は最小化)</span></div></div>
-        <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="ttsExePath" id="ttsExePath" /><button class="secondary" id="ttsPickExe">参照...</button><button class="secondary" id="ttsFindExe">自動で探す</button></div></div>
+        <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" id="ttsExePath" /><button class="secondary" id="ttsPickExe">参照...</button><button class="secondary" id="ttsFindExe">自動で探す</button></div></div>
         <div class="hint" id="ttsExeMsg">空欄なら、起動中のソフトや標準のインストール先から自動で探します。</div>
       </div>
 
@@ -307,6 +310,14 @@
         <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
         <div class="field"><label>声(Twitchのコメント)</label><div><select data-key="ttsSpeakerTwitch" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
         <div class="hint" id="ttsSpeakerMsg"></div>
+        <div class="field"><label>声をランダムにする</label><div><input type="checkbox" data-key="ttsRandom" id="ttsRandom" /><span class="unit">レスごとに、決めた割合でランダムな声で読みます(別々のソフトの声も混ぜられます)</span></div></div>
+        <div id="randomVoicesBox">
+          <div class="random-head"><span>ソフト</span><span>声</span><span>割合</span><span></span><span></span></div>
+          <div id="randomVoices"></div>
+          <div class="inline" style="margin: 4px 0 6px"><button class="secondary" id="randomAddBtn">声を追加</button><label><input type="checkbox" data-key="ttsRandomByPerson" /> 同じ人(掲示板はID、YouTube・Twitchは名前)には毎回同じ声</label></div>
+          <div class="hint" id="randomVoicesMsg"></div>
+          <div class="hint">YouTube・Twitchのコメントの声を指定している時は、そちらが優先されます。話速などのスライダーはどの声にも共通です。</div>
+        </div>
         <div class="field"><label>話速</label><div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>音高</label><div class="slider-row"><input type="range" min="-0.15" max="0.15" step="0.01" data-key="ttsPitch" data-default="0" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>抑揚</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsIntonation" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>

@@ -29,6 +29,17 @@ use tokio::sync::Notify;
 
 pub const SETTINGS_KEY: &str = "commentSettings";
 
+/// ランダムに使う声の1つ(読み上げソフト・声・割合)。別々のソフトの声を混ぜられる
+#[derive(Clone, Default, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RandomVoice {
+    /// CommentSettings::speech_engineと同じ値(VOICEVOX互換・COEIROINK v2だけ)
+    pub engine: String,
+    pub speaker: String,
+    /// 割合(重み。合計が100でなくてもよい)
+    pub weight: u32,
+}
+
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -97,8 +108,17 @@ pub struct CommentSettings {
     pub tts_url: String,
     /// 読み上げソフト(VOICEVOX等・棒読みちゃん)が起動していなければ自動で起動する
     pub tts_auto_launch: bool,
-    /// 自動で起動するexeの場所(空欄なら起動中のプロセス・標準のインストール先から探す)
+    /// (v1.5.12の設定。読み込み時にtts_exe_pathsへ移す)
+    #[serde(skip_serializing)]
     pub tts_exe_path: String,
+    /// 自動で起動するexeの場所(読み上げソフトごと。無ければ起動中のプロセス・
+    /// 標準のインストール先から探す)
+    pub tts_exe_paths: std::collections::BTreeMap<String, String>,
+    /// 声をランダムにする(民安★TALKのランダム再生と同じ。割合はtts_random_voicesのweight)
+    pub tts_random: bool,
+    pub tts_random_voices: Vec<RandomVoice>,
+    /// ランダムでも、同じ人(掲示板はID、配信サイトは名前)には毎回同じ声を使う
+    pub tts_random_by_person: bool,
     /// 声(VOICEVOX互換はスタイルの番号、COEIROINK v2は「UUID:スタイル番号」)。
     /// YouTube・Twitchのコメントは別の声にもできる(空欄なら共通の声)
     pub tts_speaker: String,
@@ -320,6 +340,10 @@ impl Default for CommentSettings {
             tts_url: String::new(),
             tts_auto_launch: true,
             tts_exe_path: String::new(),
+            tts_exe_paths: Default::default(),
+            tts_random: false,
+            tts_random_voices: Vec::new(),
+            tts_random_by_person: false,
             tts_speaker: String::new(),
             tts_speaker_youtube: String::new(),
             tts_speaker_twitch: String::new(),
@@ -441,6 +465,17 @@ struct Post {
 }
 
 impl Post {
+    /// 同じ人を見分ける文字列(ランダムの声を「同じ人には同じ声」にする時に使う)。
+    /// 掲示板は日付欄の「ID:xxxx」(無ければ名前)、配信サイトは名前。
+    fn person(&self) -> String {
+        if self.source == "bbs" {
+            if let Some(i) = self.date.find("ID:") {
+                return self.date[i..].split_whitespace().next().unwrap_or_default().to_string();
+            }
+        }
+        format!("{}:{}", self.source, self.name)
+    }
+
     fn from_raw(p: &source::RawPost, icon: Option<String>) -> Self {
         Self {
             no: p.no,
@@ -1444,7 +1479,7 @@ impl CommentEngine {
             // 本当の長さだけ字幕を出して待つ(目安の時間ではなく)
             let mut wav = None;
             if crate::tts::plays_itself(&settings) && !spoken.trim().is_empty() {
-                match crate::tts::synthesize_or_launch(&settings, &spoken, &post.source).await {
+                match crate::tts::synthesize_or_launch(&settings, &spoken, post.source, &post.person()).await {
                     Ok(Some((w, ms))) => {
                         speech_ms = ms + 150;
                         wav = Some(w);
@@ -1645,6 +1680,11 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
     if !s.reading_presets_v2 {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
+    }
+    // v1.5.12はexeの場所が1つだけだった
+    let legacy = std::mem::take(&mut s.tts_exe_path);
+    if !legacy.trim().is_empty() {
+        s.tts_exe_paths.entry(s.speech_engine.clone()).or_insert(legacy);
     }
     s
 }
