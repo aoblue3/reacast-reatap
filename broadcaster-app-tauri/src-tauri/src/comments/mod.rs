@@ -1496,13 +1496,27 @@ impl CommentEngine {
             let speaking = settings.speech_enabled
                 && (engine != crate::tts::EngineKind::Command || !settings.command_path.trim().is_empty());
             let spoken = if speaking { speech_text(&post, aa, &settings, &compiled) } else { String::new() };
-            let spoken = fit_speech_to_max_wait(spoken, &settings);
+            let mut spoken = fit_speech_to_max_wait(spoken, &settings);
             let mut speech_ms = speech_duration(&spoken, &settings);
             // ReaCastが鳴らす読み上げソフト(VOICEVOX等)は、字幕を出す前に音声を作っておき、
             // 本当の長さだけ字幕を出して待つ(目安の時間ではなく)
             let mut wav = None;
             if crate::tts::plays_itself(&settings) && !spoken.trim().is_empty() {
-                match crate::tts::synthesize_or_launch(&settings, &spoken, post.source, &post.person()).await {
+                let voice = crate::tts::pick_voice(&settings, post.source, &post.person());
+                let mut result = crate::tts::synthesize_or_launch(&voice, &spoken).await;
+                // 最大待ち時間を超える音声なら、その声の実際の速さで削り直して作り直す
+                // (途中で声を止めずに「以下略」まで読ませるため)
+                let target = settings.max_wait_ms.saturating_sub(150);
+                for _ in 0..3 {
+                    let ms = match &result {
+                        Ok(Some((_, ms))) if settings.max_wait_ms > 0 && *ms > target => *ms,
+                        _ => break,
+                    };
+                    let Some(shorter) = shorten_speech_to_duration(&spoken, ms, target) else { break };
+                    spoken = shorter;
+                    result = crate::tts::synthesize_or_launch(&voice, &spoken).await;
+                }
+                match result {
                     Ok(Some((w, ms))) => {
                         speech_ms = ms + 150;
                         wav = Some(w);
@@ -1617,12 +1631,18 @@ fn speech_duration(spoken: &str, s: &CommentSettings) -> u64 {
 /// 読み上げ時間の目安が最大待ち時間を超える長いレスは、収まる所までで打ち切って
 /// 「以下略」を付ける(読み上げが終わる前に次のレスへ進んで、声と字幕がずれないように)。
 fn fit_speech_to_max_wait(spoken: String, s: &CommentSettings) -> String {
-    const SUFFIX: &str = "、以下略";
     if s.max_wait_ms == 0 || s.speech_ms_per_char == 0 || speech_duration(&spoken, s) <= s.max_wait_ms {
         return spoken;
     }
     let limit = (s.max_wait_ms / s.speech_ms_per_char) as usize;
-    let limit = limit.saturating_sub(SUFFIX.chars().count()); // 「、以下略」を読む分
+    let limit = limit.saturating_sub(SPEECH_CUT_SUFFIX.chars().count()); // 「、以下略」を読む分
+    cut_speech_with_suffix(&spoken, limit)
+}
+
+const SPEECH_CUT_SUFFIX: &str = "、以下略";
+
+/// 空白以外を`limit`文字まで残して「、以下略」を付ける。
+fn cut_speech_with_suffix(spoken: &str, limit: usize) -> String {
     let mut out = String::new();
     let mut count = 0;
     for c in spoken.chars() {
@@ -1635,7 +1655,26 @@ fn fit_speech_to_max_wait(spoken: String, s: &CommentSettings) -> String {
         out.push(c);
     }
     out.truncate(out.trim_end().len());
-    out + SUFFIX
+    out + SPEECH_CUT_SUFFIX
+}
+
+/// 実際に作った音声(`actual_ms`)が`target_ms`を超えた時に、その声の実際の速さで
+/// 収まるように削り直した読み上げの文字列(削れない時はNone)。声によって読む速さが
+/// 違うので、文字数の目安(fit_speech_to_max_wait)だけでは収まらないことがある。
+fn shorten_speech_to_duration(spoken: &str, actual_ms: u64, target_ms: u64) -> Option<String> {
+    let suffix_chars = SPEECH_CUT_SUFFIX.chars().count();
+    let base = spoken.strip_suffix(SPEECH_CUT_SUFFIX).unwrap_or(spoken);
+    let had_suffix = base.len() != spoken.len();
+    let n = base.chars().filter(|c| !c.is_whitespace()).count();
+    let total = n + if had_suffix { suffix_chars } else { 0 };
+    if n == 0 || total == 0 || actual_ms == 0 {
+        return None;
+    }
+    // 開始・終了の無音などで文字数に比例しない分もあるので、少し余裕を見て削る
+    let per_char = actual_ms as f64 / total as f64;
+    let fit = ((target_ms as f64 * 0.95) / per_char) as usize;
+    let limit = fit.saturating_sub(suffix_chars).min(n * 9 / 10);
+    (limit > 0).then(|| cut_speech_with_suffix(base, limit))
 }
 
 /// 次のレスを出すまでの間隔。溜まっている時(ターボ)は短い間隔で追いつくことを
@@ -2212,6 +2251,47 @@ mod tests {
         assert_eq!(cut.chars().filter(|c| *c == 'い').count(), 121);
         s.max_wait_ms = 0;
         assert_eq!(fit_speech_to_max_wait("い".repeat(270), &s).chars().count(), 270);
+    }
+
+    #[test]
+    #[ignore] // 実際のVOICEVOXで、遅い声の長いレスが最大待ち時間に収まるまで削り直されるか
+    fn shortens_slow_voice_with_voicevox() {
+        let mut s = CommentSettings::default();
+        s.speech_engine = "voicevox".into();
+        s.tts_speaker = "3".into();
+        s.tts_speed = 0.6;
+        s.speech_ms_per_char = 160;
+        let body = "このスレッドは配信の実況用です。荒らしはスルーしてください。次スレは九百七十を踏んだ人が立ててください。".repeat(3);
+        let mut spoken = fit_speech_to_max_wait(body, &s);
+        let voice = crate::tts::pick_voice(&s, "bbs", "");
+        let target = s.max_wait_ms - 150;
+        let (_, mut ms) = tauri::async_runtime::block_on(crate::tts::synthesize_or_launch(&voice, &spoken)).unwrap().unwrap();
+        eprintln!("1回目: {ms}ms {}文字", spoken.chars().count());
+        for _ in 0..3 {
+            if ms <= target {
+                break;
+            }
+            spoken = shorten_speech_to_duration(&spoken, ms, target).unwrap();
+            ms = tauri::async_runtime::block_on(crate::tts::synthesize_or_launch(&voice, &spoken)).unwrap().unwrap().1;
+            eprintln!("作り直し: {ms}ms {}文字", spoken.chars().count());
+        }
+        assert!(ms <= target, "{ms}");
+        assert!(spoken.ends_with("、以下略"));
+    }
+
+    #[test]
+    fn long_speech_is_shortened_by_the_real_voice_speed() {
+        // 「、以下略」付きの90文字が30秒かかった(遅い声) → 20秒に収まるよう削り直す
+        let spoken = format!("{}、以下略", "う".repeat(86));
+        let cut = shorten_speech_to_duration(&spoken, 30000, 19850).unwrap();
+        assert!(cut.ends_with("、以下略"));
+        let n = cut.chars().filter(|c| *c == 'う').count();
+        // 1文字333ms → 19850*0.95/333 = 56文字 - 「、以下略」4文字 = 52
+        assert_eq!(n, 52);
+        // 文字数ではほぼ収まる計算でも、最低1割は削る(無音の分で収まらなかったため)
+        let cut = shorten_speech_to_duration(&"え".repeat(100), 20100, 19850).unwrap();
+        assert!(cut.chars().filter(|c| *c == 'え').count() <= 90);
+        assert_eq!(shorten_speech_to_duration("", 30000, 19850), None);
     }
 
     #[test]

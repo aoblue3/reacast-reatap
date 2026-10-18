@@ -393,18 +393,12 @@ pub fn speak_bouyomi(s: &CommentSettings, text: &str) {
 }
 
 /// 音声を作る。読み上げソフトに繋がらない時は(自動起動がONなら)起動を待ってからもう一度。
-/// 声はpick_voiceで決める(`source`・`person`はその材料)。
-pub async fn synthesize_or_launch(
-    s: &CommentSettings,
-    text: &str,
-    source: &str,
-    person: &str,
-) -> Result<Option<(Vec<u8>, u64)>, String> {
-    let v = pick_voice(s, source, person);
-    match synthesize(&v, text).await {
-        Err(e) if v.tts_auto_launch && !is_alive(&v).await => {
-            ensure_running(&v, Duration::from_secs(60)).await.map_err(|le| format!("{e}({le})"))?;
-            synthesize(&v, text).await
+/// `v`はpick_voiceで声を決めた後の設定(同じレスで作り直す時も同じ声にするため)。
+pub async fn synthesize_or_launch(v: &CommentSettings, text: &str) -> Result<Option<(Vec<u8>, u64)>, String> {
+    match synthesize(v, text).await {
+        Err(e) if v.tts_auto_launch && !is_alive(v).await => {
+            ensure_running(v, Duration::from_secs(60)).await.map_err(|le| format!("{e}({le})"))?;
+            synthesize(v, text).await
         }
         r => r,
     }
@@ -427,7 +421,7 @@ async fn speak(s: &CommentSettings, text: &str, source: &str) -> Result<(), Stri
         ensure_running(s, Duration::from_secs(30)).await?;
         return talk_bouyomi(s, text).await;
     }
-    if let Some((wav, _)) = synthesize_or_launch(s, text, source, "").await? {
+    if let Some((wav, _)) = synthesize_or_launch(&pick_voice(s, source, ""), text).await? {
         play_wav(wav, s)?;
     }
     Ok(())
