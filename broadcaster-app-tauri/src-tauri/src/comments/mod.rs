@@ -115,6 +115,9 @@ pub struct CommentSettings {
     pub turbo_interval_ms: u64,
     /// 順番待ちがこの件数以上溜まったらターボ(短い間隔)にする
     pub turbo_threshold: usize,
+    /// ターボ中の話速の倍率(VOICEVOX等ReaCastが鳴らすソフトだけ)。ターボ中も声は
+    /// 最後まで読み、話す速さを上げて追いつく
+    pub turbo_speed_scale: f64,
     pub read_res_number: bool,
     pub max_chars: usize,
     /// 読み上げにかかる時間の目安(1文字あたりのミリ秒、0で使わない)。読み上げが
@@ -385,6 +388,7 @@ impl Default for CommentSettings {
             read_interval_ms: 3000,
             turbo_interval_ms: 400,
             turbo_threshold: 3,
+            turbo_speed_scale: 1.3,
             // 既定は本文だけを読み上げる(レス番号・名前は読まない)
             read_res_number: false,
             max_chars: 270,
@@ -1689,7 +1693,11 @@ impl CommentEngine {
             // 本当の長さだけ字幕を出して待つ(目安の時間ではなく)
             let mut wav = None;
             if crate::tts::plays_itself(&settings) && !spoken.trim().is_empty() {
-                let voice = crate::tts::pick_voice(&settings, post.source, &post.person());
+                let mut voice = crate::tts::pick_voice(&settings, post.source, &post.person());
+                // ターボ中は話す速さを上げて追いつく(声は途中で切らない。next_interval参照)
+                if backlog >= settings.turbo_threshold.max(1) {
+                    voice.tts_speed = (voice.tts_speed * settings.turbo_speed_scale.clamp(1.0, 2.0)).min(2.5);
+                }
                 let mut result = crate::tts::synthesize_or_launch(&voice, &spoken).await;
                 // 最大待ち時間を超える音声なら、その声の実際の速さで削り直して作り直す
                 // (途中で声を止めずに「以下略」まで読ませるため)
@@ -1777,7 +1785,7 @@ impl CommentEngine {
                 }
             }
 
-            let interval = next_interval(backlog, shown_ms, speech_ms, &settings);
+            let interval = next_interval(backlog, shown_ms, speech_ms, crate::tts::plays_itself(&settings), &settings);
             self.wait_or_skip(interval).await;
             if cut_speech && crate::tts::plays_itself(&settings) {
                 crate::tts::stop();
@@ -1867,9 +1875,17 @@ fn shorten_speech_to_duration(spoken: &str, actual_ms: u64, target_ms: u64) -> O
 /// 次のレスを出すまでの間隔。溜まっている時(ターボ)は短い間隔で追いつくことを
 /// 優先し、そうでなければ読み上げ間隔・読み上げ時間の目安・(設定がONなら)字幕の
 /// 表示時間のうち一番長いもの。
-fn next_interval(backlog: usize, shown_ms: u64, speech_ms: u64, s: &CommentSettings) -> u64 {
+/// `exact_speech`はReaCastが鳴らすソフト(VOICEVOX等。speech_msが本当の長さ)の時。
+/// その場合はターボ中も読み終わるまで待つ(次の声で前の声を止めると途中で途切れるため。
+/// 代わりに話速を上げて追いつく)。民安★TALK・棒読みちゃんはソフト側が順番に読むので、
+/// これまでどおりターボ間隔で渡す。
+fn next_interval(backlog: usize, shown_ms: u64, speech_ms: u64, exact_speech: bool, s: &CommentSettings) -> u64 {
     if backlog >= s.turbo_threshold.max(1) {
-        s.turbo_interval_ms
+        if exact_speech {
+            s.turbo_interval_ms.max(speech_ms)
+        } else {
+            s.turbo_interval_ms
+        }
     } else if s.wait_for_display {
         s.read_interval_ms.max(shown_ms).max(speech_ms)
     } else {
@@ -2591,12 +2607,15 @@ mod tests {
         assert_eq!(display_duration(&post(1, &"あ".repeat(500)), false, &s), 12000);
         assert_eq!(display_duration(&post(1, &"あ".repeat(500)), true, &s), 6000);
         // 普段は表示し終わるまで待つ(短いレスは読み上げ間隔3000ms)
-        assert_eq!(next_interval(0, 3160, 0, &s), 3160);
-        assert_eq!(next_interval(0, 1000, 0, &s), 3000);
+        assert_eq!(next_interval(0, 3160, 0, false, &s), 3160);
+        assert_eq!(next_interval(0, 1000, 0, false, &s), 3000);
         // 読み上げが長ければ、読み終わるまで待つ
-        assert_eq!(next_interval(0, 7000, 16000, &s), 16000);
+        assert_eq!(next_interval(0, 7000, 16000, false, &s), 16000);
         // 溜まっている時はターボ間隔
-        assert_eq!(next_interval(3, 12000, 16000, &s), 400);
+        assert_eq!(next_interval(3, 12000, 16000, false, &s), 400);
+        // VOICEVOX等(本当の長さが分かる)は、ターボ中も読み終わるまで待つ(声を途切れさせない)
+        assert_eq!(next_interval(3, 12000, 5000, true, &s), 5000);
+        assert_eq!(next_interval(3, 12000, 100, true, &s), 400);
         // 読み上げ時間の目安: 100文字 × 160ms
         assert_eq!(speech_duration(&"あ".repeat(100), &s), 16000);
         assert_eq!(speech_duration("", &s), 0);
@@ -2604,8 +2623,8 @@ mod tests {
         s2.wait_for_display = false;
         s2.display_per_char_ms = 0;
         assert_eq!(display_duration(&post(1, &"あ".repeat(50)), false, &s2), 3000);
-        assert_eq!(next_interval(0, 7000, 0, &s2), 3000);
-        assert_eq!(next_interval(0, 7000, 5000, &s2), 5000);
+        assert_eq!(next_interval(0, 7000, 0, false, &s2), 3000);
+        assert_eq!(next_interval(0, 7000, 5000, false, &s2), 5000);
     }
 
     #[test]
