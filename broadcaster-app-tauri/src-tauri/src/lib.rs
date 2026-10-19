@@ -358,6 +358,8 @@ fn open_comment_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App("comment_settings.html".into()))
         .title("ReaCast - コメント読み上げ・字幕")
+        // コントロールパネル(ReaCastのアイコン)と見分けられるよう、この窓だけ別のアイコン
+        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/comment-settings.png"))?)?
         .inner_size(760.0, 820.0)
         .min_inner_size(520.0, 400.0)
         .build()?;
