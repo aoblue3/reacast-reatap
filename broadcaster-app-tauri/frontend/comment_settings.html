@@ -87,7 +87,9 @@
   .layout { flex: 1; display: flex; min-height: 0; }
   nav {
     flex: none;
-    width: 172px;
+    width: 140px;
+    min-width: 90px;
+    max-width: 320px;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -106,6 +108,10 @@
     cursor: pointer;
   }
   nav button:hover { background: var(--c-2b2d35); }
+  nav button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* タブの幅をドラッグで変える(comment_settings.js) */
+  #navResizer { flex: none; width: 6px; margin-left: -3px; margin-right: -3px; cursor: col-resize; position: relative; z-index: 5; }
+  #navResizer:hover, #navResizer.dragging { background: var(--c-3b6df0); opacity: 0.5; }
   nav button.active { background: var(--c-34373f); color: var(--c-ffffff); box-shadow: inset 3px 0 0 var(--c-3b6df0); }
   /* スクロールバーが出るタブと出ないタブで横幅が変わらないよう、場所を常に空けておく */
   main { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 12px 16px 24px; }
@@ -246,8 +252,9 @@
     <button data-tab="voice">話した字幕</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
-    <button data-tab="output">表示先(OBS・デスクトップ)</button>
+    <button data-tab="output">表示先(OBSなど)</button>
   </nav>
+  <div id="navResizer" title="ドラッグでタブの幅を変えられます(ダブルクリックで元の幅)"></div>
 
   <main>
     <section data-tab="fetch" class="active">
@@ -606,6 +613,7 @@
           <option value="neon">ネオン(光る文字)</option>
           <option value="p5">P5風(黒と赤の斜めの札)</option>
           <option value="retro">レトロ(ファミコン風のドット文字)</option>
+          <option value="ff">FF風(青いグラデーションのウィンドウ)</option>
         </select>
         <button class="secondary" id="applyPresetBtn">適用</button>
       </div></div>

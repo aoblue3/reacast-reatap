@@ -146,6 +146,48 @@ for (const el of fields) {
   el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input', () => onFieldChange(el));
 }
 
+// ---- タブの幅(左の縦のタブと設定の間をドラッグ。この画面の中だけの好みなので、この端末に保存) ----
+(() => {
+  const nav = document.getElementById('tabs');
+  const handle = document.getElementById('navResizer');
+  const KEY = 'reacast.settingsNavWidth';
+  const clamp = (w) => Math.max(90, Math.min(320, Math.round(w)));
+  try {
+    const saved = Number(localStorage.getItem(KEY));
+    if (saved) nav.style.width = `${clamp(saved)}px`;
+  } catch (_) {}
+  const save = () => {
+    try {
+      localStorage.setItem(KEY, String(nav.getBoundingClientRect().width | 0));
+    } catch (_) {}
+  };
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = nav.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    const move = (ev) => {
+      nav.style.width = `${clamp(startW + ev.clientX - startX)}px`;
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      save();
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+  handle.addEventListener('dblclick', () => {
+    nav.style.width = '';
+    try {
+      localStorage.removeItem(KEY);
+    } catch (_) {}
+  });
+})();
+
 // ---- タブ ----
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-tab]');
@@ -621,6 +663,20 @@ const LIST_PRESETS = {
       '.head .no, .head .avatar { background: #ff1f1f; padding: 0 0.35em; transform: rotate(-4deg); display: inline-block; }',
       '.head .name { background: #ffffff; padding: 0 0.35em; transform: rotate(2deg); display: inline-block; }',
       '.body { letter-spacing: 0.04em; }',
+    ].join('\n'),
+  },
+  // FF風(スーパーファミコンのRPGのウィンドウ風): 青いグラデーションの地、白い縁取りの角丸、
+  // 影付きの白い文字、ドット文字、名前の前に指のカーソル
+  ff: {
+    headFontSize: 0, headBold: false, numberColor: '#ffe27a', nameColor: '#ffffff', dateColor: '#aeb8ff',
+    bodyColor: '#ffffff', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#1a2a8c', itemBgOpacity: 100, itemPadding: 10, itemRadius: 6,
+    customCss: [
+      "@import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');",
+      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'DotGothic16', monospace !important; -webkit-font-smoothing: none; }",
+      '.item { background: linear-gradient(180deg, #5b6fe0 0%, #2a3aa8 45%, #101a6c 100%) !important; border: 3px solid #eef0ff; border-radius: 7px; box-shadow: 0 0 0 2px #1a1a33, inset 0 0 0 1px #8090e0, 2px 3px 0 3px rgba(0, 0, 0, 0.35); }',
+      '.head, .body { text-shadow: 2px 2px 0 #10103a; }',
+      ".head .name::before { content: '☞'; margin-right: 0.3em; color: #ffffff; }",
     ].join('\n'),
   },
   // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
