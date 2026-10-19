@@ -2,6 +2,7 @@ mod applog;
 mod backup;
 mod config_store;
 mod hotkeys;
+pub mod key_watcher;
 mod pcwmp;
 pub mod updater;
 
@@ -845,6 +846,9 @@ pub fn run() {
             notify_profile_settings_changed,
             send_hotkey_reaction,
             hotkeys::set_hotkeys,
+            key_watcher::hotkey_watcher_status,
+            key_watcher::hotkey_watcher_install,
+            key_watcher::hotkey_watcher_uninstall,
             hotkeys::suspend_hotkeys,
             start_manual_pick,
             cancel_manual_pick,

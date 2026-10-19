@@ -3,6 +3,7 @@ mod backup;
 mod comments;
 mod config_store;
 mod connect_code;
+pub mod key_watcher;
 mod obs_bridge;
 mod preflight;
 mod tts;
@@ -1242,6 +1243,9 @@ pub fn run() {
             tts::tts_list_devices,
             tts::tts_test,
             tts::tts_find_exe,
+            key_watcher::hotkey_watcher_status,
+            key_watcher::hotkey_watcher_install,
+            key_watcher::hotkey_watcher_uninstall,
             backup::export_settings,
             backup::import_settings,
             comments::comments_default_reaction_rules,

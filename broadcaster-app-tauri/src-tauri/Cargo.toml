@@ -62,4 +62,7 @@ windows = { version = "0.62", features = [
     "Win32_System_LibraryLoader",
     # 読み上げソフトが起動中か・どこにあるかを調べる(tts.rs)
     "Win32_System_Diagnostics_ToolHelp",
+    # 管理者の権限で動くキーの見張り係のタスクを登録する(key_watcher.rs)
+    "Win32_UI_Shell",
+    "Win32_System_Registry",
 ] }
