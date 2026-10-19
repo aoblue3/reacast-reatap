@@ -122,6 +122,29 @@ pub fn suspend(_app: &AppHandle) {
     bindings().lock().unwrap().suspended = true;
 }
 
+/// スキャンコードでは区別できない・表に無いキーを、仮想キーコードから
+/// KeyboardEvent.codeと同じ名前にする(Pauseは NumLockと同じスキャンコード0x45で届く、など)。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn vk_to_code(vk: u32) -> Option<&'static str> {
+    Some(match vk {
+        0x13 => "Pause",
+        0x03 => "Pause", // Ctrl+Pause はVK_CANCELで届く
+        0x90 => "NumLock",
+        0x91 => "ScrollLock",
+        0x2C => "PrintScreen",
+        0x14 => "CapsLock",
+        0x5D => "ContextMenu",
+        0xAD => "AudioVolumeMute",
+        0xAE => "AudioVolumeDown",
+        0xAF => "AudioVolumeUp",
+        0xB0 => "MediaTrackNext",
+        0xB1 => "MediaTrackPrevious",
+        0xB2 => "MediaStop",
+        0xB3 => "MediaPlayPause",
+        _ => return None,
+    })
+}
+
 /// キーボードのスキャンコード(物理的なキーの位置)を、ブラウザのKeyboardEvent.codeと
 /// 同じ名前にする(設定画面で割り当てたキーの書き方と合わせるため)。
 /// extendedは矢印キー・Home等や、テンキーのEnter・/ を区別するためのフラグ。
@@ -229,7 +252,8 @@ mod win {
             let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
             let msg = wparam.0 as u32;
             let extended = (info.flags.0 & LLKHF_EXTENDED.0) != 0;
-            if let Some(key) = scan_to_code(info.scanCode, extended) {
+            let key = vk_to_code(info.vkCode).map(str::to_string).or_else(|| scan_to_code(info.scanCode, extended));
+            if let Some(key) = key {
                 if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
                     let first = held().lock().unwrap().insert(key.clone());
                     if first {
@@ -309,5 +333,10 @@ mod tests {
         assert_eq!(scan_to_code(0x48, true).as_deref(), Some("ArrowUp"));
         assert_eq!(scan_to_code(0x48, false).as_deref(), Some("Numpad8"));
         assert_eq!(scan_to_code(0x1D, false), None); // Ctrl自体はキーにしない
+        // スキャンコードではNumLockと同じになるキー・表に無いキーは仮想キーコードで
+        assert_eq!(vk_to_code(0x13), Some("Pause"));
+        assert_eq!(vk_to_code(0x90), Some("NumLock"));
+        assert_eq!(vk_to_code(0xB3), Some("MediaPlayPause"));
+        assert_eq!(vk_to_code(0x41), None); // 普通のキーはスキャンコードで
     }
 }
