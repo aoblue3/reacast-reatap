@@ -68,6 +68,7 @@ function renderFields() {
   renderHotkeys();
   renderRuleEditors();
   renderEngineBoxes();
+  if (typeof renderFontPickers === 'function') renderFontPickers();
   monitorSelect.value = settings.desktopMonitorId || '';
   const r = settings.desktopRect;
   document.getElementById('desktopRectInfo').textContent = r
@@ -627,19 +628,66 @@ for (const btn of document.querySelectorAll('[data-pick-folder]')) {
   });
 }
 
-// ---- フォント名の候補(ウェブフォント + PCに入っているフォント) ----
+// ---- フォント名: 手で入力する欄 + 全部のフォントから選ぶ一覧 ----
+// (以前は入力欄の候補(datalist)だけだったが、入力済みの文字に合うものしか出ないため、
+// 「BIZ UDゴシック」が入っているとBIZ UD…しか選べないように見えていた)
+let fontNames = { web: Object.keys(C.WEB_FONTS), installed: [] };
+const fontSelects = [];
+
+function fillFontSelect(sel, current) {
+  sel.textContent = '';
+  const head = document.createElement('option');
+  head.value = '';
+  head.textContent = '一覧から選ぶ…';
+  sel.appendChild(head);
+  for (const [label, names] of [
+    ['ウェブフォント(ネットから読み込みます)', fontNames.web],
+    ['このPCのフォント', fontNames.installed],
+  ]) {
+    if (!names.length) continue;
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const n of names) {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      group.appendChild(o);
+    }
+    sel.appendChild(group);
+  }
+  sel.value = [...fontNames.web, ...fontNames.installed].includes(current) ? current : '';
+}
+
+function setupFontPickers() {
+  for (const input of document.querySelectorAll('input[list="fontList"]')) {
+    input.removeAttribute('list');
+    const row = document.createElement('div');
+    row.className = 'font-row';
+    input.parentNode.insertBefore(row, input);
+    row.appendChild(input);
+    const sel = document.createElement('select');
+    sel.title = '全部のフォントから選べます(右の欄に直接入力もできます。「A, B」のように2つ並べると、Aに無い文字はBで表示します)';
+    row.appendChild(sel);
+    fillFontSelect(sel, input.value);
+    sel.addEventListener('change', () => {
+      if (!sel.value) return;
+      input.value = sel.value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    input.addEventListener('input', () => fillFontSelect(sel, input.value));
+    fontSelects.push([sel, input]);
+  }
+}
+setupFontPickers();
+
+/** 設定を読み込み直した時など、入力欄に合わせて一覧の選択を直す */
+function renderFontPickers() {
+  for (const [sel, input] of fontSelects) fillFontSelect(sel, input.value);
+}
+
 (async () => {
-  const list = document.getElementById('fontList');
-  const add = (value, label) => {
-    const o = document.createElement('option');
-    o.value = value;
-    if (label) o.label = label;
-    list.appendChild(o);
-  };
-  const installed = await invoke('list_system_fonts').catch(() => []);
-  list.textContent = '';
-  for (const name of Object.keys(C.WEB_FONTS)) add(name, `${name}(ウェブフォント。ネットから読み込みます)`);
-  for (const name of installed) add(name, `${name}(このPCのフォント)`);
+  fontNames.installed = await invoke('list_system_fonts').catch(() => []);
+  renderFontPickers();
 })();
 
 // ---- 右のレス一覧のプリセット ----

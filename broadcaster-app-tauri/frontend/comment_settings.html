@@ -130,6 +130,10 @@
     box-sizing: border-box;
   }
   input[type=number] { width: 110px; }
+  /* フォント名: 手で入力する欄と、全部のフォントから選ぶ一覧(comment_settings.jsのsetupFontPickers) */
+  .font-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .font-row input { width: 200px; }
+  .font-row select { max-width: 260px; }
   input[type=text].wide { width: 100%; }
   textarea { width: 100%; min-height: 150px; font-family: 'MS Gothic', monospace; }
   input[type=color] { width: 48px; height: 26px; padding: 0; border: 1px solid var(--c-3a3d47); background: none; }

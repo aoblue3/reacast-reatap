@@ -196,6 +196,13 @@
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+    // 読み込み終わったら、フォント自体もすぐ取ってくる(使う文字が出るまで取りに行かない
+    // ことがあり、選んでも見た目が変わらないように見えたため)
+    link.onload = () => {
+      if (document.fonts && document.fonts.load) {
+        document.fonts.load(`20px "${name}"`, 'あア亜Aa1').catch(() => {});
+      }
+    };
     document.head.appendChild(link);
   }
 
