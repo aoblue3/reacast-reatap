@@ -220,6 +220,14 @@
   }
 
   /** obs_bridgeに繋ぎ、切れたら繋ぎ直し続ける。 */
+  /** ReaCastがアップデートされて起動し直したら(繋ぎ直した時のバージョンが前と違えば)、
+   * 画面を読み込み直す(OBSのブラウザソースが古い画面のまま動き続けないように)。 */
+  let seenAppVersion = null;
+  function checkAppVersion(version) {
+    if (seenAppVersion !== null && seenAppVersion !== version) location.reload();
+    seenAppVersion = version;
+  }
+
   function connectBridge(onMessage) {
     const ws = new WebSocket(`ws://127.0.0.1:${BRIDGE_WS_PORT}`);
     ws.addEventListener('message', (event) => {
@@ -227,6 +235,10 @@
       try {
         data = JSON.parse(event.data);
       } catch {
+        return;
+      }
+      if (data && data.type === 'appVersion') {
+        checkAppVersion(data.version);
         return;
       }
       if (data && typeof data.type === 'string') onMessage(data);

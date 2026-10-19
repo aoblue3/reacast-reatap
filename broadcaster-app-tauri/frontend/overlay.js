@@ -491,12 +491,20 @@ if (window.__TAURI__ && window.__TAURI__.event) {
   connectObsBridge(OBS_BRIDGE_WS_PORT);
 }
 
+// ReaCastがアップデートされて起動し直したら、画面を読み込み直す(shared/comment-common.jsと同じ)
+let seenAppVersion = null;
+
 function connectObsBridge(port) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   ws.addEventListener('message', (event) => {
     try {
       const data = JSON.parse(event.data);
       if (!data) return;
+      if (data.type === 'appVersion') {
+        if (seenAppVersion !== null && seenAppVersion !== data.version) location.reload();
+        seenAppVersion = data.version;
+        return;
+      }
       // 配信者アプリ側で設定を変更した時にも同じ内容が届く(obs_bridge.rs参照)。
       // OBS側はTauriのinvokeが使えないので、この経路が唯一の反映手段になる。
       if (data.type === 'settings') {

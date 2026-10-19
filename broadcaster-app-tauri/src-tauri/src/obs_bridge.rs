@@ -475,6 +475,12 @@ async fn handle_ws_connection(
     // 繋いだ直後に、今の設定を1回送っておく。broadcast channelは過去の
     // メッセージを新規クライアントに配ってくれないため、これが無いとOBS側で
     // ブラウザソースを開き直すたびに既定値に戻って見えてしまう。
+    // ReaCastのバージョン。OBSの画面は、繋ぎ直した時にこれが前と違えば(ReaCastを
+    // アップデートして起動し直した時)自分で読み込み直す(古い画面のまま使われないように)
+    let version = serde_json::json!({ "type": "appVersion", "version": option_env!("APP_VERSION").unwrap_or("dev") }).to_string();
+    if write.send(tokio_tungstenite::tungstenite::Message::Text(version)).await.is_err() {
+        return;
+    }
     let initial_payload = initial_settings.to_json().to_string();
     if write
         .send(tokio_tungstenite::tungstenite::Message::Text(

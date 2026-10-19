@@ -715,19 +715,20 @@ const LIST_PRESETS = {
     itemBgColor: '#120a24', itemBgOpacity: 60, itemPadding: 6, itemRadius: 4,
     customCss: '.body { text-shadow: 0 0 6px #3cf2ff, 0 0 12px #3cf2ff; }\n.item { border: 1px solid rgba(60, 242, 255, 0.4); }',
   },
-  // ペルソナ5風: 黒地に白、赤のアクセント、斜めに傾いた札、太いゴシック
+  // ペルソナ5風: 黒い札に白い太字、左に赤い太線と赤い影。札は全部同じ角度で少しだけ斜めに
+  // (交互に傾けたり、番号・名前まで別々に傾けるとごちゃついて読みにくかったため)。
+  // 本文は読みやすい太めのゴシック、番号だけ赤い札に極太の文字でアクセント
   p5: {
-    fontFamily: 'Dela Gothic One',
-    headFontSize: 14, headBold: true, numberColor: '#000000', nameColor: '#000000', dateColor: '#bbbbbb',
+    fontFamily: 'Zen Kaku Gothic New',
+    headFontSize: 13, headBold: true, numberColor: '#ffffff', nameColor: '#ff5a5a', dateColor: '#9a9a9a',
     bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
-    itemBgColor: '#000000', itemBgOpacity: 92, itemPadding: 8, itemRadius: 0,
+    itemBgColor: '#0b0b0b', itemBgOpacity: 92, itemPadding: 8, itemRadius: 0,
     customCss: [
-      '.item { transform: skewX(-10deg) rotate(-1.5deg); border-left: 6px solid #ff1f1f; box-shadow: 5px 5px 0 #ff1f1f; }',
-      '.item:nth-child(even) { transform: skewX(-10deg) rotate(1.5deg); }',
-      '.item .content { transform: skewX(10deg); }',
-      '.head .no, .head .avatar { background: #ff1f1f; padding: 0 0.35em; transform: rotate(-4deg); display: inline-block; }',
-      '.head .name { background: #ffffff; padding: 0 0.35em; transform: rotate(2deg); display: inline-block; }',
-      '.body { letter-spacing: 0.04em; }',
+      "@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');",
+      '.item { transform: skewX(-8deg); border-left: 6px solid #e60012; box-shadow: 4px 4px 0 #e60012; margin: 0 10px 0 6px; }',
+      '.item .content { transform: skewX(8deg); }',
+      ".head .no { background: #e60012; padding: 0 0.45em; font-family: 'Dela Gothic One', sans-serif; font-weight: normal; letter-spacing: 0.04em; }",
+      '.body { line-height: 1.45; letter-spacing: 0.02em; }',
     ].join('\n'),
   },
   // FF風(スーパーファミコンのRPGのウィンドウ風): 青いグラデーションの地、白い縁取りの角丸、
