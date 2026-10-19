@@ -195,6 +195,8 @@ pub struct CommentSettings {
     /// 話した言葉を翻訳する / 翻訳先の言語(Google翻訳の言語コード。例: "en")
     pub voice_translate: bool,
     pub voice_target_lang: String,
+    /// 話した言葉(確定した1文)が「リアクション連動」のルールに当てはまったら、リアクションを飛ばす
+    pub voice_reaction_link: bool,
     // ---- 字幕 ----
     pub display_ms: u64,
     /// 長いレスほど長く表示する: 1文字あたりに足す時間(0で長さに関係なく一定)
@@ -402,6 +404,7 @@ impl Default for CommentSettings {
             voice_browser: "auto".into(),
             voice_translate: true,
             voice_target_lang: "en".into(),
+            voice_reaction_link: false,
             display_ms: 3000,
             display_per_char_ms: 80,
             display_max_ms: 12000,
@@ -690,6 +693,12 @@ impl CommentEngine {
         for (source, folder) in &icon_folders {
             bridge.set_icon_folder(source, folder);
         }
+    }
+
+    /// 文章が「リアクション連動」のルールに当てはまったリアクションのID(話した字幕用。最大数は設定どおり)
+    pub fn matched_reactions(&self, body: &str) -> Vec<String> {
+        let st = self.state.lock().unwrap();
+        text::matched_reactions(body, &st.compiled.reaction_rules, st.settings.reaction_link_max)
     }
 
     /// デスクトップ字幕のウィンドウを今出しておくべきか(ONで、かつ取得中・
@@ -2234,6 +2243,12 @@ mod tests {
             assert!(emoji_set.contains(&format!("id: '{id}'")), "{id}がemoji-set.jsにありません");
         }
         let m = |body: &str| text::matched_reactions(body, &rules, 2);
+        // 話した字幕(音声認識の1文)でも当てはまる
+        assert_eq!(m("おめでとうございます"), vec!["cake"]);
+        assert_eq!(m("いやかわいいね"), vec!["heart"]);
+        assert_eq!(m("ナイスナイス"), vec!["nice"]);
+        assert_eq!(m("みんなお疲れ様でした"), vec!["otsu"]);
+        assert!(m("今日はこれから雑談をします").is_empty());
         assert_eq!(m("wwwww"), vec!["kusa"]);
         assert_eq!(m("8888"), vec!["clap"]);
         assert_eq!(m("おつー"), vec!["otsu"]);

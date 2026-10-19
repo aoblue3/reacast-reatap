@@ -467,6 +467,14 @@ pub fn start_listener(app: AppHandle) {
             }
             let id = current_id;
             current_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+            // 話した言葉がルールに当てはまったら、コメントと同じようにリアクションを飛ばす
+            if settings.voice_reaction_link {
+                for rid in app.state::<Arc<CommentEngine>>().matched_reactions(&text) {
+                    if let Err(e) = crate::show_reaction(&app, &rid, "voice") {
+                        log::warn!("話した言葉からのリアクションを表示できませんでした: {e}");
+                    }
+                }
+            }
             if settings.voice_translate && !settings.voice_target_lang.trim().is_empty() {
                 let client = client.clone();
                 let target = settings.voice_target_lang.clone();

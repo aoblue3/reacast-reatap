@@ -1055,6 +1055,13 @@ async function buildProfileSettingsPanel(profile) {
   hkHeading.style.marginTop = '4px';
   hkHeading.textContent = 'この配信者のホットキー(グローバルショートカット)';
   panel.appendChild(hkHeading);
+  const hkNote = document.createElement('p');
+  hkNote.style.margin = '0 0 4px';
+  hkNote.style.fontSize = '12px';
+  hkNote.style.opacity = '0.8';
+  hkNote.textContent =
+    '他のアプリを操作中でも反応します。ただし管理者として起動したゲーム・アプリを操作している間は、Windowsの決まりでキーが届きません。その場合はReaTapも管理者として起動してください(ReaTap.exeを右クリック→プロパティ→互換性→「管理者としてこのプログラムを実行する」)。';
+  panel.appendChild(hkNote);
   const hkList = document.createElement('div');
   hkList.className = 'ps-hotkey-list';
   panel.appendChild(hkList);
