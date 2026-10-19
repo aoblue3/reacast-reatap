@@ -82,6 +82,10 @@ pub struct CommentSettings {
     pub post_mail: String,
     /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
+    /// 読み上げの途中でPCやReaCastが落ちた時、次に同じスレッドを開始したら、
+    /// 前回読み終わったレスの次から読み上げる(「停止」を押して止めた時と、
+    /// 1時間以上たった時は続きから読まない)
+    pub resume_reading: bool,
     /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
     pub initial_text: String,
     /// 右のレス一覧に出すアイコン画像のフォルダ(掲示板のレス用。中の画像からランダムに選ぶ)
@@ -362,6 +366,7 @@ impl Default for CommentSettings {
             post_name: String::new(),
             post_mail: String::new(),
             start_res_no: 0,
+            resume_reading: true,
             initial_text: "スレッド読み込みを開始しました".into(),
             icon_folder_bbs: String::new(),
             icon_folder_youtube: String::new(),
@@ -515,6 +520,9 @@ struct Post {
     source: &'static str,
     /// 配信サイトのコメントを書いた人のアイコン画像のURL(レス番号の位置に出す)
     avatar: Option<String>,
+    /// 「前回の続き」「ここから読み始める」で入れ直したレス。溜まっていてもターボに
+    /// しない(追いつくために声を途中で切らず、普通の速さで読む)
+    catch_up: bool,
 }
 
 impl Post {
@@ -539,6 +547,7 @@ impl Post {
             icon,
             source: "bbs",
             avatar: None,
+            catch_up: false,
         }
     }
 
@@ -552,12 +561,13 @@ impl Post {
             icon: None,
             source: "system",
             avatar: None,
+            catch_up: false,
         }
     }
 
     /// 配信サイトのチャット(レス番号は無い)
     fn chat(source: &'static str, name: String, body: String, icon: Option<String>, avatar: Option<String>) -> Self {
-        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar }
+        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar, catch_up: false }
     }
 
     /// NGワードが名前・本文・日時の行(「ID:xxxx」を含む)のどれかに含まれるか
@@ -603,6 +613,37 @@ fn detect_aa(s: &CommentSettings, c: &Compiled, post: &Post) -> bool {
     s.aa_enabled && !post.system && text::is_aa(&post.body, s.aa_threshold_chars, &c.aa_patterns)
 }
 
+/// 読み上げた位置(落ちた時に続きから読むため。ConfigStoreのPROGRESS_KEYに保存)
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+struct ReadProgress {
+    /// スレッドのURL(ThreadRef::read_url)
+    thread: String,
+    /// 最後に読み上げた(字幕に出した)レス番号
+    no: u32,
+    /// 「停止」で止めた(続きから読まない)
+    clean: bool,
+    /// 記録した時刻(UNIX時間のミリ秒)
+    at_ms: u64,
+}
+
+const PROGRESS_KEY: &str = "readProgress";
+/// これより前に記録した位置からは続けない(翌日に開始し直した時に大量に読まないように)
+const RESUME_WITHIN_MS: u64 = 60 * 60 * 1000;
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 前回の続きから読むなら、その直前のレス番号(=最後に読んだレス)。
+fn resume_point(p: &ReadProgress, thread: &str, last_no: u32, now: u64) -> Option<u32> {
+    (p.thread == thread && !p.clean && p.no > 0 && last_no > p.no && now.saturating_sub(p.at_ms) < RESUME_WITHIN_MS)
+        .then_some(p.no)
+}
+
 struct State {
     settings: CommentSettings,
     compiled: Arc<Compiled>,
@@ -620,6 +661,8 @@ struct State {
     desktop_hold_until: Option<std::time::Instant>,
     /// 読み上げの一時停止中(開始・停止をまたいで保つ)
     paused: bool,
+    /// 最後に記録した読み上げ位置(同じ値を何度も書かないように)
+    progress: Option<(String, u32)>,
 }
 
 pub struct CommentEngine {
@@ -645,6 +688,7 @@ impl CommentEngine {
                 adjusting: false,
                 desktop_hold_until: None,
                 paused: false,
+                progress: None,
             }),
             wake: Notify::new(),
             skip: Notify::new(),
@@ -1020,7 +1064,86 @@ impl CommentEngine {
         }
     }
 
+    fn load_progress(&self) -> Option<ReadProgress> {
+        self.app
+            .try_state::<ConfigStore>()?
+            .get(PROGRESS_KEY)
+            .and_then(|v| serde_json::from_value(v).ok())
+    }
+
+    fn save_progress(&self, p: &ReadProgress) {
+        if let (Some(store), Ok(v)) = (self.app.try_state::<ConfigStore>(), serde_json::to_value(p)) {
+            if let Err(e) = store.set(PROGRESS_KEY.to_string(), v) {
+                log::warn!("読み上げ位置を保存できませんでした: {e}");
+            }
+        }
+    }
+
+    /// 掲示板のレスを読み上げた(字幕に出した)ので、位置を記録する。
+    fn record_progress(&self, post: &Post) {
+        if post.source != "bbs" || post.system || post.no == 0 {
+            return;
+        }
+        let thread = {
+            let mut st = self.state.lock().unwrap();
+            let Some(thread) = st.status.thread_url.clone() else { return };
+            // 同じスレッドで前に戻る(「読み上げ」ボタンでの読み直し等)時は記録しない
+            if st.progress.as_ref().is_some_and(|(t, n)| *t == thread && *n >= post.no) {
+                return;
+            }
+            st.progress = Some((thread.clone(), post.no));
+            thread
+        };
+        self.save_progress(&ReadProgress { thread, no: post.no, clean: false, at_ms: now_ms() });
+    }
+
+    /// 指定したレスから読み上げ直す(「スレッドのレス」タブの右クリック「ここから読み始める」)。
+    /// 順番待ちの掲示板のレスは入れ直す(YouTube・Twitchのコメントは残す)。
+    pub fn read_from(&self, no: u32) -> Result<usize, String> {
+        let n = {
+            let mut st = self.state.lock().unwrap();
+            if !st.status.running {
+                return Err("取得を開始してから使ってください".into());
+            }
+            let posts: Vec<Post> = st
+                .thread_posts
+                .iter()
+                .filter(|p| p.no >= no && !p.system)
+                .cloned()
+                .map(|mut p| {
+                    p.catch_up = true;
+                    p
+                })
+                .collect();
+            if posts.is_empty() {
+                return Err("そのレス以降のレスがありません".into());
+            }
+            st.queue.retain(|p| p.source != "bbs");
+            let n = posts.len();
+            for p in posts.into_iter().rev() {
+                st.queue.push_front(p);
+            }
+            // 前に戻って読む時も位置を記録し直す
+            st.progress = None;
+            st.status.queue_len = st.queue.len();
+            n
+        };
+        log::info!("レス{no}から読み上げ直します({n}件)");
+        // 今読んでいるレスを止めて、すぐに始める
+        self.skip();
+        self.wake.notify_one();
+        self.emit_status();
+        Ok(n)
+    }
+
     pub fn stop(&self) {
+        // 「停止」で止めた時は、次に開始しても続きから読まない
+        if let Some(mut p) = self.load_progress() {
+            if !p.clean {
+                p.clean = true;
+                self.save_progress(&p);
+            }
+        }
         {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
@@ -1258,6 +1381,29 @@ impl CommentEngine {
                                 self.bridge().push_comment(p.to_json(detect_aa(&settings, &compiled, p)));
                             }
                         }
+                        // 前回、読み上げの途中で落ちていたら、その続きから読む
+                        let resume = if settings.resume_reading {
+                            self.load_progress()
+                                .and_then(|p| resume_point(&p, &reader.thread.read_url(), reader.last_no, now_ms()))
+                        } else {
+                            None
+                        };
+                        if let Some(last) = resume {
+                            let unread: Vec<Post> = posts
+                                .iter()
+                                .filter(|p| p.no > last && !(settings.skip_first_post && p.no == 1))
+                                .cloned()
+                                .map(|mut p| {
+                                    p.catch_up = true;
+                                    p
+                                })
+                                .collect();
+                            log::info!("前回の続き(レス{})から読み上げます({}件)", last + 1, unread.len());
+                            self.bridge().push_comment(
+                                Post::system(format!("前回の続き(レス{}から)を読み上げます", last + 1)).to_json(false),
+                            );
+                            self.enqueue(run_id, unread);
+                        }
                     } else {
                         let skip_first = self.settings().skip_first_post;
                         self.enqueue(run_id, posts.into_iter().filter(|p| !(skip_first && p.no == 1)).collect());
@@ -1493,7 +1639,10 @@ impl CommentEngine {
             }
             let next = {
                 let mut st = self.state.lock().unwrap();
-                st.queue.pop_front().map(|p| (p, st.settings.clone(), st.compiled.clone(), st.queue.len()))
+                // 溜まっている数(ターボの判定用)には、続きから読むために入れ直したレスは数えない
+                st.queue
+                    .pop_front()
+                    .map(|p| (p, st.settings.clone(), st.compiled.clone(), st.queue.iter().filter(|q| !q.catch_up).count()))
             };
             let Some((post, settings, compiled, backlog)) = next else {
                 self.wake.notified().await;
@@ -1505,6 +1654,8 @@ impl CommentEngine {
             }
             self.emit_status();
 
+            // 読み上げた位置を記録(NGで飛ばすレスも、読み終わった扱い)
+            self.record_progress(&post);
             if !post.system && post.is_ng(&compiled) {
                 continue;
             }
@@ -1981,6 +2132,27 @@ pub fn comments_replay(engine: Engine, no: u32) -> Result<(), String> {
     engine.replay(no)
 }
 
+/// 「スレッドのレス」タブの右クリック「ここから読み始める」
+#[tauri::command]
+pub fn comments_read_from(engine: Engine, no: u32) -> Result<usize, String> {
+    engine.read_from(no)
+}
+
+/// 右クリック「この言葉で検索」: いつものブラウザでGoogle検索を開く
+#[tauri::command]
+pub fn comments_search_web(text: String) -> Result<(), String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(());
+    }
+    let url = reqwest::Url::parse_with_params("https://www.google.com/search", &[("q", text)]).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("explorer").arg(url.as_str()).spawn().map_err(|e| format!("ブラウザを開けませんでした: {e}"))?;
+    #[cfg(not(target_os = "windows"))]
+    let _ = url;
+    Ok(())
+}
+
 /// テスト表示。取得していなくてもデスクトップ字幕で確認できるよう、表示が
 /// 終わるまでの間だけ字幕ウィンドウを作っておく。
 #[tauri::command(async)]
@@ -2210,7 +2382,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None, catch_up: false }
     }
 
     #[test]
@@ -2259,6 +2431,19 @@ mod tests {
         assert_eq!(read("やったー😀👍"), "やったー");
         assert_eq!(read("kwsk"), "くわしく");
         assert_eq!(read("8888"), "パチパチ");
+    }
+
+    #[test]
+    fn resumes_only_after_an_unexpected_end() {
+        let thread = "https://bbs.jpnkn.com/test/read.cgi/x/123/";
+        let now = 10_000_000;
+        let p = ReadProgress { thread: thread.into(), no: 120, clean: false, at_ms: now - 60_000 };
+        assert_eq!(resume_point(&p, thread, 150, now), Some(120));
+        // 未読が無い・別のスレッド・停止で止めた・1時間以上前 → 続きから読まない
+        assert_eq!(resume_point(&p, thread, 120, now), None);
+        assert_eq!(resume_point(&p, "https://bbs.jpnkn.com/test/read.cgi/x/456/", 150, now), None);
+        assert_eq!(resume_point(&ReadProgress { clean: true, ..p.clone() }, thread, 150, now), None);
+        assert_eq!(resume_point(&ReadProgress { at_ms: now - RESUME_WITHIN_MS - 1, ..p.clone() }, thread, 150, now), None);
     }
 
     #[test]

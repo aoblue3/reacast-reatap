@@ -1252,6 +1252,8 @@ pub fn run() {
             comments::comments_apply_hotkeys,
             comments::comments_get_thread,
             comments::comments_replay,
+            comments::comments_read_from,
+            comments::comments_search_web,
             comments::comments_desktop_adjusting,
             comments::comments_desktop_adjust,
             comments::comments_desktop_reset,

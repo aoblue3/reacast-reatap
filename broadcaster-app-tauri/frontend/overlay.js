@@ -1183,10 +1183,12 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const span = Math.min(vw, vh) * riseFactor;
     const waypoints = [];
     let t = 0;
-    // atMsはその区間を動き始める時刻(最初の区間はすぐに始まる)、legMsはその区間の長さ
-    const push = (x, y, legMs, extra = '') => {
+    // atMsはその区間を動き始める時刻(最初の区間はすぐに始まる)、legMsはその区間の長さ。
+    // chaseを付けた区間は、その時に画面に他のリアクションがあれば、そっちへ走って
+    // じゃれつく動きに差し替える(spawnReactionのchaseTransform参照)
+    const push = (x, y, legMs, extra = '', chase = null) => {
       const leg = Math.max(120, Math.round(legMs));
-      waypoints.push({ atMs: t, legMs: leg, transform: `translate(${x - startX}px, ${y - startY}px) ${flip()}${extra}` });
+      waypoints.push({ atMs: t, legMs: leg, transform: `translate(${x - startX}px, ${y - startY}px) ${flip()}${extra}`, chase });
       t += leg;
     };
     for (let i = 0; i < segments; i++) {
@@ -1207,12 +1209,15 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
         curX = nx;
         curY = ny;
       } else {
-        // ダッと走る: 遠くまで素早く
+        // ダッと走る: 遠くまで素早く(他のリアクションがあれば、そっちへ走ってじゃれつく)
         const dist = span * (0.25 + Math.random() * 0.2);
         const nx = clampX(curX + Math.cos(angle) * dist);
         const ny = clampY(curY + Math.sin(angle) * dist);
         facingRight = nx > curX;
-        push(nx, ny, unit * 0.55);
+        push(nx, ny, unit * 0.55, '', 'run');
+        // 着いたら前足でちょいちょい(じゃれる相手がいない時は、軽く身構えるだけ)
+        push(nx, ny, unit * 0.25, ' scale(1.05, 0.94)', 'paw');
+        push(nx, ny, unit * 0.25, '', 'paw2');
         curX = nx;
         curY = ny;
       }
@@ -1226,6 +1231,10 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     return {
       startX,
       startY,
+      minX,
+      maxX,
+      minY,
+      maxY,
       initialTransform: 'translate(0, 0) scale(1, 1)',
       // 最初の区間は、出現時の移動時間(moveDuration)で動く
       moveDuration: waypoints.length ? waypoints[0].legMs : unit * 0.55,
@@ -1540,6 +1549,47 @@ function spawnReaction(emojiId) {
     });
   });
 
+  // 🐈: 他のリアクションにじゃれつく。走る区間(chase: 'run')の時に画面に他の
+  // リアクションがあれば、一番近いものの横へ走っていき、続く区間(paw/paw2)で
+  // 前足でちょいちょいと触る。位置を調べるのは区間ごとに1回だけ(重くならないように)。
+  let playmate = null;
+  if (motion === 'prowl') el.dataset.cat = '1';
+  const chaseTransform = (wp) => {
+    if (wp.chase === 'run') {
+      const me = el.getBoundingClientRect();
+      const mx = me.left + me.width / 2;
+      const my = me.top + me.height / 2;
+      let best = null;
+      let bestD = Infinity;
+      for (const other of activeItems) {
+        if (other === el || !other.isConnected || other.dataset.cat) continue;
+        const r = other.getBoundingClientRect();
+        if (r.width === 0) continue;
+        const d = Math.hypot(r.left + r.width / 2 - mx, r.top + r.height / 2 - my);
+        if (d < bestD) {
+          bestD = d;
+          best = other;
+        }
+      }
+      playmate = best;
+    }
+    if (!playmate || !playmate.isConnected) return null;
+    const r = playmate.getBoundingClientRect();
+    const me = el.getBoundingClientRect();
+    const tx = r.left + r.width / 2;
+    const ty = r.top + r.height / 2;
+    // 相手の横(今いる側)に並ぶ。🐈は左向きの絵文字なので、右を向く時は左右反転
+    const fromLeft = me.left + me.width / 2 < tx;
+    // 少し重なるくらいの距離(じゃれている感じに)
+    const x = Math.min(path.maxX, Math.max(path.minX, fromLeft ? tx - size * 1.05 : tx + size * 0.05));
+    const y = Math.min(path.maxY, Math.max(path.minY, ty - size * 0.45));
+    const flip = `scale(${fromLeft ? -1 : 1}, 1)`;
+    const lean = fromLeft ? 1 : -1;
+    const base = `translate(${x - path.startX}px, ${y - path.startY}px) ${flip}`;
+    if (wp.chase === 'paw') return `translate(${x - path.startX + lean * size * 0.18}px, ${y - path.startY - size * 0.08}px) ${flip} rotate(${-12}deg) scale(1.08, 0.92)`;
+    return base;
+  };
+
   if (path.waypoints) {
     for (let i = 1; i < path.waypoints.length; i++) {
       const wp = path.waypoints[i];
@@ -1555,7 +1605,7 @@ function spawnReaction(emojiId) {
           transformDurationMs = wp.legMs;
           el.style.transitionDuration = `${wp.legMs}ms, ${duration}ms`;
         }
-        el.style.transform = wp.transform;
+        el.style.transform = (wp.chase && chaseTransform(wp)) || wp.transform;
       }, wp.atMs);
     }
   }

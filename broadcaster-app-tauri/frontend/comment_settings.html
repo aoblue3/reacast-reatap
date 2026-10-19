@@ -142,6 +142,7 @@
   #postMenu button { display: block; width: 100%; text-align: left; background: none; color: inherit; border-radius: 0; padding: 6px 12px; }
   #postMenu button:hover { background: var(--c-34373f); }
   #postMenu button:disabled { opacity: 0.4; }
+  #postMenu hr { border: none; border-top: 1px solid var(--c-3a3d47); margin: 4px 0; }
   #readingDialog { position: fixed; z-index: 21; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
   #readingDialog.visible { display: flex; }
   /* 読み方・リアクション連動のルール編集(1行=1ルール) */
@@ -244,6 +245,7 @@
       <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
       <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
       <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
+      <div class="field"><label>落ちた時は続きから読む</label><div><input type="checkbox" data-key="resumeReading" /><span class="unit">読み上げの途中でPCやReaCastが落ちた時、1時間以内に同じスレッドで開始し直すと、前回読み終わったレスの次から読み上げます(「停止」で止めた時は続きから読みません)。好きなレスから読み直す時は、「スレッドのレス」タブでレスを右クリック→「ここから読み始める」</span></div></div>
       <div class="field"><label>開始レス番号</label><div><input type="number" min="0" data-key="startResNo" /><span class="unit">開始時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら表示しません</span></div></div>
       <div class="field"><label>初期表示テキスト</label><div><input type="text" class="wide" data-key="initialText" /><span class="unit">開始時に右のレス一覧に表示します(空欄なら表示しません)</span></div></div>
       <h3>テスト表示</h3>

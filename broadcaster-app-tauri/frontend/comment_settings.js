@@ -1332,7 +1332,7 @@ function buildPostEl(p) {
   return el;
 }
 
-// ---- レスの右クリックメニュー(NGワード・読み方に追加) ----
+// ---- レスの右クリックメニュー(コピー・検索・ここから読む・NGワード・読み方に追加) ----
 const postMenuEl = document.getElementById('postMenu');
 const postMenuMsgEl = document.getElementById('postMenuMsg');
 const readingDialogEl = document.getElementById('readingDialog');
@@ -1367,14 +1367,27 @@ function openPostMenu(e, p) {
   e.preventDefault();
   const selected = String(window.getSelection() || '').trim().replace(/\s*\n\s*/g, ' ');
   const id = (String(p.date || '').match(/ID:([^\s]+)/) || [])[1];
+  const short = selected.slice(0, 20);
+  // nullは区切り線
   const items = [
-    [selected ? `「${selected.slice(0, 20)}」をNGワードに追加` : '文字を選んでから右クリックするとNGワードに追加できます', selected ? () => addNgWord(selected) : null],
+    [selected ? `「${short}」をコピー` : '文字を選んでから右クリックするとコピーできます', selected ? () => copyText(selected, `「${short}」をコピーしました`) : null],
+    ['このレスの本文をコピー', p.body ? () => copyText(p.body, `レス${p.no}の本文をコピーしました`) : null],
+    [selected ? `「${short}」をGoogleで検索` : '文字を選んでから右クリックすると検索できます', selected ? () => invoke('comments_search_web', { text: selected }).catch((err) => (postMenuMsgEl.textContent = String(err))) : null],
+    null,
+    [`ここから読み始める(レス${p.no}〜)`, p.no > 0 ? () => readFrom(p.no) : null],
+    null,
+    [selected ? `「${short}」をNGワードに追加` : '文字を選んでから右クリックするとNGワードに追加できます', selected ? () => addNgWord(selected) : null],
     [selected ? `「${selected.slice(0, 20)}」の読み方を登録…` : '文字を選んでから右クリックすると読み方を登録できます', selected ? () => openReadingDialog(selected) : null],
     [p.name ? `名前「${p.name.slice(0, 20)}」をNGワードに追加` : '名前がありません', p.name ? () => addNgWord(p.name) : null],
     [id ? `ID「${id}」をNGワードに追加` : 'IDがありません', id ? () => addNgWord(`ID:${id}`) : null],
   ];
   postMenuEl.textContent = '';
-  for (const [label, action] of items) {
+  for (const item of items) {
+    if (!item) {
+      postMenuEl.appendChild(document.createElement('hr'));
+      continue;
+    }
+    const [label, action] = item;
     const b = document.createElement('button');
     b.textContent = label;
     b.disabled = !action;
@@ -1391,6 +1404,24 @@ function openPostMenu(e, p) {
   const { offsetWidth: w, offsetHeight: h } = postMenuEl;
   postMenuEl.style.left = `${Math.min(e.clientX, window.innerWidth - w - 4)}px`;
   postMenuEl.style.top = `${Math.min(e.clientY, window.innerHeight - h - 4)}px`;
+}
+
+async function copyText(text, done) {
+  try {
+    await navigator.clipboard.writeText(text);
+    postMenuMsgEl.textContent = done;
+  } catch (err) {
+    postMenuMsgEl.textContent = `コピーできませんでした: ${err}`;
+  }
+}
+
+async function readFrom(no) {
+  try {
+    const n = await invoke('comments_read_from', { no });
+    postMenuMsgEl.textContent = `レス${no}から読み上げ直します(${n}件)`;
+  } catch (err) {
+    postMenuMsgEl.textContent = String(err);
+  }
 }
 
 function openReadingDialog(word) {
