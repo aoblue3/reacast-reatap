@@ -627,23 +627,41 @@ for (const btn of document.querySelectorAll('[data-pick-folder]')) {
   });
 }
 
+// ---- フォント名の候補(ウェブフォント + PCに入っているフォント) ----
+(async () => {
+  const list = document.getElementById('fontList');
+  const add = (value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    if (label) o.label = label;
+    list.appendChild(o);
+  };
+  const installed = await invoke('list_system_fonts').catch(() => []);
+  list.textContent = '';
+  for (const name of Object.keys(C.WEB_FONTS)) add(name, `${name}(ウェブフォント。ネットから読み込みます)`);
+  for (const name of installed) add(name, `${name}(このPCのフォント)`);
+})();
+
 // ---- 右のレス一覧のプリセット ----
 // デザインに関わる項目だけを置き換える(フォント・件数・表示順などはそのまま)
 const LIST_PRESETS = {
   default: {},
   yellowLine: {
+    fontFamily: 'M PLUS 1p',
     headFontSize: 14, headBold: true, numberColor: '#ff6060', nameColor: '#60c0ff', dateColor: '#bbbbbb',
     bodyColor: '#ffffff', bodyBold: false, outlineWidth: 2, outlineColor: '#000000',
     itemBgColor: '#000000', itemBgOpacity: 50, itemPadding: 6, itemRadius: 6,
     customCss: '.item { border-left: 4px solid #ffd23f; }',
   },
   bubble: {
+    fontFamily: 'Zen Maru Gothic',
     headFontSize: 13, headBold: true, numberColor: '#e05a00', nameColor: '#555555', dateColor: '#888888',
     bodyColor: '#222222', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#ffffff', itemBgOpacity: 90, itemPadding: 8, itemRadius: 14,
     customCss: '.item { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }',
   },
   neon: {
+    fontFamily: 'RocknRoll One',
     headFontSize: 14, headBold: true, numberColor: '#3cf2ff', nameColor: '#ff4fd8', dateColor: '#9a9ab8',
     bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#120a24', itemBgOpacity: 60, itemPadding: 6, itemRadius: 4,
@@ -651,12 +669,11 @@ const LIST_PRESETS = {
   },
   // ペルソナ5風: 黒地に白、赤のアクセント、斜めに傾いた札、太いゴシック
   p5: {
+    fontFamily: 'Dela Gothic One',
     headFontSize: 14, headBold: true, numberColor: '#000000', nameColor: '#000000', dateColor: '#bbbbbb',
     bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#000000', itemBgOpacity: 92, itemPadding: 8, itemRadius: 0,
     customCss: [
-      "@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');",
-      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'Dela Gothic One', 'BIZ UDゴシック', sans-serif !important; }",
       '.item { transform: skewX(-10deg) rotate(-1.5deg); border-left: 6px solid #ff1f1f; box-shadow: 5px 5px 0 #ff1f1f; }',
       '.item:nth-child(even) { transform: skewX(-10deg) rotate(1.5deg); }',
       '.item .content { transform: skewX(10deg); }',
@@ -668,25 +685,26 @@ const LIST_PRESETS = {
   // FF風(スーパーファミコンのRPGのウィンドウ風): 青いグラデーションの地、白い縁取りの角丸、
   // 影付きの白い文字、ドット文字、名前の前に指のカーソル
   ff: {
+    fontFamily: 'DotGothic16',
     headFontSize: 0, headBold: false, numberColor: '#ffe27a', nameColor: '#ffffff', dateColor: '#aeb8ff',
     bodyColor: '#ffffff', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#1a2a8c', itemBgOpacity: 100, itemPadding: 10, itemRadius: 6,
     customCss: [
-      "@import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');",
-      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'DotGothic16', monospace !important; -webkit-font-smoothing: none; }",
+      '.item:not(.aa) { -webkit-font-smoothing: none; }',
       '.item { background: linear-gradient(180deg, #5b6fe0 0%, #2a3aa8 45%, #101a6c 100%) !important; border: 3px solid #eef0ff; border-radius: 7px; box-shadow: 0 0 0 2px #1a1a33, inset 0 0 0 1px #8090e0, 2px 3px 0 3px rgba(0, 0, 0, 0.35); }',
       '.head, .body { text-shadow: 2px 2px 0 #10103a; }',
       ".head .name::before { content: '☞'; margin-right: 0.3em; color: #ffffff; }",
     ].join('\n'),
   },
   // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
+  // 英数字はファミコン風のPress Start 2P、日本語はドット文字のDotGothic16
   retro: {
+    fontFamily: 'Press Start 2P, DotGothic16',
     headFontSize: 0, headBold: false, numberColor: '#f8d800', nameColor: '#7cf87c', dateColor: '#a8a8a8',
     bodyColor: '#ffffff', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#000000', itemBgOpacity: 100, itemPadding: 10, itemRadius: 4,
     customCss: [
-      "@import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');",
-      ".item:not(.aa), .item:not(.aa) .head, .item:not(.aa) .body { font-family: 'DotGothic16', monospace !important; -webkit-font-smoothing: none; }",
+      '.item:not(.aa) { -webkit-font-smoothing: none; }',
       '.item { border: 3px solid #ffffff; box-shadow: 0 0 0 3px #000000, inset 0 0 0 3px #000000; }',
       ".head .name::before { content: '▶'; margin-right: 0.2em; }",
       // 一番新しいレスの最後に、点滅する「▼」(新しい順でも古い順でも)
@@ -696,7 +714,7 @@ const LIST_PRESETS = {
   },
 };
 const PRESET_KEYS = [
-  'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
+  'fontFamily', 'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
   'outlineWidth', 'outlineColor', 'itemBgColor', 'itemBgOpacity', 'itemPadding', 'itemRadius', 'customCss',
 ];
 document.getElementById('applyPresetBtn').addEventListener('click', () => {

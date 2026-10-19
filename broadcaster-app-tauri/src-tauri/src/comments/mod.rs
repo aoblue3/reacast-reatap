@@ -1148,17 +1148,19 @@ impl CommentEngine {
                 self.save_progress(&p);
             }
         }
+        // 取得と、まだ読んでいない順番待ちは捨てる。「スレッドのレス」の一覧は残す
+        // (止めた後も見返したり、右クリックでNGワード登録・コピーができるように。
+        // 次に開始した時に読み込み直す)
         {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
             st.queue.clear();
-            st.thread_posts.clear();
             st.status = CommentStatus::default();
         }
         log::info!("コメント取得を停止");
         self.bridge().clear_subtitle();
+        crate::tts::stop();
         self.emit_status();
-        self.emit_thread_reset();
     }
 
     fn emit_thread_reset(&self) {
@@ -2108,6 +2110,12 @@ pub fn comments_toggle_pause(engine: Engine) -> bool {
 }
 
 /// ホットキーの割り当て中は、登録済みのホットキーを一旦外す。
+/// ReaCastの画面で押されたキー(shared/hotkey-forward.js)をホットキーと照合する
+#[tauri::command]
+pub fn comments_hotkey_from_page(app: AppHandle, code: String, ctrl: bool, alt: bool, shift: bool, meta: bool) {
+    hotkeys::page_key(&app, &code, ctrl, alt, shift, meta);
+}
+
 #[tauri::command]
 pub fn comments_suspend_hotkeys(app: AppHandle) {
     hotkeys::suspend(&app);

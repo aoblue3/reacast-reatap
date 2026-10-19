@@ -161,9 +161,55 @@
     return parts.join(', ');
   }
 
+  /** 選べるウェブフォント(Google Fonts。ReaCastには入れず、表示する時にネットから
+   * 読み込むので、容量は増えない)。値はGoogle Fonts のURLのfamily=の部分。 */
+  const WEB_FONTS = {
+    'Noto Sans JP': 'Noto+Sans+JP:wght@400;700;900',
+    'M PLUS 1p': 'M+PLUS+1p:wght@500;800',
+    'M PLUS Rounded 1c': 'M+PLUS+Rounded+1c:wght@500;800',
+    'Zen Kaku Gothic New': 'Zen+Kaku+Gothic+New:wght@500;700',
+    'Zen Maru Gothic': 'Zen+Maru+Gothic:wght@500;700',
+    'Kosugi Maru': 'Kosugi+Maru',
+    'Kiwi Maru': 'Kiwi+Maru:wght@500',
+    'Noto Serif JP': 'Noto+Serif+JP:wght@400;700',
+    'Shippori Mincho': 'Shippori+Mincho:wght@500;700',
+    'Klee One': 'Klee+One:wght@600',
+    'Yomogi': 'Yomogi',
+    'Hachi Maru Pop': 'Hachi+Maru+Pop',
+    'Yusei Magic': 'Yusei+Magic',
+    'Mochiy Pop One': 'Mochiy+Pop+One',
+    'Potta One': 'Potta+One',
+    'RocknRoll One': 'RocknRoll+One',
+    'Reggae One': 'Reggae+One',
+    'Rampart One': 'Rampart+One',
+    'Train One': 'Train+One',
+    'Stick': 'Stick',
+    'Dela Gothic One': 'Dela+Gothic+One',
+    'DotGothic16': 'DotGothic16',
+    'Press Start 2P': 'Press+Start+2P',
+  };
+  const loadedWebFonts = new Set();
+  function loadWebFont(name) {
+    const family = WEB_FONTS[name];
+    if (!family || loadedWebFonts.has(name) || typeof document === 'undefined') return;
+    loadedWebFonts.add(name);
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+    document.head.appendChild(link);
+  }
+
+  /** フォント名をCSSのfont-familyにする。「A, B」のように複数並べると、Aに無い文字は
+   * Bで表示する(英数字だけのフォント + 日本語のフォント、のような組み合わせ用)。
+   * ウェブフォントなら、その場で読み込む。 */
   function cssFontFamily(name) {
-    const n = String(name || '').replace(/["\\]/g, '');
-    return n ? `"${n}", sans-serif` : 'sans-serif';
+    const names = String(name || '')
+      .replace(/["\\]/g, '')
+      .split(/[,、]/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+    names.forEach(loadWebFont);
+    return names.length ? `${names.map((n) => `"${n}"`).join(', ')}, sans-serif` : 'sans-serif';
   }
 
   /** obs_bridgeに繋ぎ、切れたら繋ぎ直し続ける。 */
@@ -221,6 +267,7 @@
     mergeStyle,
     outlineShadow,
     cssFontFamily,
+    WEB_FONTS,
     connectBridge,
     findImageUrls,
     IMAGE_URL_RE,

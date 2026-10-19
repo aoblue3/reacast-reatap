@@ -617,7 +617,7 @@
         </select>
         <button class="secondary" id="applyPresetBtn">適用</button>
       </div></div>
-      <div class="hint">プリセットを適用すると、色・背景・見出し・カスタムCSSがそのデザインに置き換わります(フォントや件数などはそのまま)。適用した後で、下の項目でさらに細かく調整できます。</div>
+      <div class="hint">プリセットを適用すると、フォント・色・背景・見出し・カスタムCSSがそのデザインに置き換わります(件数などはそのまま)。適用した後で、下の項目でさらに細かく調整できます。</div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
@@ -727,6 +727,7 @@
   <script src="shared/error-log.js"></script>
   <script src="shared/emoji-set.js"></script>
   <script src="shared/comment-common.js"></script>
+  <script src="shared/hotkey-forward.js"></script>
   <script src="comment_settings.js"></script>
 </body>
 </html>

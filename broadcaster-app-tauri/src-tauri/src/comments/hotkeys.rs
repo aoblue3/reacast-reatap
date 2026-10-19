@@ -63,6 +63,51 @@ fn bindings() -> &'static Mutex<Bindings> {
     B.get_or_init(|| Mutex::new(Bindings { list: Vec::new(), suspended: false }))
 }
 
+/// 同じホットキーを、キーボードの見張りと画面(page_key)の両方で拾った時に、
+/// 2回動かないようにする(0.4秒以内の同じ動作は1回にまとめる)
+fn first_fire(action: Action) -> bool {
+    use std::time::{Duration, Instant};
+    static LAST: Mutex<Vec<(u8, Instant)>> = Mutex::new(Vec::new());
+    let id = action as u8;
+    let now = Instant::now();
+    let mut last = LAST.lock().unwrap();
+    if last.iter().any(|(a, t)| *a == id && now.duration_since(*t) < Duration::from_millis(400)) {
+        return false;
+    }
+    last.retain(|(a, _)| *a != id);
+    last.push((id, now));
+    true
+}
+
+fn label(action: Action) -> &'static str {
+    match action {
+        Action::Skip => "スキップ",
+        Action::Pause => "一時停止/再開",
+        Action::VoiceMute => "マイクを止める",
+        Action::VoiceUnmute => "マイクを再開",
+    }
+}
+
+/// ReaCastの画面が前面にある時に、画面で押されたキー(shared/hotkey-forward.js)。
+/// ReaCastを管理者として起動していると、この時はキーボードの見張りにキーが届かないため。
+pub fn page_key(app: &AppHandle, code: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
+    let combo = Combo { ctrl, alt, shift, meta, code: code.to_string() };
+    let action = {
+        let b = bindings().lock().unwrap();
+        if b.suspended {
+            return;
+        }
+        b.list.iter().find(|(c, _)| *c == combo).map(|(_, a)| *a)
+    };
+    if let Some(action) = action {
+        if first_fire(action) {
+            log::info!("ホットキー: {}(ReaCastの画面)", label(action));
+            let app = app.clone();
+            std::thread::spawn(move || run_action(&app, action));
+        }
+    }
+}
+
 fn run_action(app: &AppHandle, action: Action) {
     let Some(engine) = app.try_state::<Arc<super::CommentEngine>>() else {
         return;
@@ -256,17 +301,11 @@ mod win {
         unsafe { (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 }
     }
 
-    fn label(action: Action) -> &'static str {
-        match action {
-            Action::Skip => "スキップ",
-            Action::Pause => "一時停止/再開",
-            Action::VoiceMute => "マイクを止める",
-            Action::VoiceUnmute => "マイクを再開",
-        }
-    }
-
     /// ホットキーの動作を実行する(フックの中ではすぐ戻らないといけないので別のスレッドで)。
     fn fire(action: Action, via: &str) {
+        if !first_fire(action) {
+            return;
+        }
         log::info!("ホットキー: {}({via})", label(action));
         if let Some(app) = APP.get() {
             let app = app.clone();
