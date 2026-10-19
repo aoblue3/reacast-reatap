@@ -868,10 +868,22 @@ function renderStatus(s) {
   if (s.queueLen > 0) add(` / 順番待ち${s.queueLen}件`);
   if (s.warning) add(` ${s.warning}`, 'warn');
   if (s.error) add(` ${s.error}`, 'ng');
-  for (const src of s.sources || []) {
-    statusEl.appendChild(document.createElement('br'));
-    add(`${src.label}: `);
-    add(src.message, src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : 'warn');
+  const sources = s.sources || [];
+  if (sources.length) {
+    const chips = document.createElement('div');
+    chips.className = 'src-chips';
+    for (const src of sources) {
+      const chip = document.createElement('span');
+      chip.className = 'src-chip';
+      // 詳しい説明はマウスを乗せると出す(札には括弧の前までの短い説明)
+      chip.title = `${src.label}: ${src.message}`;
+      const dot = document.createElement('i');
+      dot.className = src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : '';
+      const short = String(src.message || '').split(/[(（]/)[0];
+      chip.append(dot, `${src.label}: ${short}`);
+      chips.appendChild(chip);
+    }
+    statusEl.appendChild(chips);
   }
 }
 
@@ -1318,12 +1330,17 @@ function buildPostEl(p) {
   btn.textContent = '読み上げ';
   btn.title = 'このレスをもう一度字幕に表示して読み上げます';
   btn.addEventListener('click', () => invoke('comments_replay', { no: p.no }).catch(() => {}));
+  const from = document.createElement('button');
+  from.className = 'secondary';
+  from.textContent = 'ここから';
+  from.title = 'このレスから順に読み上げ直します';
+  from.addEventListener('click', () => readFrom(p.no));
   const reply = document.createElement('button');
   reply.className = 'secondary';
   reply.textContent = '返信';
   reply.title = '下の書き込み欄に「>>番号」を入れます';
   reply.addEventListener('click', () => insertReplyAnchor(p.no));
-  head.append(no, name, date, btn, reply);
+  head.append(no, name, date, btn, from, reply);
   const body = document.createElement('div');
   body.className = 'post-body';
   body.textContent = p.body || '';
@@ -1454,6 +1471,7 @@ document.addEventListener('keydown', (e) => {
 });
 window.addEventListener('blur', closePostMenu);
 threadListEl.addEventListener('scroll', closePostMenu);
+document.querySelector('main').addEventListener('scroll', closePostMenu);
 
 function appendPosts(posts) {
   if (!posts.length) return;

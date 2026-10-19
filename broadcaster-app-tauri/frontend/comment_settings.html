@@ -52,10 +52,13 @@
     --c-ffffff: #141414;
   }
   :root { color-scheme: dark; }
-  /* 縦のスクロールバーが出るタブと出ないタブで横幅が変わり、タブの並びが
-     折り返し直して動いてしまうので、スクロールバーの場所を常に空けておく */
-  html { scrollbar-gutter: stable; }
+  /* 上の操作欄と左のタブは固定して、真ん中の設定の中身だけをスクロールする
+     (どのタブのどこを見ていても、開始・停止・スキップとタブの切り替えがすぐできるように) */
+  html, body { height: 100%; }
   body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     margin: 0;
     font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif;
     font-size: 13px;
@@ -63,6 +66,7 @@
     color: var(--c-e6e6ea);
   }
   header {
+    flex: none;
     padding: 10px 14px;
     background: var(--c-24262d);
     border-bottom: 1px solid var(--c-33353d);
@@ -74,18 +78,37 @@
   #status .ok { color: var(--c-7dff9a); }
   #status .ng { color: var(--c-ff8a8a); }
   #status .warn { color: var(--c-ffd36b); }
-  nav { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 14px 0; }
+  /* 取得元(jpnkn即時通知・YouTube・Twitch)の状態は、小さな札を横に並べる(詳しくはマウスを乗せると出る) */
+  .src-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+  .src-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 10px; background: var(--c-2b2d35); border: 1px solid var(--c-3a3d47); color: var(--c-c9cbd4); }
+  .src-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-ffd36b); }
+  .src-chip i.ok { background: var(--c-7dff9a); }
+  .src-chip i.ng { background: var(--c-ff8a8a); }
+  .layout { flex: 1; display: flex; min-height: 0; }
+  nav {
+    flex: none;
+    width: 172px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 8px;
+    overflow-y: auto;
+    background: var(--c-24262d);
+    border-right: 1px solid var(--c-33353d);
+  }
   nav button {
-    background: var(--c-2b2d35);
+    background: none;
     color: var(--c-c9cbd4);
-    border: 1px solid var(--c-3a3d47);
-    border-bottom: none;
-    border-radius: 6px 6px 0 0;
-    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 10px;
+    text-align: left;
     cursor: pointer;
   }
-  nav button.active { background: var(--c-34373f); color: var(--c-ffffff); }
-  main { padding: 12px 14px 24px; border-top: 1px solid var(--c-3a3d47); }
+  nav button:hover { background: var(--c-2b2d35); }
+  nav button.active { background: var(--c-34373f); color: var(--c-ffffff); box-shadow: inset 3px 0 0 var(--c-3b6df0); }
+  /* スクロールバーが出るタブと出ないタブで横幅が変わらないよう、場所を常に空けておく */
+  main { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 12px 16px 24px; }
   section { display: none; }
   section.active { display: block; }
   .field { display: grid; grid-template-columns: 220px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
@@ -134,7 +157,8 @@
   .post:last-child { border-bottom: none; }
   .post-head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--c-8fd88f); }
   .post-head .date { color: var(--c-8d909c); }
-  .post-head button { margin-left: auto; padding: 2px 8px; font-size: 12px; }
+  .post-head button { padding: 2px 8px; font-size: 12px; }
+  .post-head button:first-of-type { margin-left: auto; }
   .post-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
   /* スレッドのレスの右クリックメニュー */
   #postMenu { position: fixed; z-index: 20; display: none; min-width: 220px; padding: 4px 0; background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
@@ -209,6 +233,7 @@
     <div id="status">停止中</div>
   </header>
 
+  <div class="layout">
   <nav id="tabs">
     <button data-tab="fetch" class="active">取得</button>
     <button data-tab="thread">スレッドのレス</button>
@@ -675,6 +700,7 @@
       <div class="hint">字幕のフォント・色・位置の微調整は「字幕」タブの設定がそのまま使われます。デスクトップ字幕はクリックを透過するので、下のウィンドウの操作を邪魔しません。</div>
     </section>
   </main>
+  </div>
 
   <datalist id="fontList">
     <option value="BIZ UDゴシック"></option>

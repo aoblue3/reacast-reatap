@@ -2162,8 +2162,13 @@ pub fn comments_search_web(text: String) -> Result<(), String> {
         return Ok(());
     }
     let url = reqwest::Url::parse_with_params("https://www.google.com/search", &[("q", text)]).map_err(|e| e.to_string())?;
+    // explorerにURLを渡すと「ドキュメント」フォルダが開いてしまう(本人のPCで発生)ので、
+    // URLを既定のブラウザで開く標準の方法(url.dllのFileProtocolHandler)を使う
     #[cfg(target_os = "windows")]
-    std::process::Command::new("explorer").arg(url.as_str()).spawn().map_err(|e| format!("ブラウザを開けませんでした: {e}"))?;
+    std::process::Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", url.as_str()])
+        .spawn()
+        .map_err(|e| format!("ブラウザを開けませんでした: {e}"))?;
     #[cfg(not(target_os = "windows"))]
     let _ = url;
     Ok(())
