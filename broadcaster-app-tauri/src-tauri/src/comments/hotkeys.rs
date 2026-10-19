@@ -221,30 +221,131 @@ fn scan_to_code(scan: u32, extended: bool) -> Option<String> {
     Some(s.to_string())
 }
 
+/// 設定のキーの名前(KeyboardEvent.code)を、RegisterHotKeyで使う仮想キーコードにする。
+/// 管理者として動いているアプリが前面にある時だけ使う(win::sync_registered参照)。
+/// 記号キーなどキーボードの配列で変わるものは対応しない(None)。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn code_to_vk(code: &str) -> Option<u32> {
+    if let Some(c) = code.strip_prefix("Key") {
+        let b = c.as_bytes();
+        return (b.len() == 1 && b[0].is_ascii_uppercase()).then(|| b[0] as u32);
+    }
+    if let Some(d) = code.strip_prefix("Digit") {
+        return d.parse::<u32>().ok().filter(|n| *n <= 9).map(|n| 0x30 + n);
+    }
+    if let Some(d) = code.strip_prefix("Numpad").and_then(|d| d.parse::<u32>().ok()) {
+        return (d <= 9).then(|| 0x60 + d);
+    }
+    if let Some(n) = code.strip_prefix('F').and_then(|n| n.parse::<u32>().ok()) {
+        return (1..=24).contains(&n).then(|| 0x70 + n - 1);
+    }
+    Some(match code {
+        "NumpadMultiply" => 0x6A,
+        "NumpadAdd" => 0x6B,
+        "NumpadSubtract" => 0x6D,
+        "NumpadDecimal" => 0x6E,
+        "NumpadDivide" => 0x6F,
+        "Enter" | "NumpadEnter" => 0x0D,
+        "Pause" => 0x13,
+        "NumLock" => 0x90,
+        "ScrollLock" => 0x91,
+        "PrintScreen" => 0x2C,
+        "CapsLock" => 0x14,
+        "ContextMenu" => 0x5D,
+        "Escape" => 0x1B,
+        "Space" => 0x20,
+        "Tab" => 0x09,
+        "Backspace" => 0x08,
+        "Insert" => 0x2D,
+        "Delete" => 0x2E,
+        "Home" => 0x24,
+        "End" => 0x23,
+        "PageUp" => 0x21,
+        "PageDown" => 0x22,
+        "ArrowLeft" => 0x25,
+        "ArrowUp" => 0x26,
+        "ArrowRight" => 0x27,
+        "ArrowDown" => 0x28,
+        "AudioVolumeMute" => 0xAD,
+        "AudioVolumeDown" => 0xAE,
+        "AudioVolumeUp" => 0xAF,
+        "MediaTrackNext" => 0xB0,
+        "MediaTrackPrevious" => 0xB1,
+        "MediaStop" => 0xB2,
+        "MediaPlayPause" => 0xB3,
+        _ => return None,
+    })
+}
+
+/// キーボードの見張り。
+///
+/// 普段は低レベルフック(WH_KEYBOARD_LL)で「見るだけ」にして、ホットキーのキーでも
+/// 文字が打てるようにしている。ただしWindowsの決まりで、**管理者として動いている
+/// アプリ(管理者で起動したOBS・ゲーム・専ブラ等)が前面にある間は、普通の権限の
+/// ReaCastのフックにはキーが届かない**(2026-10-19、本人のOBS・Jane2chが管理者で
+/// 動いていて、ホットキーが効かなかった)。そこで、前面のアプリが管理者で動いている
+/// 間だけ、Windowsのホットキー(RegisterHotKey。前面のアプリの権限に関係なく届く)
+/// にも登録する。その間はそのキーが前面のアプリに届かなくなるので、前面が普通の
+/// アプリに戻ったらすぐ登録を外す。
 #[cfg(target_os = "windows")]
 mod win {
     use super::*;
-    use std::collections::HashSet;
-    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+    use windows::Win32::Foundation::{CloseHandle, HANDLE, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::System::Threading::{
+        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+        GetAsyncKeyState, RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL,
+        MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, MSG,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId, SetTimer,
+        SetWindowsHookExW, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, MSG, WH_KEYBOARD_LL, WM_HOTKEY, WM_KEYDOWN,
+        WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
     };
 
     static APP: OnceLock<AppHandle> = OnceLock::new();
 
-    /// 押しっぱなしの間に何度も反応しないよう、今押されているキーを覚えておく
-    fn held() -> &'static Mutex<HashSet<String>> {
-        static H: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-        H.get_or_init(|| Mutex::new(HashSet::new()))
+    /// 押しっぱなしの間に何度も反応しないよう、押されているキーと最後に届いた時刻を
+    /// 覚えておく。離したのを見逃しても(離す瞬間に管理者のアプリが前面だった等)
+    /// 1秒以上届かなければ新しく押したとみなす(押しっぱなしの繰り返しは約0.03秒おきに届く)。
+    fn held() -> &'static Mutex<HashMap<String, Instant>> {
+        static H: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+        H.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     fn down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> bool {
         unsafe { (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 }
+    }
+
+    fn label(action: Action) -> &'static str {
+        match action {
+            Action::Skip => "スキップ",
+            Action::Pause => "一時停止/再開",
+            Action::VoiceMute => "マイクを止める",
+            Action::VoiceUnmute => "マイクを再開",
+        }
+    }
+
+    /// ホットキーの動作を実行する(フックの中ではすぐ戻らないといけないので別のスレッドで)。
+    fn fire(action: Action, via: &str) {
+        log::info!("ホットキー: {}({via})", label(action));
+        if let Some(app) = APP.get() {
+            let app = app.clone();
+            std::thread::spawn(move || run_action(&app, action));
+        }
+    }
+
+    fn find_action(combo: &Combo) -> Option<Action> {
+        let b = bindings().lock().unwrap();
+        if b.suspended {
+            return None;
+        }
+        b.list.iter().find(|(c, _)| c == combo).map(|(_, a)| *a)
     }
 
     unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -255,7 +356,13 @@ mod win {
             let key = vk_to_code(info.vkCode).map(str::to_string).or_else(|| scan_to_code(info.scanCode, extended));
             if let Some(key) = key {
                 if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-                    let first = held().lock().unwrap().insert(key.clone());
+                    let now = Instant::now();
+                    let first = {
+                        let mut h = held().lock().unwrap();
+                        let repeat = h.get(&key).is_some_and(|t| now.duration_since(*t) < Duration::from_secs(1));
+                        h.insert(key.clone(), now);
+                        !repeat
+                    };
                     if first {
                         let combo = Combo {
                             ctrl: down(VK_CONTROL),
@@ -264,18 +371,8 @@ mod win {
                             meta: down(VK_LWIN) || down(VK_RWIN),
                             code: key,
                         };
-                        let action = {
-                            let b = bindings().lock().unwrap();
-                            if b.suspended {
-                                None
-                            } else {
-                                b.list.iter().find(|(c, _)| *c == combo).map(|(_, a)| *a)
-                            }
-                        };
-                        // フックの中ではすぐ戻らないといけないので、動作は別のスレッドで
-                        if let (Some(action), Some(app)) = (action, APP.get()) {
-                            let app = app.clone();
-                            std::thread::spawn(move || run_action(&app, action));
+                        if let Some(action) = find_action(&combo) {
+                            fire(action, "キーボードの見張り");
                         }
                     }
                 } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
@@ -287,12 +384,104 @@ mod win {
         CallNextHookEx(None, code, wparam, lparam)
     }
 
-    /// キーボードの見張りを始める(2回目以降は何もしない)。フックはメッセージを
-    /// 受け取り続けるスレッドが必要なので、専用のスレッドで動かす。
-    pub fn start(app: AppHandle) {
-        if APP.set(app).is_err() {
-            return;
+    /// そのプロセスが管理者として動いているか(調べられない時はfalse)
+    fn process_elevated(process: HANDLE) -> bool {
+        unsafe {
+            let mut token = HANDLE::default();
+            if OpenProcessToken(process, TOKEN_QUERY, &mut token).is_err() {
+                return false;
+            }
+            let mut elevation = TOKEN_ELEVATION::default();
+            let mut len = 0u32;
+            let ok = GetTokenInformation(
+                token,
+                TokenElevation,
+                Some(&mut elevation as *mut _ as *mut core::ffi::c_void),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut len,
+            )
+            .is_ok();
+            let _ = CloseHandle(token);
+            ok && elevation.TokenIsElevated != 0
         }
+    }
+
+    /// 前面のウィンドウのアプリが管理者として動いているか
+    fn foreground_elevated() -> bool {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.0.is_null() {
+                return false;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid == 0 || pid == std::process::id() {
+                return false;
+            }
+            let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false };
+            let elevated = process_elevated(h);
+            let _ = CloseHandle(h);
+            elevated
+        }
+    }
+
+    /// RegisterHotKeyで登録しているホットキー(番号 → 動作)
+    struct Registered {
+        ids: Vec<(i32, Action)>,
+        /// 登録した時の割り当て(変わったら登録し直す)
+        list: Vec<(Combo, Action)>,
+    }
+
+    /// 前面のアプリに合わせて、Windowsのホットキーを登録する/外す(このスレッドで呼ぶ)。
+    fn sync_registered(reg: &mut Option<Registered>, self_elevated: bool) {
+        let (list, suspended) = {
+            let b = bindings().lock().unwrap();
+            (b.list.clone(), b.suspended)
+        };
+        let want = !self_elevated && !suspended && !list.is_empty() && foreground_elevated();
+        if reg.as_ref().is_some_and(|r| !want || r.list != list) {
+            for (id, _) in reg.take().unwrap().ids {
+                unsafe {
+                    let _ = UnregisterHotKey(None, id);
+                }
+            }
+            if !want {
+                log::info!("ホットキー: 前面のアプリが普通の権限に戻ったので、キーボードの見張りだけに戻しました");
+            }
+        }
+        if want && reg.is_none() {
+            let mut ids = Vec::new();
+            for (i, (combo, action)) in list.iter().enumerate() {
+                let Some(vk) = code_to_vk(&combo.code) else {
+                    log::warn!("ホットキー: {}のキー「{}」は、管理者のアプリが前面の時は使えません", label(*action), combo.code);
+                    continue;
+                };
+                let mut mods = MOD_NOREPEAT;
+                if combo.ctrl {
+                    mods |= MOD_CONTROL;
+                }
+                if combo.alt {
+                    mods |= MOD_ALT;
+                }
+                if combo.shift {
+                    mods |= MOD_SHIFT;
+                }
+                if combo.meta {
+                    mods |= MOD_WIN;
+                }
+                let id = 0x5243 + i as i32;
+                match unsafe { RegisterHotKey(None, id, HOT_KEY_MODIFIERS(mods.0), vk) } {
+                    Ok(()) => ids.push((id, *action)),
+                    Err(e) => log::warn!("ホットキー: {}のキー「{}」を登録できませんでした(他のアプリが使用中など): {e}", label(*action), combo.code),
+                }
+            }
+            log::info!("ホットキー: 管理者として動いているアプリが前面にあるので、Windowsのホットキーにも登録しました");
+            *reg = Some(Registered { ids, list });
+        }
+    }
+
+    /// フックを入れて、メッセージを受け取り続ける(専用のスレッドで動かす)。
+    fn install() {
         std::thread::spawn(|| unsafe {
             let module = GetModuleHandleW(None).ok();
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), module.map(|m| m.into()), 0);
@@ -300,9 +489,32 @@ mod win {
                 log::warn!("ホットキーのためのキーボードの見張りを始められませんでした: {e}");
                 return;
             }
+            let self_elevated = process_elevated(GetCurrentProcess());
+            // 前面のアプリを0.3秒おきに確かめる
+            SetTimer(None, 0, 300, None);
+            let mut reg: Option<Registered> = None;
             let mut msg = MSG::default();
-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                match msg.message {
+                    WM_TIMER => sync_registered(&mut reg, self_elevated),
+                    WM_HOTKEY => {
+                        let id = msg.wParam.0 as i32;
+                        if let Some((_, action)) = reg.as_ref().and_then(|r| r.ids.iter().find(|(i, _)| *i == id)) {
+                            fire(*action, "Windowsのホットキー");
+                        }
+                    }
+                    _ => {}
+                }
+            }
         });
+    }
+
+    /// キーボードの見張りを始める(2回目以降は何もしない)。
+    pub fn start(app: AppHandle) {
+        if APP.set(app).is_err() {
+            return;
+        }
+        install();
     }
 }
 
@@ -338,5 +550,18 @@ mod tests {
         assert_eq!(vk_to_code(0x90), Some("NumLock"));
         assert_eq!(vk_to_code(0xB3), Some("MediaPlayPause"));
         assert_eq!(vk_to_code(0x41), None); // 普通のキーはスキャンコードで
+    }
+
+    #[test]
+    fn maps_codes_to_virtual_keys_for_register_hotkey() {
+        assert_eq!(code_to_vk("KeyM"), Some(0x4D));
+        assert_eq!(code_to_vk("Digit5"), Some(0x35));
+        assert_eq!(code_to_vk("F9"), Some(0x78));
+        assert_eq!(code_to_vk("F24"), Some(0x87));
+        assert_eq!(code_to_vk("Numpad3"), Some(0x63));
+        assert_eq!(code_to_vk("NumpadAdd"), Some(0x6B));
+        assert_eq!(code_to_vk("Pause"), Some(0x13));
+        assert_eq!(code_to_vk("Semicolon"), None);
+        assert_eq!(code_to_vk("Keyboard"), None);
     }
 }
