@@ -567,49 +567,6 @@ document.getElementById('ttsTestBtn').addEventListener('click', async () => {
   }
 });
 
-// ---- 管理者の権限で動くキーの見張り係(src-tauri/src/key_watcher.rs) ----
-function renderWatcher(st) {
-  const text = !st
-    ? '状態を確認できませんでした'
-    : st.task === 'none'
-      ? '使っていません'
-      : st.task === 'stale'
-        ? '登録し直してください(ReaCastを別の場所に移した時など)'
-        : st.connected
-          ? '動作中(管理者のアプリが前面でも効きます)'
-          : '登録済み(まだ繋がっていません)';
-  for (const el of document.querySelectorAll('[data-watcher-status]')) el.textContent = text;
-  for (const b of document.querySelectorAll('[data-watcher-install]')) b.textContent = st && st.task === 'installed' ? '起動し直す' : '有効にする';
-  for (const b of document.querySelectorAll('[data-watcher-uninstall]')) b.disabled = !st || st.task === 'none';
-}
-
-async function refreshWatcher() {
-  renderWatcher(await invoke('hotkey_watcher_status').catch(() => null));
-}
-
-for (const btn of document.querySelectorAll('[data-watcher-install]')) {
-  btn.addEventListener('click', async () => {
-    for (const el of document.querySelectorAll('[data-watcher-status]')) el.textContent = 'Windowsの確認で「はい」を押してください…';
-    try {
-      renderWatcher(await invoke('hotkey_watcher_install'));
-    } catch (e) {
-      await refreshWatcher();
-      for (const el of document.querySelectorAll('[data-watcher-status]')) el.textContent = String(e);
-    }
-  });
-}
-for (const btn of document.querySelectorAll('[data-watcher-uninstall]')) {
-  btn.addEventListener('click', async () => {
-    try {
-      renderWatcher(await invoke('hotkey_watcher_uninstall'));
-    } catch (e) {
-      for (const el of document.querySelectorAll('[data-watcher-status]')) el.textContent = String(e);
-    }
-  });
-}
-refreshWatcher();
-setInterval(refreshWatcher, 5000);
-
 // ---- 参照ボタン ----
 document.getElementById('pickExeBtn').addEventListener('click', async () => {
   const path = await invoke('comments_pick_exe').catch(() => null);

@@ -33,8 +33,6 @@ tauri-plugin-dialog = "2"
 # 単体exeのままの自動アップデート機能用(updater.rs参照)。
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
-# 管理者の見張り係のタスクの確認で、schtasksの出力(Shift_JIS)を読む(key_watcher.rs)
-encoding_rs = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
@@ -46,7 +44,4 @@ windows = { version = "0.62", features = [
   # ホットキーのためのキーボードの見張り(hotkeys.rs)
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_LibraryLoader",
-  # 管理者の権限で動くキーの見張り係のタスクを登録する(key_watcher.rs)
-  "Win32_UI_Shell",
-  "Win32_System_Registry",
 ] }

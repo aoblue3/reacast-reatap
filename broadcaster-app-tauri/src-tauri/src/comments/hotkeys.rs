@@ -24,15 +24,15 @@ enum Action {
 
 /// 修飾キー(Ctrl/Alt/Shift/Win)の組み合わせとキーのコード
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct Combo {
-    pub(crate) ctrl: bool,
-    pub(crate) alt: bool,
-    pub(crate) shift: bool,
-    pub(crate) meta: bool,
-    pub(crate) code: String,
+struct Combo {
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    meta: bool,
+    code: String,
 }
 
-pub(crate) fn parse(key: &str) -> Option<Combo> {
+fn parse(key: &str) -> Option<Combo> {
     let key = key.trim();
     if key.is_empty() {
         return None;
@@ -85,7 +85,6 @@ fn run_action(app: &AppHandle, action: Action) {
 /// 書き方が正しくないキーがあれば、その説明を返す。
 pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
     let mut list = Vec::new();
-    let mut keys = Vec::new();
     let mut errors = Vec::new();
     for (label, key, action) in [
         ("スキップ", &s.hotkey_skip, Action::Skip),
@@ -97,10 +96,7 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
             continue;
         }
         match parse(key) {
-            Some(c) => {
-                list.push((c, action));
-                keys.push(key.trim().to_string());
-            }
+            Some(c) => list.push((c, action)),
             None => errors.push(format!("{label}のキー「{key}」の書き方が正しくありません")),
         }
     }
@@ -109,8 +105,6 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
         b.list = list;
         b.suspended = false;
     }
-    // 管理者の見張り係にも同じ順番で伝える(知らせはこの順番の番号で届く。fire_index)
-    crate::key_watcher::set_bindings(keys, false);
     #[cfg(target_os = "windows")]
     win::start(app.clone());
     #[cfg(not(target_os = "windows"))]
@@ -126,13 +120,12 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
 /// (割り当てが終わったらapplyで戻る)。
 pub fn suspend(_app: &AppHandle) {
     bindings().lock().unwrap().suspended = true;
-    crate::key_watcher::set_suspended();
 }
 
 /// スキャンコードでは区別できない・表に無いキーを、仮想キーコードから
 /// KeyboardEvent.codeと同じ名前にする(Pauseは NumLockと同じスキャンコード0x45で届く、など)。
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-pub(crate) fn vk_to_code(vk: u32) -> Option<&'static str> {
+fn vk_to_code(vk: u32) -> Option<&'static str> {
     Some(match vk {
         0x13 => "Pause",
         0x03 => "Pause", // Ctrl+Pause はVK_CANCELで届く
@@ -156,7 +149,7 @@ pub(crate) fn vk_to_code(vk: u32) -> Option<&'static str> {
 /// 同じ名前にする(設定画面で割り当てたキーの書き方と合わせるため)。
 /// extendedは矢印キー・Home等や、テンキーのEnter・/ を区別するためのフラグ。
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-pub(crate) fn scan_to_code(scan: u32, extended: bool) -> Option<String> {
+fn scan_to_code(scan: u32, extended: bool) -> Option<String> {
     let s = match (scan, extended) {
         (0x01, _) => "Escape",
         (0x02..=0x0A, _) => return Some(format!("Digit{}", scan - 1)),
@@ -228,13 +221,12 @@ pub(crate) fn scan_to_code(scan: u32, extended: bool) -> Option<String> {
     Some(s.to_string())
 }
 
-/// キーボードの見張り(本体の普通の権限で動く側)。
-///
-/// 低レベルフック(WH_KEYBOARD_LL)で「見るだけ」にして、ホットキーのキーでも文字が
-/// 打てるようにしている。管理者として動いているアプリ(管理者で起動したOBS等)が
-/// 前面にある間はWindowsの決まりでキーが届かないので、その場合のために管理者の権限で
-/// 動く見張り係(key_watcher.rs)を使える。見張り係と繋がっている間は、こちらでは
-/// 反応しない(見張り係が全部のキーを見ているので、二重に動かないように)。
+/// キーボードの見張り。低レベルフック(WH_KEYBOARD_LL)で「見るだけ」にして、
+/// ホットキーのキーでも文字が打てるようにしている。
+/// 注意: Windowsの決まり(UIPI)で、管理者として動いているアプリ(管理者で起動したOBS等)が
+/// 前面にある間は、このフックにもRegisterHotKeyのホットキーにもキーが届かない
+/// (2026-10-19に確認)。管理者の権限で動く見張り係を試したが(v1.5.18)、Windows Defenderに
+/// ウイルスと判定されたため取りやめた。
 #[cfg(target_os = "windows")]
 mod win {
     use super::*;
@@ -274,7 +266,7 @@ mod win {
     }
 
     /// ホットキーの動作を実行する(フックの中ではすぐ戻らないといけないので別のスレッドで)。
-    pub(super) fn fire(action: Action, via: &str) {
+    fn fire(action: Action, via: &str) {
         log::info!("ホットキー: {}({via})", label(action));
         if let Some(app) = APP.get() {
             let app = app.clone();
@@ -283,7 +275,7 @@ mod win {
     }
 
     unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-        if code >= 0 && !crate::key_watcher::connected() {
+        if code >= 0 {
             let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
             let msg = wparam.0 as u32;
             let extended = (info.flags.0 & LLKHF_EXTENDED.0) != 0;
@@ -332,9 +324,6 @@ mod win {
         if APP.set(app).is_err() {
             return;
         }
-        // 管理者の見張り係からの知らせを受け付け、登録済みなら見張り係も起動する
-        crate::key_watcher::start_server(super::fire_index);
-        crate::key_watcher::launch_if_installed();
         std::thread::spawn(|| unsafe {
             let module = GetModuleHandleW(None).ok();
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), module.map(|m| m.into()), 0);
@@ -345,22 +334,6 @@ mod win {
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
         });
-    }
-}
-
-/// 管理者の見張り係から「割り当ての何番目が押された」と届いた時。
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn fire_index(i: usize) {
-    let action = {
-        let b = bindings().lock().unwrap();
-        if b.suspended {
-            return;
-        }
-        b.list.get(i).map(|(_, a)| *a)
-    };
-    #[cfg(target_os = "windows")]
-    if let Some(action) = action {
-        win::fire(action, "管理者の見張り係");
     }
 }
 
