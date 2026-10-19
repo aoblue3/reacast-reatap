@@ -131,7 +131,10 @@ fn serve(stream: TcpStream, token: &str, on_fire: fn(usize)) {
     if hello["hello"].as_str() != Some(token) {
         return;
     }
+    // 合言葉を待つ間だけの時間制限を外す(読む側の複製にも。外し忘れると、5秒キーが
+    // 押されないだけで切れてしまう=v1.5.18の不具合)
     let _ = stream.set_read_timeout(None);
+    let _ = reader.get_ref().set_read_timeout(None);
     let id = {
         let mut s = server().lock().unwrap();
         let mut w = match stream.try_clone() {
@@ -150,7 +153,10 @@ fn serve(stream: TcpStream, token: &str, on_fire: fn(usize)) {
     loop {
         line.clear();
         match reader.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            // 時間切れ(念のため)は切断ではないので待ち続ける
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => continue,
+            Err(_) => break,
             Ok(_) => {
                 let msg: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
                 if let Some(i) = msg["fire"].as_u64() {
@@ -546,6 +552,7 @@ mod tests {
 
     /// 管理者の確認以外の流れを実際に試す: 普通の権限のタスク(別名)を登録 →
     /// schtasks /runで見張り係(開発用のexe)を起動 → 繋がる → Pauseキーを送る → 知らせが届く。
+    /// 本体が起動中だと、その接続先(key-watcher.json)を上書きしてしまうので、本体を閉じてから(本体は次の起動で書き直す)。
     /// 先に `cargo build` しておくこと(target/debug/ReaTap.exeを見張り係として使う)。
     #[test]
     #[ignore]
@@ -575,7 +582,9 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
         let ok_connected = connected();
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // 繋がってから6秒は何も押さない(繋いだ直後の時間制限で切れないこと。v1.5.18の不具合)
+        std::thread::sleep(std::time::Duration::from_secs(6));
+        let still_connected = connected();
         let key = |flags: KEYBD_EVENT_FLAGS| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VIRTUAL_KEY(0x13), wScan: 0x45, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
@@ -589,6 +598,7 @@ mod tests {
         }
         let _ = hidden_command("schtasks.exe").args(["/delete", "/tn", name, "/f"]).output();
         assert!(ok_connected, "見張り係が繋がらなかった");
+        assert!(still_connected, "見張り係が何も押さないうちに切れた");
         assert_eq!(fired, 1, "Pause(2番目の割り当て)の知らせが届かなかった");
     }
 }
