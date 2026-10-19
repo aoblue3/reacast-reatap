@@ -172,6 +172,10 @@ pub struct CommentSettings {
     /// false(=これから足す)、新しく作った設定ではtrue(load_settings参照)
     #[serde(default)]
     pub reading_presets_v2: bool,
+    /// v1.5.20で増やした既定のリアクション連動(全部の絵文字に1つ以上)を足し終えたか
+    /// (reading_presets_v2と同じ仕組み)
+    #[serde(default)]
+    pub reaction_presets_v2: bool,
     pub ng_words: String,
     // ---- コメントとリアクションの連動 ----
     /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
@@ -320,9 +324,27 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "カエル|ケロケロ|けろけろ|🐸/frog",
     "赤ちゃん|ばぶ|バブー|👶/baby",
     "うんこ|うんち|💩/poop",
+    // 果物(v1.5.20で追加)
+    "マンゴー|まんごー|🥭/mango",
+    "^もも$|^桃$|ピーチ|桃食|🍑/peach",
+    // 気持ち・ノリ(v1.5.20で追加)
+    "怒った|怒る|怒って|激おこ|^おこ$|ぷんぷん|プンプン|むかつ|ムカつ|💢|😠|😡/angry",
+    "ブーイング|ひっこめ|引っ込め|^帰れ|^かえれ|^ぶー$|^ブー$|👎/boo",
+    "挑発|煽り|煽って|あおり|かかってこい|ざぁこ|ざーこ|^雑魚|^ざこ|^ザコ|^m9|😏/provoke",
+    "天狗|てんぐ|イキり|イキって|イキる|調子に乗|調子乗|ドヤ顔|どや顔|ドヤァ|👺/tengu",
+    "おふざけ|ふざけ|てへぺろ|テヘペロ|^てへ|^テヘ|🤪/zany",
+    "パンチ|ゲンコツ|げんこつ|鉄拳|拳で|殴|👊/fist",
+    // 時間・方向(v1.5.20で追加)
+    "ストップウォッチ|タイム計|計測|RTA|タイマー|新記録|⏱/stopwatch",
+    "こんな時間|もう朝|時報|遅刻|寝坊|間に合わ|🕔/clock5",
+    "^上$|^うえ$|^上上|上だ[!！]|↑|⬆/arrowup",
+    "^下$|^した$|下だ[!！]|↓|⬇/arrowdown",
+    "^右$|^みぎ$|右だ[!！]|→|➡/arrowright",
+    "^左$|^ひだり$|左だ[!！]|←|⬅/arrowleft",
     // その他
     "ドカン|どかーん|爆発|💣/bomb",
     "ゴール|サッカー|⚽/soccer",
+    "爆竹|クラッカー|パンパン|ぱんぱん|🧨/firecracker",
     "^[ｷキ]ﾀ━|キタ━|きたあ|キター|キタ[ー━]+/fire",
 ];
 
@@ -393,6 +415,7 @@ impl Default for CommentSettings {
             hotkey_voice_unmute: String::new(),
             reading_rules: DEFAULT_READING_RULES.join("\n"),
             reading_presets_v2: true,
+            reaction_presets_v2: true,
             ng_words: String::new(),
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
@@ -1756,6 +1779,10 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
+    if !s.reaction_presets_v2 {
+        add_reaction_presets(&mut s);
+        let _ = save_settings(store, &s);
+    }
     // v1.5.12はexeの場所が1つだけだった
     let legacy = std::mem::take(&mut s.tts_exe_path);
     if !legacy.trim().is_empty() {
@@ -1782,6 +1809,24 @@ fn add_reading_presets(s: &mut CommentSettings) {
     }
     s.reading_rules = lines.join("\n");
     s.reading_presets_v2 = true;
+}
+
+/// 以前から使っている人のリアクション連動に、まだルールが1つも無いリアクションの
+/// 既定のルールを一度だけ足す(自分で作ったルール・消したルールはそのまま)。
+fn add_reaction_presets(s: &mut CommentSettings) {
+    let rule_id = |l: &str| l.rsplit_once('/').map(|(_, id)| id.trim().to_string());
+    let have: std::collections::HashSet<String> = s.reaction_rules.lines().filter_map(rule_id).collect();
+    let mut lines: Vec<String> = s.reaction_rules.lines().map(str::to_string).collect();
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    for rule in DEFAULT_REACTION_RULES {
+        if rule_id(rule).is_some_and(|id| !have.contains(&id)) {
+            lines.push(rule.to_string());
+        }
+    }
+    s.reaction_rules = lines.join("\n");
+    s.reaction_presets_v2 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
@@ -2217,6 +2262,39 @@ mod tests {
     }
 
     #[test]
+    fn every_reaction_has_a_default_rule() {
+        let emoji_set = include_str!("../../../frontend/shared/emoji-set.js");
+        let ids: Vec<&str> = emoji_set
+            .split("id: '")
+            .skip(1)
+            .map(|rest| &rest[..rest.find('\'').unwrap()])
+            .collect();
+        assert!(ids.len() >= 50);
+        for id in ids {
+            assert!(
+                DEFAULT_REACTION_RULES.iter().any(|r| r.ends_with(&format!("/{id}"))),
+                "{id}の既定のルールがありません"
+            );
+        }
+    }
+
+    #[test]
+    fn reaction_presets_are_added_once_to_saved_settings() {
+        let old = serde_json::json!({ "reactionRules": "おめ/cake\n自分の言葉/mango\n" });
+        let mut s: CommentSettings = serde_json::from_value(old).unwrap();
+        assert!(!s.reaction_presets_v2);
+        add_reaction_presets(&mut s);
+        let lines: Vec<&str> = s.reaction_rules.lines().collect();
+        assert_eq!(&lines[..2], &["おめ/cake", "自分の言葉/mango"]); // 自分のルールはそのまま先頭に
+        // cake・mangoは自分のルールがあるので足さない、他は足す
+        assert!(!lines[2..].iter().any(|l| l.ends_with("/cake") || l.ends_with("/mango")));
+        assert!(lines.iter().any(|l| l.ends_with("/peach")));
+        assert!(lines.iter().any(|l| l.ends_with("/kusa")));
+        assert!(s.reaction_presets_v2);
+        assert!(CommentSettings::default().reaction_presets_v2);
+    }
+
+    #[test]
     fn reading_presets_are_added_once_to_saved_settings() {
         // v1.5.5までの設定(reading_presets_v2が無い)を読み込んだ時
         let old = serde_json::json!({ "readingRules": format!("{}\n自分の/読み方", OLD_URL_READINGS[0]) });
@@ -2249,6 +2327,13 @@ mod tests {
         assert_eq!(m("ナイスナイス"), vec!["nice"]);
         assert_eq!(m("みんなお疲れ様でした"), vec!["otsu"]);
         assert!(m("今日はこれから雑談をします").is_empty());
+        assert_eq!(m("マンゴー食べたい"), vec!["mango"]);
+        assert_eq!(m("ブーイング"), vec!["boo"]);
+        assert_eq!(m("ドヤ顔やめろ"), vec!["tengu"]);
+        assert_eq!(m("↑"), vec!["arrowup"]);
+        assert_eq!(m("もうこんな時間か"), vec!["clock5"]);
+        assert_eq!(m("RTA走者"), vec!["stopwatch"]);
+        assert!(m("上手い").first().map(|s| s.as_str()) != Some("arrowup"));
         assert_eq!(m("wwwww"), vec!["kusa"]);
         assert_eq!(m("8888"), vec!["clap"]);
         assert_eq!(m("おつー"), vec!["otsu"]);
