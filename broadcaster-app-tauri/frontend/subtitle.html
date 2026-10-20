@@ -25,6 +25,7 @@
     pointer-events: none;
   }
   #box {
+    --off: translate(0, 0);
     position: relative;
     max-width: 100%;
     max-height: 100%;
@@ -51,6 +52,48 @@
   @keyframes slide-up {
     from { opacity: 0; top: 30px; }
     to { opacity: 1; top: 0; }
+  }
+  /* プリセットに合わせた出し方。位置の微調整(translate)は --off に入れてあるので、
+     アニメーションの中でも同じ位置を保てる */
+  /* 吹き出し: 左(キャラクターの側)から、ぽんっと膨らんで出てくる */
+  #box.appear-pop-left.visible { transform-origin: left center; animation: pop-left 460ms cubic-bezier(.2, 1.5, .4, 1); }
+  @keyframes pop-left {
+    0% { opacity: 0; transform: var(--off) scale(0.15); }
+    55% { opacity: 1; transform: var(--off) scale(1.07); }
+    100% { opacity: 1; transform: var(--off) scale(1); }
+  }
+  /* P5風: 左から斜めに切り込んできて、ぴたっと止まる */
+  #box.appear-p5-slash.visible { transform-origin: left center; animation: p5-slash 420ms cubic-bezier(.15, .9, .2, 1); }
+  @keyframes p5-slash {
+    0% { opacity: 0; transform: var(--off) translateX(-160px) skewX(-28deg); clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); }
+    45% { opacity: 1; transform: var(--off) translateX(14px) skewX(-10deg); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+    70% { transform: var(--off) translateX(-4px) skewX(-3deg); }
+    100% { opacity: 1; transform: var(--off); }
+  }
+  /* FF風: ウィンドウが上下にカクカクと開く(スーパーファミコンのRPGのウィンドウ) */
+  #box.appear-ff-open.visible { transform-origin: center; animation: ff-open 240ms steps(6, end); }
+  @keyframes ff-open {
+    0% { opacity: 1; transform: var(--off) scale(1, 0.05); }
+    100% { opacity: 1; transform: var(--off) scale(1, 1); }
+  }
+  /* ネオン: ネオン管がチカチカっと点く */
+  #box.appear-neon-flicker.visible { animation: neon-flicker 800ms linear; }
+  @keyframes neon-flicker {
+    0% { opacity: 0; } 8% { opacity: 1; } 16% { opacity: 0.15; } 26% { opacity: 1; } 34% { opacity: 0.35; } 46% { opacity: 1; } 100% { opacity: 1; }
+  }
+  /* 黄色ライン: 左から右へ、さっと拭くように出る */
+  #box.appear-wipe-left.visible { animation: wipe-left 360ms ease-out; }
+  @keyframes wipe-left {
+    from { opacity: 1; clip-path: inset(0 100% 0 0); }
+    to { opacity: 1; clip-path: inset(0 0 0 0); }
+  }
+  /* ゆめかわ: ぷるんっと弾んで出てくる */
+  #box.appear-cute-bounce.visible { transform-origin: left bottom; animation: cute-bounce 700ms cubic-bezier(.3, 1.7, .5, 1); }
+  @keyframes cute-bounce {
+    0% { opacity: 0; transform: var(--off) scale(0.3) rotate(-8deg); }
+    45% { opacity: 1; transform: var(--off) scale(1.1, 0.92) rotate(2deg); }
+    70% { transform: var(--off) scale(0.96, 1.05) rotate(-1deg); }
+    100% { opacity: 1; transform: var(--off) scale(1) rotate(0); }
   }
   #box.aa {
     white-space: pre;
@@ -125,6 +168,9 @@
   <script>
     'use strict';
     const C = window.CommentCommon;
+    // ?preview: ReaCastの設定画面に埋め込むプレビュー用(ブリッジには繋がず、設定画面から
+    // 見た目とサンプルのレスを受け取る)
+    const PREVIEW = new URLSearchParams(location.search).has('preview');
     const box = document.getElementById('box');
     const stage = document.getElementById('stage');
     let style = C.mergeStyle(null);
@@ -133,6 +179,19 @@
     let current = null;
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
+
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce'];
+
+    /** 届いた見た目の設定を使う。デスクトップ字幕で「プリセットと連動」がOFFなら、
+     * プリセットの部分(フォント・色・背景・出し方・カスタムCSS)だけ既定に戻す。 */
+    function setStyle(raw) {
+      style = C.mergeStyle(raw);
+      const desktop = !PREVIEW && !!(window.__TAURI__ && window.__TAURI__.core);
+      if (desktop && style.subtitle.desktopUsePreset === false) {
+        for (const k of C.SUBTITLE_PRESET_KEYS) style.subtitle[k] = C.DEFAULT_STYLE.subtitle[k];
+      }
+      C.applyCustomCss(style.subtitle.customCss);
+    }
 
     function applyBoxStyle(aa) {
       const s = aa ? style.aa : style.subtitle;
@@ -153,12 +212,20 @@
       // 縦: 上端から下へ(既定)。下端揃えだと行数が増えるほど上に伸び、1行目
       // (レス番号)の位置がレスごとに上下にずれて見えるため。
       stage.style.alignItems = sub.valign === 'bottom' ? 'flex-end' : 'flex-start';
-      box.style.transform = `translate(${Number(sub.offsetX) || 0}px, ${Number(sub.offsetY) || 0}px)`;
+      const off = `translate(${Number(sub.offsetX) || 0}px, ${Number(sub.offsetY) || 0}px)`;
+      box.style.setProperty('--off', off);
+      box.style.transform = off;
+      // 背景・余白・角の丸み(プリセット。不透明度0なら背景なし。AAには付けない)
+      const bgOn = !aa && Number(sub.bgOpacity) > 0;
+      box.style.background = bgOn ? C.rgba(sub.bgColor, sub.bgOpacity) : '';
+      const pad = Number(sub.padding) || 0;
+      box.style.padding = !aa && pad > 0 ? `${pad}px ${Math.round(pad * 1.4)}px` : '';
+      box.style.borderRadius = !aa && Number(sub.radius) > 0 ? `${Number(sub.radius)}px` : '';
       box.classList.toggle('aa', !!aa);
       box.classList.toggle('vertical', !aa && !!sub.vertical);
       const appear = sub.appear || 'instant';
-      box.classList.toggle('instant', appear === 'instant' || appear === 'typewriter');
-      for (const a of ['fade', 'slide-left', 'slide-up']) box.classList.toggle(`appear-${a}`, appear === a);
+      box.classList.toggle('instant', appear !== 'fade');
+      for (const a of APPEARS) box.classList.toggle(`appear-${a}`, appear === a);
     }
 
     /** 表示領域に収まらない場合は文字を小さくする(AAは設定に従い、
@@ -279,7 +346,7 @@
       else hide();
     }
     const tauri = window.__TAURI__;
-    if (tauri && tauri.core) {
+    if (tauri && tauri.core && !PREVIEW) {
       const win = tauri.window.getCurrentWindow();
       document.getElementById('adjust').addEventListener('mousedown', (e) => {
         if (e.button !== 0 || e.target.closest('button') || e.target.id === 'grip') return;
@@ -297,10 +364,9 @@
       tauri.core.invoke('comments_desktop_adjusting').then(setAdjusting).catch(() => {});
     }
 
-    C.connectBridge((msg) => {
+    function handle(msg) {
       if (msg.type === 'commentStyle') {
-        style = C.mergeStyle(msg.style);
-        C.applyCustomCss(style.subtitle.customCss);
+        setStyle(msg.style);
         if (current) {
           applyBoxStyle(current.aa);
           setContent(current, String(current.body || ''));
@@ -318,7 +384,15 @@
           fitToStage(current.aa);
         }
       }
-    });
+    }
+    if (PREVIEW) {
+      window.addEventListener('message', (e) => {
+        if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
+        handle(e.data);
+      });
+    } else {
+      C.connectBridge(handle);
+    }
     window.addEventListener('resize', () => {
       if (current) fitToStage(current.aa);
     });

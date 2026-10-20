@@ -69,6 +69,7 @@ function renderFields() {
   renderRuleEditors();
   renderEngineBoxes();
   if (typeof renderFontPickers === 'function') renderFontPickers();
+  renderPresetSelects();
   monitorSelect.value = settings.desktopMonitorId || '';
   const r = settings.desktopRect;
   document.getElementById('desktopRectInfo').textContent = r
@@ -77,35 +78,19 @@ function renderFields() {
   renderPreview();
 }
 
-/** 字幕のプレビュー。実際の字幕と同じく下端揃えで、文字揃え・位置の微調整・
- * 見出し(番号・名前・時刻)も反映する。 */
-function renderPreview() {
-  const s = C.mergeStyle(settings.style).subtitle;
-  const box = document.getElementById('preview');
-  const p = document.getElementById('previewText');
-  p.style.fontFamily = C.cssFontFamily(s.fontFamily);
-  p.style.fontSize = `${Math.min(80, Number(s.fontSize) || 30)}px`;
-  p.style.fontWeight = s.bold ? 'bold' : 'normal';
-  p.style.fontStyle = s.italic ? 'italic' : 'normal';
-  p.style.color = s.color;
-  p.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
-  p.style.textAlign = s.align || 'center';
-  p.style.writingMode = s.vertical ? 'vertical-rl' : '';
-  p.style.transform = `translate(${Number(s.offsetX) || 0}px, ${Number(s.offsetY) || 0}px)`;
-  box.style.justifyContent = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
-  box.style.alignItems = s.valign === 'bottom' ? 'flex-end' : 'flex-start';
-  const sample = { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:00', body: 'プレビュー 123 ABC\n2行目のテキスト' };
-  const head = C.resHeader(sample, { showResNumber: s.showResNumber, showName: s.showName, showDate: s.showTime });
-  p.textContent = '';
-  if (head) {
-    const h = document.createElement('span');
-    h.className = 'res-head';
-    h.textContent = s.showResNumber ? head.replace(/^\d+/, `レス${sample.no}`) : head;
-    p.appendChild(h);
-  }
-  p.appendChild(document.createTextNode(sample.body));
+/** 字幕のプレビュー(subtitle.html?previewを埋め込んで、本物と同じ描画・アニメーションで見せる)。
+ * animate=trueならアニメーション付きで出し直す(「動きを見る」・プリセットを選んだ時)。 */
+const subtitlePreview = document.getElementById('subtitlePreview');
+const SUBTITLE_SAMPLE = { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:00', body: 'プレビュー 123 ABC\n2行目のテキスト', aa: false };
+function renderPreview(animate) {
   renderListPreview();
+  if (!settings || !subtitlePreview || !subtitlePreview.contentWindow) return;
+  const w = subtitlePreview.contentWindow;
+  w.postMessage({ type: 'commentStyle', style: settings.style }, '*');
+  w.postMessage({ type: 'subtitle', res: { ...SUBTITLE_SAMPLE }, durationMs: 600000, replay: animate !== true }, '*');
 }
+subtitlePreview.addEventListener('load', () => renderPreview(false));
+document.getElementById('subtitleAnimTest').addEventListener('click', () => renderPreview(true));
 
 // ---- 右のレス一覧のプレビュー(comments.html?previewを埋め込んで同じ描画をさせる) ----
 const listPreview = document.getElementById('listPreview');
@@ -139,6 +124,7 @@ function onFieldChange(el) {
   const v = readField(el);
   if (v === undefined) return;
   setPath(settings, el.dataset.key, v);
+  rememberPresetEdit(el.dataset.key);
   renderPreview();
   scheduleSave();
 }
@@ -745,6 +731,19 @@ const LIST_PRESETS = {
       ".head .name::before { content: '☞'; margin-right: 0.3em; color: #ffffff; }",
     ].join('\n'),
   },
+  // ゆめかわ(女性の配信者向けのかわいい系): パステルピンクの角丸の札、丸ゴシック、
+  // 番号の前にハート、右上にきらっ
+  cute: {
+    fontFamily: 'Zen Maru Gothic',
+    headFontSize: 13, headBold: true, numberColor: '#ff6fb1', nameColor: '#b28dff', dateColor: '#c9a3c0',
+    bodyColor: '#7a3b69', bodyBold: true, outlineWidth: 0, outlineColor: '#ffffff',
+    itemBgColor: '#ffe9f4', itemBgOpacity: 95, itemPadding: 9, itemRadius: 16,
+    customCss: [
+      '.item { border: 2px solid #ffb6d9; box-shadow: 0 3px 0 #ffc9e3, 0 4px 10px rgba(255, 105, 180, 0.25); }',
+      ".head .no::before { content: '♡ '; color: #ff8cc6; }",
+      ".item::after { content: '✦'; position: absolute; right: 8px; top: 4px; color: #b28dff; font-size: 0.75em; }",
+    ].join('\n'),
+  },
   // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
   // 英数字はファミコン風のPress Start 2P、日本語はドット文字のDotGothic16
   retro: {
@@ -762,17 +761,151 @@ const LIST_PRESETS = {
     ].join('\n'),
   },
 };
-const PRESET_KEYS = [
-  'fontFamily', 'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
-  'outlineWidth', 'outlineColor', 'itemBgColor', 'itemBgOpacity', 'itemPadding', 'itemRadius', 'customCss',
-];
-document.getElementById('applyPresetBtn').addEventListener('click', () => {
-  const preset = LIST_PRESETS[document.getElementById('listPreset').value] || {};
-  const defaults = C.DEFAULT_STYLE.list;
-  for (const k of PRESET_KEYS) settings.style.list[k] = k in preset ? preset[k] : defaults[k];
+// ---- 下の字幕のプリセット(右のレス一覧と同じデザイン+そのデザインに合う出し方) ----
+const SUBTITLE_PRESETS = {
+  default: {},
+  yellowLine: {
+    fontFamily: 'M PLUS 1p', bold: true, color: '#ffffff', outlineWidth: 2, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 55, padding: 8, radius: 6, appear: 'wipe-left', translationColor: '#ffe066',
+    customCss: '#box { border-left: 7px solid #ffd23f; }',
+  },
+  // 吹き出し: 左(キャラクターの側)にしっぽ、左から膨らんで出てくる
+  bubble: {
+    fontFamily: 'Zen Maru Gothic', bold: true, color: '#333333', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffffff', bgOpacity: 96, padding: 10, radius: 18, appear: 'pop-left', translationColor: '#c05000',
+    customCss: [
+      '#box { margin-left: 16px; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); }',
+      "#box::before { content: ''; position: absolute; left: -15px; bottom: 16px; border-style: solid; border-width: 9px 16px 9px 0; border-color: transparent rgba(255, 255, 255, 0.96) transparent transparent; }",
+      '.res-head { color: #e05a00; }',
+    ].join('\n'),
+  },
+  neon: {
+    fontFamily: 'RocknRoll One', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#120a24', bgOpacity: 55, padding: 8, radius: 6, appear: 'neon-flicker', translationColor: '#ff9df0',
+    customCss: [
+      '#box { text-shadow: 0 0 6px #3cf2ff, 0 0 14px #3cf2ff !important; border: 1px solid rgba(60, 242, 255, 0.5); }',
+      '.res-head { color: #ff4fd8; text-shadow: 0 0 6px #ff4fd8; }',
+    ].join('\n'),
+  },
+  p5: {
+    fontFamily: 'Zen Kaku Gothic New', bold: true, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#0b0b0b', bgOpacity: 92, padding: 9, radius: 0, appear: 'p5-slash', translationColor: '#ff5a5a',
+    customCss: [
+      "@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');",
+      '#box { border-left: 8px solid #e60012; box-shadow: 6px 6px 0 #e60012; }',
+      ".res-head { display: table; background: #e60012; color: #ffffff; padding: 0 0.45em; margin-bottom: 0.2em; font-family: 'Dela Gothic One', sans-serif; font-weight: normal; transform: skewX(-10deg); }",
+    ].join('\n'),
+  },
+  ff: {
+    fontFamily: 'DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#1a2a8c', bgOpacity: 100, padding: 12, radius: 8, appear: 'ff-open', translationColor: '#ffe27a',
+    customCss: [
+      '#box { background: linear-gradient(180deg, #5b6fe0 0%, #2a3aa8 45%, #101a6c 100%) !important; border: 3px solid #eef0ff; box-shadow: 0 0 0 2px #1a1a33, inset 0 0 0 1px #8090e0; text-shadow: 2px 2px 0 #10103a !important; -webkit-font-smoothing: none; }',
+      '.res-head { color: #ffe27a; }',
+    ].join('\n'),
+  },
+  retro: {
+    fontFamily: 'Press Start 2P, DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 100, padding: 12, radius: 4, appear: 'typewriter', translationColor: '#7cf87c',
+    customCss: [
+      '#box { border: 3px solid #ffffff; box-shadow: 0 0 0 3px #000000, inset 0 0 0 3px #000000; -webkit-font-smoothing: none; }',
+      '.res-head { color: #f8d800; }',
+      "#box::after { content: ' ▼'; animation: retro-blink 1s steps(1) infinite; }",
+      '@keyframes retro-blink { 50% { opacity: 0; } }',
+    ].join('\n'),
+  },
+  // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る
+  cute: {
+    fontFamily: 'Zen Maru Gothic', bold: true, color: '#7a3b69', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffe9f4', bgOpacity: 96, padding: 10, radius: 22, appear: 'cute-bounce', translationColor: '#b26ad9',
+    customCss: [
+      '#box { margin: 0.6em 0.5em 0.3em 0.6em; border: 3px solid #ffb6d9; box-shadow: 0 4px 0 #ffc9e3, 0 6px 14px rgba(255, 105, 180, 0.35); }',
+      ".res-head { color: #ff6fb1; }",
+      "#box::before { content: '♡'; position: absolute; left: -0.55em; top: -0.6em; color: #ff8cc6; font-size: 0.9em; animation: cute-float 1.6s ease-in-out infinite; }",
+      "#box::after { content: '✦'; position: absolute; right: -0.35em; top: -0.55em; color: #b28dff; font-size: 0.7em; animation: cute-float 1.6s ease-in-out 0.4s infinite; }",
+      '@keyframes cute-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }',
+    ].join('\n'),
+  },
+};
+
+// ---- プリセットの切り替え・手直しの記憶・初期値に戻す(右のレス一覧・下の字幕) ----
+// 手直しした内容は settings.style.presets.<list|subtitle>.custom.<プリセット> に覚えておく
+const PRESET_GROUPS = {
+  list: { presets: LIST_PRESETS, keys: C.LIST_PRESET_KEYS, part: 'list', select: 'listPreset' },
+  subtitle: { presets: SUBTITLE_PRESETS, keys: C.SUBTITLE_PRESET_KEYS, part: 'subtitle', select: 'subtitlePreset' },
+};
+
+function presetState(group) {
+  if (!settings.style.presets || typeof settings.style.presets !== 'object') settings.style.presets = {};
+  const all = settings.style.presets;
+  if (!all[group] || typeof all[group] !== 'object') {
+    // この仕組みより前に適用したプリセットは、カスタムCSSが同じものを今のプリセットとみなす
+    const g = PRESET_GROUPS[group];
+    const css = String((settings.style[g.part] || {}).customCss || '');
+    const found = Object.keys(g.presets).find((id) => id !== 'default' && css && (g.presets[id].customCss || '') === css);
+    all[group] = { current: found || 'default', custom: {} };
+  }
+  if (!all[group].custom || typeof all[group].custom !== 'object') all[group].custom = {};
+  return all[group];
+}
+
+/** プリセットの元の値(手直しなし)。プリセットに無い項目は既定値 */
+function presetDefaults(group, id) {
+  const g = PRESET_GROUPS[group];
+  const preset = g.presets[id] || {};
+  const defaults = C.DEFAULT_STYLE[g.part];
+  const out = {};
+  for (const k of g.keys) out[k] = k in preset ? preset[k] : defaults[k];
+  return out;
+}
+
+function applyPreset(group, id, useCustom) {
+  const g = PRESET_GROUPS[group];
+  const st = presetState(group);
+  if (!settings.style[g.part]) settings.style[g.part] = {};
+  const values = { ...presetDefaults(group, id), ...(useCustom ? st.custom[id] || {} : {}) };
+  for (const k of g.keys) settings.style[g.part][k] = values[k];
+  st.current = id;
   renderFields();
   scheduleSave();
-});
+  if (group === 'subtitle') renderPreview(true);
+}
+
+/** 手直しした時: 今のプリセットとの違いを覚えておく(同じ値に戻した項目は忘れる) */
+function rememberPresetEdit(key) {
+  for (const [group, g] of Object.entries(PRESET_GROUPS)) {
+    const prefix = `style.${g.part}.`;
+    if (!key.startsWith(prefix) || !g.keys.includes(key.slice(prefix.length))) continue;
+    const st = presetState(group);
+    const base = presetDefaults(group, st.current);
+    const diff = {};
+    for (const k of g.keys) {
+      const v = settings.style[g.part] ? settings.style[g.part][k] : undefined;
+      if (v !== undefined && v !== base[k]) diff[k] = v;
+    }
+    if (Object.keys(diff).length) st.custom[st.current] = diff;
+    else delete st.custom[st.current];
+  }
+}
+
+function renderPresetSelects() {
+  for (const [group, g] of Object.entries(PRESET_GROUPS)) {
+    const sel = document.getElementById(g.select);
+    if (sel) sel.value = presetState(group).current in g.presets ? presetState(group).current : 'default';
+  }
+}
+
+for (const sel of document.querySelectorAll('[data-preset-group]')) {
+  sel.addEventListener('change', () => applyPreset(sel.dataset.presetGroup, sel.value, true));
+}
+for (const btn of document.querySelectorAll('[data-preset-reset]')) {
+  btn.addEventListener('click', () => {
+    const group = btn.dataset.presetReset;
+    const st = presetState(group);
+    delete st.custom[st.current];
+    applyPreset(group, st.current, false);
+  });
+}
 
 // ---- デスクトップ字幕の位置調整 ----
 const adjustBtn = document.getElementById('adjustDesktopBtn');

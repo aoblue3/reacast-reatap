@@ -218,6 +218,7 @@
     background: repeating-conic-gradient(#2a2c33 0% 25%, #22242a 0% 50%) 50% / 20px 20px;
   }
   textarea.css { min-height: 110px; }
+  .preview-frame.subtitle-frame { height: 170px; }
   /* 読み上げソフトごとの設定(選んだソフトのものだけ出す) */
   .engine-box { border: 1px solid var(--c-3a3d47); border-radius: 6px; padding: 10px 12px 4px; margin: 4px 0 12px; }
   .slider-row { display: grid; grid-template-columns: 1fr 52px auto; gap: 8px; align-items: center; max-width: 460px; }
@@ -439,6 +440,21 @@
       <div class="hint">下の字幕だけで、日本語のレスは上で選んだ言語に、それ以外のレスは日本語に翻訳して本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。</div>
       <div class="hint">新しいレスに「&gt;&gt;12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(下の字幕のみ。アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。</div>
       <div class="field"><label>字幕を出し終わるまで次のレスを待つ</label><div><input type="checkbox" data-key="waitForDisplay" /><span class="unit">長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)</span></div></div>
+      <h3>見た目</h3>
+      <div class="field"><label>デザインのプリセット</label><div class="inline">
+        <select id="subtitlePreset" data-preset-group="subtitle">
+          <option value="default">デフォルト</option>
+          <option value="yellowLine">黄色ライン(半透明の帯＋左端の黄色い線)</option>
+          <option value="bubble">吹き出し(左から吹き出しが出る)</option>
+          <option value="neon">ネオン(光る文字)</option>
+          <option value="p5">P5風(赤黒の札が切り込んでくる)</option>
+          <option value="retro">レトロ(ファミコン風、1文字ずつ)</option>
+          <option value="ff">FF風(青いウィンドウがカクカク開く)</option>
+          <option value="cute">ゆめかわ(パステルピンクがぷるんと弾む)</option>
+        </select>
+        <button class="secondary" data-preset-reset="subtitle">このプリセットの初期値に戻す</button>
+      </div></div>
+      <div class="hint">プリセットを選ぶと、フォント・色・背景・字幕の出し方(アニメーション)・カスタムCSSがそのデザインに変わります(文字の大きさ・位置などはそのまま)。下の項目で手直しした内容はプリセットごとに覚えておきます。</div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
@@ -454,7 +470,16 @@
         <option value="fade">フェードイン</option>
         <option value="slide-left">左からスライド</option>
         <option value="slide-up">下からスライド</option>
-      </select></div></div>
+        <option value="wipe-left">左から拭くように(黄色ライン)</option>
+        <option value="pop-left">左から吹き出しが膨らむ(吹き出し)</option>
+        <option value="neon-flicker">チカチカっと点く(ネオン)</option>
+        <option value="p5-slash">斜めに切り込む(P5風)</option>
+        <option value="ff-open">ウィンドウがカクカク開く(FF風)</option>
+        <option value="cute-bounce">ぷるんと弾む(ゆめかわ)</option>
+      </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
+      <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.bgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
+      <div class="field"><label>背景の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="60" data-key="style.subtitle.padding" /><span class="unit">px(0で既定)</span><input type="number" min="0" max="60" data-key="style.subtitle.radius" /><span class="unit">px</span></div></div>
+      <div class="field"><label>デスクトップ字幕もプリセットの見た目にする</label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /><span class="unit">OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします</span></div></div>
       <div class="field"><label>見出しに表示するもの</label><div class="inline">
         <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
         <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
@@ -470,7 +495,7 @@
         </div>
         <span class="unit">X <input type="number" data-key="style.subtitle.offsetX" /> Y <input type="number" data-key="style.subtitle.offsetY" /> px</span>
       </div></div>
-      <div id="preview"><div id="previewText"></div></div>
+      <iframe id="subtitlePreview" class="preview-frame subtitle-frame" src="subtitle.html?preview"></iframe>
       <div class="hint">プレビューには文字揃え・縦の位置・位置の微調整も反映されます。実際の大きさで確かめたい時は「取得」タブの「テスト表示」を使ってください。</div>
       <h3>カスタムCSS(上級者向け)</h3>
       <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>
@@ -610,7 +635,7 @@
 
     <section data-tab="list">
       <div class="field"><label>デザインのプリセット</label><div class="inline">
-        <select id="listPreset">
+        <select id="listPreset" data-preset-group="list">
           <option value="default">デフォルト</option>
           <option value="yellowLine">黄色ライン(半透明の背景＋左端の黄色い線)</option>
           <option value="bubble">吹き出し(白い角丸の背景)</option>
@@ -618,10 +643,11 @@
           <option value="p5">P5風(黒と赤の斜めの札)</option>
           <option value="retro">レトロ(ファミコン風のドット文字)</option>
           <option value="ff">FF風(青いグラデーションのウィンドウ)</option>
+          <option value="cute">ゆめかわ(パステルピンクのふんわり)</option>
         </select>
-        <button class="secondary" id="applyPresetBtn">適用</button>
+        <button class="secondary" data-preset-reset="list">このプリセットの初期値に戻す</button>
       </div></div>
-      <div class="hint">プリセットを適用すると、フォント・色・背景・見出し・カスタムCSSがそのデザインに置き換わります(件数などはそのまま)。適用した後で、下の項目でさらに細かく調整できます。</div>
+      <div class="hint">プリセットを選ぶと、フォント・色・背景・見出し・カスタムCSSがそのデザインに変わります(文字の大きさ・件数などはそのまま)。下の項目で手直しした内容はプリセットごとに覚えておくので、別のプリセットに切り替えて戻ってきても、手直しした見た目になります。「このプリセットの初期値に戻す」で、手直しを消してそのプリセットの元の見た目に戻せます。</div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>

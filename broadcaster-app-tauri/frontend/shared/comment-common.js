@@ -39,6 +39,14 @@
       // レスの翻訳(「下の字幕でレスを翻訳する」)の色と、本文に対する大きさ
       translationColor: '#ffe066',
       translationScale: 0.75,
+      // 字幕の背景(不透明度0なら背景なし)・余白(0なら既定)・角の丸み
+      bgColor: '#000000',
+      bgOpacity: 0,
+      padding: 0,
+      radius: 0,
+      // デスクトップ字幕にもプリセットの見た目を使う(OFFなら、デスクトップ字幕は
+      // 文字の大きさ・位置などはそのままで、プリセットの部分だけ既定の見た目にする)
+      desktopUsePreset: true,
       customCss: '',
     },
     aa: {
@@ -281,8 +289,20 @@
     return parts.join(' ');
   }
 
+  /** プリセットで置き換える項目(文字の大きさ・位置・件数などの、その人の設定は含めない) */
+  const LIST_PRESET_KEYS = [
+    'fontFamily', 'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
+    'outlineWidth', 'outlineColor', 'itemBgColor', 'itemBgOpacity', 'itemPadding', 'itemRadius', 'customCss',
+  ];
+  const SUBTITLE_PRESET_KEYS = [
+    'fontFamily', 'bold', 'italic', 'color', 'outlineWidth', 'outlineColor', 'bgColor', 'bgOpacity', 'padding', 'radius',
+    'appear', 'translationColor', 'customCss',
+  ];
+
   window.CommentCommon = {
     DEFAULT_STYLE,
+    LIST_PRESET_KEYS,
+    SUBTITLE_PRESET_KEYS,
     mergeStyle,
     outlineShadow,
     cssFontFamily,
