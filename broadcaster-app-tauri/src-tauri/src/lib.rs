@@ -965,7 +965,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
     }
     // 視聴者からのリアクション・テスト送信はcontrol.js側で確認済み。コメントとの連動は
     // ここで確認する(OFFにしたものが連動で出てしまわないように)
-    if viewer_id == "comment" {
+    if viewer_id == "comment" || viewer_id == "voice" {
         let disabled = store.get("disabledReactionIds").and_then(|v| v.as_array().cloned()).unwrap_or_default();
         if disabled.iter().any(|v| v.as_str() == Some(emoji)) {
             return Ok(());
@@ -975,6 +975,12 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
     // Tauri本体のオーバーレイウィンドウへの反映(=配信者自身のモニターに映る分)
     // だけを省略する。OBSの「ブラウザ」ソース向けの配信(下のobs_bridge呼び出し)は
     // この設定に関わらず常に行うため、視聴者が見る配信画面には通常通り表示される。
+    // 話した言葉で飛んだリアクションには印を付ける(設定でOFFにできる)
+    let voice_mark = viewer_id == "voice"
+        && app
+            .try_state::<std::sync::Arc<comments::CommentEngine>>()
+            .map(|e| e.settings().voice_reaction_mark)
+            .unwrap_or(true);
     let hide_local = store
         .get("hideLocalOverlay")
         .and_then(|v| v.as_bool())
@@ -993,7 +999,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             app.state::<TopmostReasserter>().bump(Duration::from_millis(5000));
             win.emit(
                 "overlay:reaction",
-                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id }),
+                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id, "mark": voice_mark }),
             )
             .map_err(|e| e.to_string())?;
         }
@@ -1001,7 +1007,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
     // OBSの「ブラウザ」ソースが繋がっていれば、そちらにも同じリアクションを配信する
     // (obs_bridge.rs参照。誰も繋いでいなくても問題なく無視される)。
     app.state::<obs_bridge::ObsBridge>()
-        .broadcast_reaction(&emoji, &viewer_id);
+        .broadcast_reaction(&emoji, &viewer_id, voice_mark);
     Ok(())
 }
 

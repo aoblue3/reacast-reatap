@@ -183,6 +183,9 @@ pub struct CommentSettings {
     /// (reading_presets_v2と同じ仕組み)
     #[serde(default)]
     pub reaction_presets_v2: bool,
+    /// v1.6.3で🌈を足した時の、既定のルールの追加(reaction_presets_v2と同じ仕組み)
+    #[serde(default)]
+    pub reaction_presets_v3: bool,
     pub ng_words: String,
     // ---- コメントとリアクションの連動 ----
     /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
@@ -208,6 +211,8 @@ pub struct CommentSettings {
     pub voice_target_lang: String,
     /// 話した言葉(確定した1文)が「リアクション連動」のルールに当てはまったら、リアクションを飛ばす
     pub voice_reaction_link: bool,
+    /// 話した言葉で飛んだリアクションに印(水色の光)を付ける(リスナーのリアクションと見分ける)
+    pub voice_reaction_mark: bool,
     // ---- 字幕 ----
     pub display_ms: u64,
     /// 長いレスほど長く表示する: 1文字あたりに足す時間(0で長さに関係なく一定)
@@ -352,6 +357,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "ドカン|どかーん|爆発|💣/bomb",
     "ゴール|サッカー|⚽/soccer",
     "爆竹|クラッカー|パンパン|ぱんぱん|🧨/firecracker",
+    "虹|にじ|レインボー|🌈/rainbow",
     "^[ｷキ]ﾀ━|キタ━|きたあ|キター|キタ[ー━]+/fire",
 ];
 
@@ -425,6 +431,7 @@ impl Default for CommentSettings {
             reading_rules: DEFAULT_READING_RULES.join("\n"),
             reading_presets_v2: true,
             reaction_presets_v2: true,
+            reaction_presets_v3: true,
             ng_words: String::new(),
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
@@ -437,6 +444,7 @@ impl Default for CommentSettings {
             voice_translate: true,
             voice_target_lang: "en".into(),
             voice_reaction_link: false,
+            voice_reaction_mark: true,
             display_ms: 3000,
             display_per_char_ms: 80,
             display_max_ms: 12000,
@@ -615,6 +623,51 @@ impl Compiled {
 
 fn detect_aa(s: &CommentSettings, c: &Compiled, post: &Post) -> bool {
     s.aa_enabled && !post.system && text::is_aa(&post.body, s.aa_threshold_chars, &c.aa_patterns)
+}
+
+/// 既に順番待ちに入れた(または開始時点で既にあった)掲示板のレス。即時通知と定期取得の
+/// 両方から同じレスが届いても1回しか読まないようにする。
+///
+/// 番号だけで見分けていたが、同じ時刻の2つの書き込み(2026-10-21、ao33の926と927)で、
+/// 即時通知の番号がずれていたらしく、926の内容が927として読まれ、本物の927は
+/// 「もう読んだ」扱いで出なかった。そこで内容(日時・名前・本文)でも見分ける。
+/// 番号が食い違った時は、定期取得(datの行の順番)を正とする。
+#[derive(Default)]
+struct SeenPosts {
+    /// 内容 → 番号
+    by_sig: std::collections::HashMap<String, u32>,
+    /// 番号 → 内容
+    by_no: std::collections::HashMap<u32, String>,
+}
+
+fn post_sig(p: &source::RawPost) -> String {
+    let squash = |s: &str| text::html_to_text(s).chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    format!("{}\u{1}{}\u{1}{}", p.date.trim(), squash(&p.name), squash(&p.body_html))
+}
+
+impl SeenPosts {
+    /// 定期取得(dat)で届いたレス。まだ読んでいなければtrue
+    fn from_dat(&mut self, p: &source::RawPost) -> bool {
+        let sig = post_sig(p);
+        if self.by_sig.contains_key(&sig) {
+            return false;
+        }
+        self.by_sig.insert(sig.clone(), p.no);
+        self.by_no.insert(p.no, sig);
+        true
+    }
+
+    /// 即時通知で届いたレス。番号か内容のどちらかが既にあれば読まない(番号がずれていても、
+    /// あとの定期取得で内容が違うと分かったものは、そちらで読む)
+    fn from_fast(&mut self, p: &source::RawPost) -> bool {
+        let sig = post_sig(p);
+        if self.by_sig.contains_key(&sig) || self.by_no.contains_key(&p.no) {
+            return false;
+        }
+        self.by_sig.insert(sig.clone(), p.no);
+        self.by_no.insert(p.no, sig);
+        true
+    }
 }
 
 /// 読み上げた位置(落ちた時に続きから読むため。ConfigStoreのPROGRESS_KEYに保存)
@@ -1328,7 +1381,7 @@ impl CommentEngine {
         let mut created = false;
         // 既に順番待ちに入れた(または開始時点で既にあった)レス番号。即時通知と
         // 定期取得の両方から同じレスが届いても、1回しか読まないようにする
-        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut seen = SeenPosts::default();
 
         // jpnknの板なら、即時通知(MQTT)も使う。通知で届いたレスはチャンネル経由で
         // このループに渡す(定期取得は取りこぼし対策としてそのまま続ける)
@@ -1366,7 +1419,7 @@ impl CommentEngine {
                 Ok(raw) => {
                     let posts: Vec<Post> = raw
                         .iter()
-                        .filter(|p| seen.insert(p.no)) // 即時通知で既に読んだレスは除く
+                        .filter(|p| seen.from_dat(p)) // 即時通知で既に読んだレスは除く
                         .map(|p| Post::from_raw(p, self.pick_icon("bbs")))
                         .collect();
                     self.record_posts(run_id, &posts, false);
@@ -1477,7 +1530,7 @@ impl CommentEngine {
                                     // 次スレのレスは1番から全部新着として扱う
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
                                     self.record_posts(run_id, &[], true);
-                                    seen.clear();
+                                    seen = SeenPosts::default();
                                     warned = false;
                                     created = false;
                                     self.update_status(run_id, |s| s.warning = None);
@@ -1514,7 +1567,7 @@ impl CommentEngine {
                             continue;
                         }
                         // 今読んでいるスレッドへの、まだ読んでいない書き込みだけ
-                        if first || thread_key != reader.thread.key || !seen.insert(raw.no) {
+                        if first || thread_key != reader.thread.key || !seen.from_fast(&raw) {
                             continue;
                         }
                         let post = Post::from_raw(&raw, self.pick_icon("bbs"));
@@ -1948,7 +2001,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -1996,6 +2049,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     }
     s.reaction_rules = lines.join("\n");
     s.reaction_presets_v2 = true;
+    s.reaction_presets_v3 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
@@ -2460,6 +2514,30 @@ mod tests {
         assert_eq!(read("やったー😀👍"), "やったー");
         assert_eq!(read("kwsk"), "くわしく");
         assert_eq!(read("8888"), "パチパチ");
+    }
+
+    #[test]
+    fn posts_with_the_same_time_are_not_lost() {
+        let raw = |no: u32, body: &str| source::RawPost {
+            no,
+            name: "名無しさん".into(),
+            date: "2026/10/21(水) 01:06:55.31".into(),
+            body_html: body.into(),
+        };
+        // 即時通知が926の内容を927として届けた → 定期取得の本物の927は内容が違うので読む
+        let mut seen = SeenPosts::default();
+        assert!(seen.from_fast(&raw(927, "ドドドドブーン")));
+        assert!(!seen.from_fast(&raw(927, "アヘ顔")));
+        assert!(!seen.from_dat(&raw(926, "ドドドドブーン"))); // 内容は読み済み
+        assert!(seen.from_dat(&raw(927, "アヘ顔"))); // 本物の927は読む
+        assert!(!seen.from_dat(&raw(927, "アヘ顔")));
+        // 普段: 即時通知で読んだものは定期取得では読まない(空白・タグの違いは同じとみなす)
+        let mut seen = SeenPosts::default();
+        assert!(seen.from_fast(&raw(5, "テスト<br>2行目")));
+        assert!(!seen.from_dat(&raw(5, "テスト <br> 2行目")));
+        // 定期取得で読んだものは即時通知では読まない
+        assert!(seen.from_dat(&raw(6, "a")));
+        assert!(!seen.from_fast(&raw(6, "a")));
     }
 
     #[test]

@@ -150,9 +150,10 @@ impl ObsBridge {
     /// リアクション発生時に呼ぶ。OBS側のブラウザソースが繋がっていれば
     /// そちらにも同じリアクションを配信する(誰も繋いでいなくてもエラーには
     /// ならず、単に何も起きない)。
-    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str) {
+    /// markは話した言葉で飛んだリアクションの印(overlay.jsで周りを光らせる)。
+    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str, mark: bool) {
         let payload =
-            serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id })
+            serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id, "mark": mark })
                 .to_string();
         let _ = self.tx.send(payload);
     }

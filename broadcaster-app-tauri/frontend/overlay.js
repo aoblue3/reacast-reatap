@@ -466,7 +466,7 @@ const COMBO_WINDOW_MS = 1500;
 //      あったため、この方式を用意している。
 if (window.__TAURI__ && window.__TAURI__.event) {
   window.__TAURI__.event.listen('overlay:reaction', (event) => {
-    spawnReaction(event.payload.emoji);
+    spawnReaction(event.payload.emoji, { mark: !!event.payload.mark });
   });
   // 設定パネルの「絵文字の大きさ」を起動時に反映し、設定パネルで変更される
   // たびにも(このウィンドウを閉じ直さなくても)即座に反映されるようにする。
@@ -514,7 +514,7 @@ function connectObsBridge(port) {
         if (Array.isArray(data.noComboGrowthIds)) applyNoComboGrowthIds(data.noComboGrowthIds);
         return;
       }
-      if (typeof data.emoji === 'string') spawnReaction(data.emoji);
+      if (typeof data.emoji === 'string') spawnReaction(data.emoji, { mark: !!data.mark });
     } catch {
       // 想定外のメッセージは無視する
     }
@@ -1270,9 +1270,86 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
   };
 }
 
-function spawnReaction(emojiId) {
+/**
+ * 🌈 虹: 画面のどこかに雲が出て、左から右へ7色の帯が少しずつ伸びて、虹の橋がかかる。
+ * 帯はSVGの弧(pathLength=1)で、stroke-dashoffsetを1→0にして伸ばす。
+ */
+function spawnRainbow(opts) {
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const w = Math.min(vw * 0.6, settings.baseSizePx * 7);
+  const h = w * 0.55;
+  const el = document.createElement('div');
+  el.className = 'reaction-item rainbow-item' + (opts && opts.mark ? ' self-mark' : '');
+  el.style.left = `${Math.max(0, Math.random() * (vw - w))}px`;
+  el.style.top = `${Math.max(0, Math.random() * (vh - h))}px`;
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
+  el.style.opacity = '0';
+  el.style.transition = 'opacity 300ms ease-out';
+  const colors = ['#ff4d4d', '#ffa04d', '#ffe14d', '#5dd36b', '#4da6ff', '#5b6cff', '#b06cff'];
+  const band = w / 2 / 11;
+  const cx = w / 2;
+  const cy = h * 0.98;
+  const arcs = colors
+    .map((c, i) => {
+      const r = w / 2 - band * (i + 0.6);
+      return `<path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" pathLength="1" fill="none" stroke="${c}" stroke-width="${band * 1.02}" stroke-linecap="butt" stroke-dasharray="1" stroke-dashoffset="1" style="transition: stroke-dashoffset 1500ms cubic-bezier(.4, .1, .3, 1) ${i * 70}ms"/>`;
+    })
+    .join('');
+  el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow: visible">${arcs}</svg>`;
+  // 虹の両端に雲(先に左の雲が出て、そこから虹が伸び、右の雲に届く)
+  const cloud = (x, delay) => {
+    const c = document.createElement('span');
+    c.className = 'reaction-glyph rainbow-cloud';
+    c.textContent = '☁️';
+    c.style.position = 'absolute';
+    c.style.fontSize = `${band * 4.2}px`;
+    c.style.left = `${x - band * 2.3}px`;
+    c.style.top = `${cy - band * 3.4}px`;
+    c.style.opacity = '0';
+    c.style.transition = `opacity 300ms ease-out ${delay}ms, transform 400ms cubic-bezier(.2, 1.5, .4, 1) ${delay}ms`;
+    c.style.transform = 'scale(0.4)';
+    el.appendChild(c);
+    return c;
+  };
+  const left = cloud(band * 1.6, 0);
+  const right = cloud(w - band * 1.6, 1350);
+  stage.appendChild(el);
+  activeItems.push(el);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.style.opacity = String(settings.glyphOpacity);
+      for (const c of [left, right]) {
+        c.style.opacity = '1';
+        c.style.transform = 'scale(1)';
+      }
+      // 雲が出てから虹を伸ばし始める
+      setTimeout(() => {
+        for (const p of el.querySelectorAll('path')) p.style.strokeDashoffset = '0';
+      }, 250);
+    });
+  });
+  const total = Math.max(3200, settings.animationDurationMs * 1.4);
+  setTimeout(() => {
+    el.style.transition = 'opacity 700ms ease-in';
+    el.style.opacity = '0';
+  }, total - 700);
+  setTimeout(() => {
+    el.remove();
+    const idx = activeItems.indexOf(el);
+    if (idx !== -1) activeItems.splice(idx, 1);
+  }, total);
+}
+
+function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
+  if (emojiId === 'rainbow') {
+    spawnRainbow(opts);
+    return;
+  }
 
   enforceMaxConcurrent();
 
@@ -1423,6 +1500,8 @@ function spawnReaction(emojiId) {
   let transformDurationMs = path.moveDuration;
   el.style.transition = `transform ${transformDurationMs}ms ${path.easing}, opacity ${fadeInMs}ms ease-out`;
 
+  // 話した言葉で飛んだリアクション(配信者自身の発言)には、周りに水色の光の印を付ける
+  if (opts && opts.mark) el.classList.add('self-mark');
   stage.appendChild(el);
   activeItems.push(el);
 

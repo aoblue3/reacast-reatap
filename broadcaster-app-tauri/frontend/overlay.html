@@ -28,6 +28,12 @@
     will-change: transform, opacity;
     user-select: none;
   }
+  /* 話した言葉で飛んだリアクション(配信者自身の発言)の印: 周りが水色に光る。
+     filterは黒猫などで外側の要素に使っているので、内側のグリフ・虹の絵にかける */
+  .reaction-item.self-mark .reaction-glyph,
+  .reaction-item.self-mark svg {
+    filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 5px #3fd0ff) drop-shadow(0 0 9px #3fa0ff);
+  }
   .reaction-glyph {
     display: inline-block;
     /* それな/わかる等の短文リアクションが、横一列ではなく1文字ずつ縦に

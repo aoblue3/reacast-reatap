@@ -68,6 +68,7 @@ const EMOJI_SET = [
   { id: 'mango', char: '🥭', label: 'マンゴー', anim: 'mango' },
   { id: 'peach', char: '🍑', label: 'もも', anim: 'peach' },
   { id: 'cherry', char: '🍒', label: 'さくらんぼ', anim: 'cherry' },
+  { id: 'rainbow', char: '🌈', label: '虹', anim: 'rainbow' },
   { id: 'cheers', char: '🍻', label: '乾杯', anim: 'cheers' },
   { id: 'ramen', char: '🍜', label: 'ラーメン', anim: 'ramen' },
   { id: 'sushi', char: '🍣', label: '寿司', anim: 'sushi' },

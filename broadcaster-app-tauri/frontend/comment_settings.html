@@ -108,6 +108,8 @@
     cursor: pointer;
   }
   nav button:hover { background: var(--c-2b2d35); }
+  .nav-group { font-size: 11px; color: var(--c-8d909c); padding: 10px 10px 3px; letter-spacing: 0.04em; }
+  .nav-group:first-child { padding-top: 2px; }
   nav button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* タブの幅をドラッグで変える(comment_settings.js) */
   #navResizer { flex: none; width: 6px; margin-left: -3px; margin-right: -3px; cursor: col-resize; position: relative; z-index: 5; }
@@ -246,18 +248,22 @@
 
   <div class="layout">
   <nav id="tabs">
+    <div class="nav-group">コメントの取得</div>
     <button data-tab="fetch" class="active">取得</button>
     <button data-tab="thread">スレッドのレス</button>
-    <button data-tab="speech">読み上げ</button>
-    <button data-tab="subtitle">字幕</button>
-    <button data-tab="aa">AAモード</button>
     <button data-tab="create">次スレ作成</button>
+    <div class="nav-group">読み上げ</div>
+    <button data-tab="speech">読み上げ</button>
     <button data-tab="words">NGワード・読み方</button>
-    <button data-tab="reactions">リアクション連動</button>
-    <button data-tab="voice">話した字幕</button>
+    <div class="nav-group">表示</div>
+    <button data-tab="subtitle">字幕</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
+    <button data-tab="aa">AAモード</button>
     <button data-tab="output">表示先(OBSなど)</button>
+    <div class="nav-group">連動</div>
+    <button data-tab="reactions">リアクション連動</button>
+    <button data-tab="voice">話した字幕</button>
   </nav>
   <div id="navResizer" title="ドラッグでタブの幅を変えられます(ダブルクリックで元の幅)"></div>
 
@@ -451,6 +457,7 @@
           <option value="retro">レトロ(ファミコン風、1文字ずつ)</option>
           <option value="ff">FF風(青いウィンドウがカクカク開く)</option>
           <option value="cute">ゆめかわ(パステルピンクがぷるんと弾む)</option>
+          <option value="quill">羽ペン(紙にインクで書かれていく)</option>
         </select>
         <button class="secondary" data-preset-reset="subtitle">このプリセットの初期値に戻す</button>
       </div></div>
@@ -476,6 +483,7 @@
         <option value="p5-slash">斜めに切り込む(P5風)</option>
         <option value="ff-open">ウィンドウがカクカク開く(FF風)</option>
         <option value="cute-bounce">ぷるんと弾む(ゆめかわ)</option>
+        <option value="quill-write">インクで書かれていく(羽ペン)</option>
       </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
       <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.bgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
       <div class="field"><label>背景の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="60" data-key="style.subtitle.padding" /><span class="unit">px(0で既定)</span><input type="number" min="0" max="60" data-key="style.subtitle.radius" /><span class="unit">px</span></div></div>
@@ -597,6 +605,7 @@
       </select></div></div>
       <div class="field"><label>翻訳する</label><div><input type="checkbox" data-key="voiceTranslate" /></div></div>
       <div class="field"><label>話した言葉でリアクションを飛ばす</label><div><input type="checkbox" data-key="voiceReactionLink" /><span class="unit">話し終わった1文が「リアクション連動」タブのルールに当てはまったら、配信画面にリアクションを飛ばします(例: 「おめでとう」→🎂)</span></div></div>
+      <div class="field"><label>話した言葉のリアクションに印を付ける</label><div><input type="checkbox" data-key="voiceReactionMark" /><span class="unit">自分の話した言葉で飛んだリアクションの周りを水色に光らせて、リスナーが送ったリアクションと見分けられるようにします</span></div></div>
       <div class="field"><label>翻訳先の言葉</label><div><select data-key="voiceTargetLang">
         <option value="en">英語</option>
         <option value="ja">日本語</option>
@@ -644,6 +653,7 @@
           <option value="retro">レトロ(ファミコン風のドット文字)</option>
           <option value="ff">FF風(青いグラデーションのウィンドウ)</option>
           <option value="cute">ゆめかわ(パステルピンクのふんわり)</option>
+          <option value="quill">羽ペン(紙に手書きの筆記体)</option>
         </select>
         <button class="secondary" data-preset-reset="list">このプリセットの初期値に戻す</button>
       </div></div>

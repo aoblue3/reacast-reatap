@@ -77,9 +77,22 @@
     100% { opacity: 1; transform: var(--off) scale(1, 1); }
   }
   /* ネオン: ネオン管がチカチカっと点く */
-  #box.appear-neon-flicker.visible { animation: neon-flicker 800ms linear; }
+  /* (速く・暗くまで点滅すると目に障るので、ゆっくり2回だけ、暗くなりすぎないように) */
+  #box.appear-neon-flicker.visible { animation: neon-flicker 1400ms ease-in-out; }
   @keyframes neon-flicker {
-    0% { opacity: 0; } 8% { opacity: 1; } 16% { opacity: 0.15; } 26% { opacity: 1; } 34% { opacity: 0.35; } 46% { opacity: 1; } 100% { opacity: 1; }
+    0% { opacity: 0; } 18% { opacity: 1; } 30% { opacity: 0.55; } 44% { opacity: 1; } 56% { opacity: 0.7; } 70% { opacity: 1; } 100% { opacity: 1; }
+  }
+  /* 羽ペン: 左から右へ、インクがにじむように書かれていく */
+  #box.appear-quill-write.visible {
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 58%, transparent 100%);
+    -webkit-mask-size: 240% 100%;
+    mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 58%, transparent 100%);
+    mask-size: 240% 100%;
+    animation: quill-write 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
+  }
+  @keyframes quill-write {
+    from { opacity: 1; -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+    to { opacity: 1; -webkit-mask-position: 0 0; mask-position: 0 0; }
   }
   /* 黄色ライン: 左から右へ、さっと拭くように出る */
   #box.appear-wipe-left.visible { animation: wipe-left 360ms ease-out; }
@@ -180,7 +193,7 @@
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
 
-    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce'];
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write'];
 
     /** 届いた見た目の設定を使う。デスクトップ字幕で「プリセットと連動」がOFFなら、
      * プリセットの部分(フォント・色・背景・出し方・カスタムCSS)だけ既定に戻す。 */
@@ -275,11 +288,14 @@
         }
       }
       box.appendChild(document.createTextNode(body));
-      // レスの翻訳(届いていれば。1文字ずつ出している途中は、出し終わってから)
-      if (res.translation && !res.aa && !res.typing) {
+      // レスの翻訳(届いていれば。1文字ずつ出している途中は、出し終わってから)。
+      // 翻訳するレス(tid付き)は、翻訳が届く前から1行分の場所を空けておく
+      // (届いた時に枠がぴょこっと広がらないように)
+      const waiting = res.tid && !res.translation && !res.aa;
+      if ((res.translation && !res.aa && !res.typing) || waiting) {
         const t = document.createElement('span');
         t.className = 'translation';
-        t.textContent = res.translation;
+        t.textContent = waiting || res.typing ? '\u00a0' : res.translation;
         t.style.color = style.subtitle.translationColor || '#ffe066';
         t.style.fontSize = `${Math.max(0.3, Number(style.subtitle.translationScale) || 0.75)}em`;
         box.appendChild(t);

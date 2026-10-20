@@ -195,6 +195,9 @@
     'Dela Gothic One': 'Dela+Gothic+One',
     'DotGothic16': 'DotGothic16',
     'Press Start 2P': 'Press+Start+2P',
+    'Dancing Script': 'Dancing+Script:wght@500;700',
+    'Zen Kurenaido': 'Zen+Kurenaido',
+    'Yuji Syuku': 'Yuji+Syuku',
   };
   const loadedWebFonts = new Set();
   function loadWebFont(name) {

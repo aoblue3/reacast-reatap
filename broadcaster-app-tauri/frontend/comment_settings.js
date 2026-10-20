@@ -744,6 +744,18 @@ const LIST_PRESETS = {
       ".item::after { content: '✦'; position: absolute; right: 8px; top: 4px; color: #b28dff; font-size: 0.75em; }",
     ].join('\n'),
   },
+  // 羽ペン: 古い紙に羽ペンで書いたような。英字は筆記体(Dancing Script)、日本語はペン字風(Zen Kurenaido)。
+  // 紙の色の札に、うすい罫線とセピア色のインク
+  quill: {
+    fontFamily: 'Dancing Script, Zen Kurenaido',
+    headFontSize: 13, headBold: false, numberColor: '#8a4b1c', nameColor: '#5a3b22', dateColor: '#a08a6a',
+    bodyColor: '#3b2a1a', bodyBold: false, outlineWidth: 0, outlineColor: '#ffffff',
+    itemBgColor: '#f6eedb', itemBgOpacity: 97, itemPadding: 9, itemRadius: 3,
+    customCss: [
+      '.item { border: 1px solid #d8c7a0; box-shadow: 1px 2px 0 rgba(90, 60, 20, 0.25), 0 3px 8px rgba(0, 0, 0, 0.25); background-image: repeating-linear-gradient(transparent 0, transparent 1.35em, rgba(140, 110, 70, 0.18) 1.35em, rgba(140, 110, 70, 0.18) calc(1.35em + 1px)); }',
+      ".head .no::after { content: ' ✒'; color: #8a4b1c; }",
+    ].join('\n'),
+  },
   // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
   // 英数字はファミコン風のPress Start 2P、日本語はドット文字のDotGothic16
   retro: {
@@ -812,6 +824,16 @@ const SUBTITLE_PRESETS = {
       '.res-head { color: #f8d800; }',
       "#box::after { content: ' ▼'; animation: retro-blink 1s steps(1) infinite; }",
       '@keyframes retro-blink { 50% { opacity: 0; } }',
+    ].join('\n'),
+  },
+  // 羽ペン: 紙に羽ペンで、インクがにじむように左から書かれていく
+  quill: {
+    fontFamily: 'Dancing Script, Zen Kurenaido', bold: false, color: '#3b2a1a', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#f6eedb', bgOpacity: 97, padding: 12, radius: 3, appear: 'quill-write', translationColor: '#8a4b1c',
+    customCss: [
+      '#box { border: 1px solid #d8c7a0; box-shadow: 2px 3px 0 rgba(90, 60, 20, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3); background-image: repeating-linear-gradient(transparent 0, transparent 1.3em, rgba(140, 110, 70, 0.18) 1.3em, rgba(140, 110, 70, 0.18) calc(1.3em + 1px)); }',
+      ".res-head { color: #8a4b1c; }",
+      ".res-head::after { content: ' ✒'; }",
     ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る
