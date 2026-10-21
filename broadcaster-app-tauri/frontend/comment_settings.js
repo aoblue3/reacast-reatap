@@ -788,6 +788,55 @@ const LIST_PRESETS = {
       ".head .no::after { content: ' ✒'; color: #8a4b1c; }",
     ].join('\n'),
   },
+  // DQ風(スーパーファミコンのドラクエ): 黒いウィンドウに白い角丸の太い縁、白いドット文字、
+  // 名前の前に「＊」、一番新しいレスの最後に点滅する▼
+  dq: {
+    fontFamily: 'DotGothic16',
+    headFontSize: 0, headBold: false, numberColor: '#ffffff', nameColor: '#ffffff', dateColor: '#bbbbbb',
+    bodyColor: '#ffffff', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#000000', itemBgOpacity: 92, itemPadding: 10, itemRadius: 8,
+    customCss: [
+      '.item:not(.aa) { -webkit-font-smoothing: none; border: 3px solid #ffffff; box-shadow: 0 0 0 2px #000000, inset 0 0 0 2px #000000; animation: dq-pop 150ms steps(3, end); }',
+      ".head .name::before { content: '＊'; margin-right: 0.15em; }",
+      "#list:not(.bottom) .item:first-child .body::after, #list.bottom .item:last-child .body::after { content: ' ▼'; animation: dq-blink 0.8s steps(1) infinite; }",
+      '@keyframes dq-blink { 50% { opacity: 0; } }',
+      '@keyframes dq-pop { from { transform: scale(1, 0.1); } to { transform: scale(1, 1); } }',
+    ].join('\n'),
+  },
+  // WC風: 右寄せ、白い名前の札+黒い本文の吹き出しに稲妻のしっぽ。右からバチッと飛び込む。
+  // 応援(スパチャ等)は本文の吹き出しがその色になる
+  wc: {
+    fontFamily: 'Noto Sans JP',
+    headFontSize: 12, headBold: true, numberColor: '#000000', nameColor: '#000000', dateColor: '#555555',
+    bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#000000', itemBgOpacity: 0, itemPadding: 2, itemRadius: 0,
+    customCss: [
+      '.item { flex-direction: row-reverse; text-align: right; animation: wc-bolt 420ms cubic-bezier(.2, 1.4, .4, 1); }',
+      '.item .content { display: flex; flex-direction: column; align-items: flex-end; margin-right: 18px; }',
+      '.head { background: #ffffff; border: 2px solid #111111; padding: 0 0.5em; margin-right: 14px; margin-bottom: -3px; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25); position: relative; z-index: 1; }',
+      '.body { position: relative; background: #111111; padding: 0.25em 0.7em; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); text-align: left; }',
+      ".body::after { content: ''; position: absolute; right: -16px; bottom: 4px; width: 20px; height: 24px; background: inherit; clip-path: polygon(0 10%, 100% 0, 55% 45%, 100% 55%, 10% 100%, 35% 55%, 0 60%); }",
+      '.item.paid { background: transparent !important; box-shadow: none; }',
+      '.item.paid .body { background: var(--paid-color); color: var(--paid-text) !important; }',
+      '.item.paid .head span:not(.paid-badge) { color: #000000 !important; }',
+      '@keyframes wc-bolt { 0% { opacity: 0; transform: translateX(70px) skewX(-14deg); } 60% { opacity: 1; transform: translateX(-8px) skewX(4deg); } 80% { transform: translateX(3px); } 100% { transform: translateX(0); } }',
+    ].join('\n'),
+  },
+  // オーロラ(おすすめ): 夜空色のすりガラスの札に、ゆっくり色が流れるオーロラの縁。
+  // 見出しはオーロラ色の文字、ぼかしからふわっと浮かび上がる
+  aurora: {
+    fontFamily: 'M PLUS Rounded 1c',
+    headFontSize: 12, headBold: true, numberColor: '#9ad8ff', nameColor: '#c9b6ff', dateColor: '#8f9bc0',
+    bodyColor: '#f2f5ff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#0d1230', itemBgOpacity: 72, itemPadding: 10, itemRadius: 14,
+    customCss: [
+      '.item:not(.paid) { border: 2px solid transparent; background: linear-gradient(rgba(13, 18, 48, 0.78), rgba(13, 18, 48, 0.78)) padding-box, linear-gradient(90deg, #7ce7ff, #a68cff, #ff8fd8, #7ce7ff) border-box !important; background-size: 100% 100%, 300% 100% !important; animation: aurora-in 600ms ease-out, aurora-flow 8s linear infinite; box-shadow: 0 4px 18px rgba(80, 120, 255, 0.25); }',
+      '.head .no, .head .name { background: linear-gradient(90deg, #7ce7ff, #c79bff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }',
+      '.body { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }',
+      '@keyframes aurora-flow { from { background-position: 0 0, 0% 0; } to { background-position: 0 0, 300% 0; } }',
+      '@keyframes aurora-in { from { opacity: 0; filter: blur(8px); transform: translateY(12px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }',
+    ].join('\n'),
+  },
   // レトロ(ファミコン風): ドット文字、黒地に白い二重枠のメッセージウィンドウ
   // 英数字はファミコン風のPress Start 2P、日本語はドット文字のDotGothic16
   retro: {
@@ -866,6 +915,38 @@ const SUBTITLE_PRESETS = {
       '#box { border: 1px solid #d8c7a0; box-shadow: 2px 3px 0 rgba(90, 60, 20, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3); background-image: repeating-linear-gradient(transparent 0, transparent 1.3em, rgba(140, 110, 70, 0.18) 1.3em, rgba(140, 110, 70, 0.18) calc(1.3em + 1px)); }',
       ".res-head { color: #8a4b1c; }",
       ".res-head::after { content: ' ✒'; }",
+    ].join('\n'),
+  },
+  // DQ風: 黒いウィンドウに白い角丸の太い縁、ドット文字で1文字ずつ。「＊」と点滅する▼
+  dq: {
+    fontFamily: 'DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 95, padding: 12, radius: 10, appear: 'typewriter', translationColor: '#ffe27a',
+    customCss: [
+      '#box { -webkit-font-smoothing: none; border: 4px solid #ffffff; box-shadow: 0 0 0 3px #000000, inset 0 0 0 3px #000000; }',
+      ".res-head::before { content: '＊ '; }",
+      "#box::after { content: ' ▼'; animation: dq-blink 0.8s steps(1) infinite; }",
+      '@keyframes dq-blink { 50% { opacity: 0; } }',
+    ].join('\n'),
+  },
+  // WC風: 白い名前の札+黒い吹き出し、右に稲妻のしっぽ。右からバチッと飛び込む
+  wc: {
+    fontFamily: 'Noto Sans JP', bold: true, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#111111', bgOpacity: 100, padding: 8, radius: 0, appear: 'wc-bolt', translationColor: '#ffd23f',
+    customCss: [
+      '#box { margin: 1.1em 22px 0 0; box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.22); }',
+      '.res-head { display: table; background: #ffffff; color: #111111; border: 2px solid #111111; padding: 0 0.5em; margin: -1.25em 0 0.15em -0.2em; font-size: 0.55em; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25); }',
+      "#box::after { content: ''; position: absolute; right: -20px; bottom: 6px; width: 24px; height: 30px; background: #111111; clip-path: polygon(0 10%, 100% 0, 55% 45%, 100% 55%, 10% 100%, 35% 55%, 0 60%); }",
+    ].join('\n'),
+  },
+  // オーロラ(おすすめ): 夜空色のすりガラスに、ゆっくり色が流れるオーロラの縁。ぼかしからふわっと浮かぶ
+  aurora: {
+    fontFamily: 'M PLUS Rounded 1c', bold: true, color: '#f2f5ff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#0d1230', bgOpacity: 78, padding: 12, radius: 18, appear: 'aurora-rise', translationColor: '#9ad8ff',
+    customCss: [
+      '#box { border: 2px solid transparent; background: linear-gradient(rgba(13, 18, 48, 0.8), rgba(13, 18, 48, 0.8)) padding-box, linear-gradient(90deg, #7ce7ff, #a68cff, #ff8fd8, #7ce7ff) border-box !important; background-size: 100% 100%, 300% 100% !important; box-shadow: 0 6px 24px rgba(80, 120, 255, 0.3); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important; }',
+      '#box.visible, #box.appear-aurora-rise.visible { animation: aurora-rise 900ms cubic-bezier(.2, .8, .2, 1), aurora-flow 8s linear infinite; }',
+      '.res-head { background: linear-gradient(90deg, #7ce7ff, #c79bff); -webkit-background-clip: text; background-clip: text; color: transparent; }',
+      '@keyframes aurora-flow { from { background-position: 0 0, 0% 0; } to { background-position: 0 0, 300% 0; } }',
     ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る

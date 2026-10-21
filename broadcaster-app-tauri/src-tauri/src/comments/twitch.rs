@@ -31,6 +31,59 @@ pub struct ChatMessage {
     /// ログイン名(アイコンを調べる時に使う)
     pub login: String,
     pub text: String,
+    /// 応援(ビッツ・サブスク・ギフト・レイド)。普通の発言はNone
+    pub paid: Option<Support>,
+}
+
+/// Twitchの応援
+#[derive(Debug, PartialEq)]
+pub struct Support {
+    /// "bits" / "sub" / "gift" / "raid"
+    pub kind: &'static str,
+    /// 表示する金額・種類(例: "100ビッツ" "サブスク")
+    pub label: String,
+    pub color: String,
+}
+
+/// ビッツの数に応じた色(Twitchのチアの色に合わせる)
+fn bits_color(n: u64) -> &'static str {
+    match n {
+        0..=99 => "#979797",
+        100..=999 => "#9c3ee8",
+        1000..=4999 => "#1db2a5",
+        5000..=9999 => "#0099fe",
+        _ => "#f43021",
+    }
+}
+
+fn tag<'a>(tags: Option<&'a str>, key: &str) -> Option<&'a str> {
+    tags?.split(';').find_map(|kv| kv.strip_prefix(key).and_then(|v| v.strip_prefix('=')))
+}
+
+/// 1行のIRCメッセージが、サブスク・ギフト・レイドのお知らせ(USERNOTICE)なら取り出す。
+pub fn parse_usernotice(line: &str) -> Option<ChatMessage> {
+    let l = line.strip_prefix('@')?;
+    let (tags, rest) = l.split_once(' ')?;
+    let rest = rest.strip_prefix(':')?;
+    let (_prefix, rest) = rest.split_once(' ')?;
+    let rest = rest.strip_prefix("USERNOTICE ")?;
+    let message = rest.split_once(" :").map(|(_, m)| m.to_string()).unwrap_or_default();
+    let tags = Some(tags);
+    let (kind, label) = match tag(tags, "msg-id")? {
+        "sub" | "resub" => ("sub", "サブスク"),
+        "subgift" | "submysterygift" | "giftpaidupgrade" | "anongiftpaidupgrade" => ("gift", "サブギフト"),
+        "raid" => ("raid", "レイド"),
+        _ => return None,
+    };
+    let login = tag(tags, "login").unwrap_or_default().to_string();
+    let author = tag(tags, "display-name").map(unescape_tag).filter(|n| !n.is_empty()).unwrap_or_else(|| login.clone());
+    let system = tag(tags, "system-msg").map(unescape_tag).unwrap_or_default();
+    let text = match (system.trim().is_empty(), message.trim().is_empty()) {
+        (false, false) => format!("{system} {message}"),
+        (false, true) => system,
+        (true, _) => message,
+    };
+    Some(ChatMessage { author, login, text, paid: Some(Support { kind, label: label.to_string(), color: "#9146ff".to_string() }) })
 }
 
 /// Twitchのユーザーのアイコン画像のURLを調べる。公式APIはログインが要るので、
@@ -98,7 +151,21 @@ pub fn parse_privmsg(line: &str) -> Option<ChatMessage> {
         .strip_prefix("\u{1}ACTION ")
         .and_then(|t| t.strip_suffix('\u{1}'))
         .unwrap_or(text);
-    Some(ChatMessage { author: display.unwrap_or_else(|| login.to_string()), login: login.to_string(), text: text.to_string() })
+    // ビッツ(チア): bitsタグに数。本文の「Cheer100」のような部分は読み上げ・表示から除く
+    let bits = tag(tags, "bits").and_then(|b| b.parse::<u64>().ok()).filter(|n| *n > 0);
+    let text = if bits.is_some() {
+        text.split_whitespace()
+            .filter(|w| {
+                let letters = w.trim_end_matches(|c: char| c.is_ascii_digit());
+                !(letters.len() < w.len() && !letters.is_empty() && letters.chars().all(|c| c.is_ascii_alphabetic()))
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        text.to_string()
+    };
+    let paid = bits.map(|n| Support { kind: "bits", label: format!("{n}ビッツ"), color: bits_color(n).to_string() });
+    Some(ChatMessage { author: display.unwrap_or_else(|| login.to_string()), login: login.to_string(), text, paid })
 }
 
 #[cfg(test)]
@@ -116,17 +183,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_bits_and_subs() {
+        let cheer = "@bits=100;display-name=Foo :foo!foo@foo.tmi.twitch.tv PRIVMSG #ch :Cheer100 がんばれ";
+        let m = parse_privmsg(cheer).unwrap();
+        assert_eq!(m.text, "がんばれ");
+        assert_eq!(m.paid.as_ref().unwrap().label, "100ビッツ");
+        assert_eq!(m.paid.unwrap().color, "#9c3ee8");
+        let sub = "@display-name=Bar;login=bar;msg-id=resub;system-msg=Bar\\ssubscribed\\sfor\\s3\\smonths :tmi.twitch.tv USERNOTICE #ch :いつも見てます";
+        let m = parse_usernotice(sub).unwrap();
+        assert_eq!(m.author, "Bar");
+        assert_eq!(m.text, "Bar subscribed for 3 months いつも見てます");
+        assert_eq!(m.paid.unwrap().kind, "sub");
+        assert!(parse_usernotice("@msg-id=ritual;login=x :tmi.twitch.tv USERNOTICE #ch").is_none());
+        assert!(parse_privmsg(sub).is_none());
+    }
+
+    #[test]
     fn parses_privmsg_lines() {
         let line = "@badge-info=;color=#1E90FF;display-name=テストユーザー;emotes=;id=x :testuser!testuser@testuser.tmi.twitch.tv PRIVMSG #example_channel :こんにちは、テストです";
         assert_eq!(
             parse_privmsg(line),
-            Some(ChatMessage { author: "テストユーザー".into(), login: "testuser".into(), text: "こんにちは、テストです".into() })
+            Some(ChatMessage { author: "テストユーザー".into(), login: "testuser".into(), text: "こんにちは、テストです".into(), paid: None })
         );
         // display-nameが空ならログイン名、本文中の " :" で切れない
         let line2 = "@display-name=;id=y :abc!abc@abc.tmi.twitch.tv PRIVMSG #ch :a : b";
-        assert_eq!(parse_privmsg(line2).unwrap(), ChatMessage { author: "abc".into(), login: "abc".into(), text: "a : b".into() });
+        assert_eq!(parse_privmsg(line2).unwrap(), ChatMessage { author: "abc".into(), login: "abc".into(), text: "a : b".into(), paid: None });
         let me = "@display-name=Foo\\sBar :foo!foo@foo.tmi.twitch.tv PRIVMSG #ch :\u{1}ACTION waves\u{1}";
-        assert_eq!(parse_privmsg(me).unwrap(), ChatMessage { author: "Foo Bar".into(), login: "foo".into(), text: "waves".into() });
+        assert_eq!(parse_privmsg(me).unwrap(), ChatMessage { author: "Foo Bar".into(), login: "foo".into(), text: "waves".into(), paid: None });
         assert_eq!(parse_privmsg("PING :tmi.twitch.tv"), None);
         assert_eq!(parse_privmsg(":tmi.twitch.tv 001 justinfan1 :Welcome"), None);
     }

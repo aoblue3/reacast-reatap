@@ -535,6 +535,21 @@ struct Post {
     /// 「前回の続き」「ここから読み始める」で入れ直したレス。溜まっていてもターボに
     /// しない(追いつくために声を途中で切らず、普通の速さで読む)
     catch_up: bool,
+    /// スーパーチャット・ビッツ等の応援(右のレス一覧で目立たせる)
+    paid: Option<Paid>,
+}
+
+/// 配信サイトの応援(YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、
+/// Twitchのビッツ・サブスク・ギフト・レイド)
+#[derive(Clone, Debug)]
+struct Paid {
+    kind: &'static str,
+    /// 表示する金額・種類(例: "¥500" "100ビッツ" "サブスク")
+    amount: String,
+    /// 色(#rrggbb)
+    color: String,
+    /// 応援に添えられたメッセージ(金額を除いた本文)
+    message: String,
 }
 
 impl Post {
@@ -560,6 +575,7 @@ impl Post {
             source: "bbs",
             avatar: None,
             catch_up: false,
+            paid: None,
         }
     }
 
@@ -574,12 +590,13 @@ impl Post {
             source: "system",
             avatar: None,
             catch_up: false,
+            paid: None,
         }
     }
 
     /// 配信サイトのチャット(レス番号は無い)
     fn chat(source: &'static str, name: String, body: String, icon: Option<String>, avatar: Option<String>) -> Self {
-        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar, catch_up: false }
+        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar, catch_up: false, paid: None }
     }
 
     /// NGワードが名前・本文・日時の行(「ID:xxxx」を含む)のどれかに含まれるか
@@ -598,6 +615,9 @@ impl Post {
             "icon": self.icon,
             "source": self.source,
             "avatar": self.avatar,
+            "paid": self.paid.as_ref().map(|p| serde_json::json!({
+                "kind": p.kind, "amount": p.amount, "color": p.color, "message": p.message,
+            })),
         })
     }
 }
@@ -1009,12 +1029,21 @@ impl CommentEngine {
                             .messages
                             .into_iter()
                             .map(|m| {
-                                let body = match m.amount {
-                                    Some(a) if m.text.is_empty() => a,
+                                let body = match &m.amount {
+                                    Some(a) if m.text.is_empty() => a.clone(),
                                     Some(a) => format!("{a} {}", m.text),
-                                    None => m.text,
+                                    None => m.text.clone(),
                                 };
-                                Post::chat("youtube", m.author, body, self.pick_icon("youtube"), m.photo)
+                                let mut post = Post::chat("youtube", m.author, body, self.pick_icon("youtube"), m.photo);
+                                if let (Some(kind), Some(amount)) = (m.kind, m.amount) {
+                                    post.paid = Some(Paid {
+                                        kind,
+                                        amount,
+                                        color: m.color.unwrap_or_else(|| "#ffca28".into()),
+                                        message: m.text,
+                                    });
+                                }
+                                post
                             })
                             .collect();
                         self.enqueue(run_id, posts);
@@ -1098,7 +1127,7 @@ impl CommentEngine {
                     } else if line.contains(" RECONNECT") {
                         // Twitch側からの「繋ぎ直してください」の合図
                         reconnect = true;
-                    } else if let Some(m) = twitch::parse_privmsg(line) {
+                    } else if let Some(m) = twitch::parse_privmsg(line).or_else(|| twitch::parse_usernotice(line)) {
                         if !avatars.contains_key(&m.login) {
                             if avatars.len() > 2000 {
                                 avatars.clear();
@@ -1106,7 +1135,16 @@ impl CommentEngine {
                             avatars.insert(m.login.clone(), twitch::fetch_avatar(&client, &m.login).await);
                         }
                         let avatar = avatars.get(&m.login).cloned().flatten();
-                        posts.push(Post::chat("twitch", m.author, m.text, self.pick_icon("twitch"), avatar));
+                        let body = match &m.paid {
+                            Some(p) if m.text.is_empty() => p.label.clone(),
+                            Some(p) => format!("{} {}", p.label, m.text),
+                            None => m.text.clone(),
+                        };
+                        let mut post = Post::chat("twitch", m.author, body, self.pick_icon("twitch"), avatar);
+                        if let Some(p) = m.paid {
+                            post.paid = Some(Paid { kind: p.kind, amount: p.label, color: p.color, message: m.text });
+                        }
+                        posts.push(post);
                     }
                 }
                 self.enqueue(run_id, posts);
@@ -2492,7 +2530,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None, catch_up: false }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None, catch_up: false, paid: None }
     }
 
     #[test]

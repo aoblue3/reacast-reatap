@@ -29,6 +29,11 @@
      .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .avatar(YouTube・Twitchの人のアイコン) .name(名前)
      .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ)
      .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch(取得元ごと) */
+  /* 応援(スーパーチャット・ビッツ等)。カスタムCSSでは .item.paid / .paid-superchat / .paid-sticker /
+     .paid-member / .paid-bits / .paid-sub / .paid-gift / .paid-raid / .paid-badge(金額の札) */
+  .item.paid { box-shadow: inset 5px 0 0 rgba(255, 255, 255, 0.55); }
+  .item.paid .head span { color: var(--paid-text) !important; }
+  .paid-badge { display: inline-block; font-weight: bold; padding: 0 0.45em; border-radius: 4px; background: rgba(0, 0, 0, 0.28); color: #ffffff; text-shadow: none; }
   .item {
     position: relative;
     display: flex;
@@ -102,13 +107,29 @@
       return img;
     }
 
+    /** 背景の色が明るいか(応援の札の文字色を黒にするか白にするか) */
+    function isLight(hex) {
+      const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+      if (!m) return true;
+      const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h, 16) / 255);
+      return 0.299 * r + 0.587 * g + 0.114 * b > 0.6;
+    }
+
     function buildItem(res) {
       const s = style.list;
       const el = document.createElement('div');
+      // スーパーチャット・ビッツ等の応援(設定「応援を目立たせる」がONの時)
+      const paid = s.showPaid !== false && res.paid && !res.system ? res.paid : null;
       el.className =
-        'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '') + (res.source ? ` src-${res.source}` : '');
+        'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '') + (res.source ? ` src-${res.source}` : '') +
+        (paid ? ` paid paid-${paid.kind}` : '');
       const bgOpacity = Number(s.itemBgOpacity) || 0;
       if (bgOpacity > 0) el.style.background = C.rgba(s.itemBgColor, bgOpacity);
+      if (paid) {
+        el.style.setProperty('--paid-color', paid.color);
+        el.style.setProperty('--paid-text', isLight(paid.color) ? '#111111' : '#ffffff');
+        el.style.background = C.rgba(paid.color, 90);
+      }
       el.style.padding = `${Math.max(0, Number(s.itemPadding) || 0)}px`;
       el.style.borderRadius = `${Math.max(0, Number(s.itemRadius) || 0)}px`;
 
@@ -128,6 +149,12 @@
       head.className = 'head';
       head.style.fontSize = Number(s.headFontSize) > 0 ? `${Number(s.headFontSize)}px` : '0.8em';
       head.style.fontWeight = s.headBold ? 'bold' : 'normal';
+      if (paid) {
+        const badge = document.createElement('span');
+        badge.className = 'paid-badge';
+        badge.textContent = paid.amount;
+        head.appendChild(badge);
+      }
       if (res.system) {
         if (res.name) head.appendChild(span('name', res.name, s.nameColor));
       } else {
@@ -141,12 +168,12 @@
       if (head.childNodes.length) content.appendChild(head);
 
       const images = s.thumbnails === 'chat' && !res.aa ? C.findImageUrls(res.body) : [];
-      let bodyText = String(res.body || '');
+      let bodyText = paid ? String(paid.message || '') : String(res.body || '');
       if (images.length && s.hideImageUrl) bodyText = bodyText.replace(C.IMAGE_URL_RE, '').trim();
       if (bodyText) {
         const body = document.createElement('div');
         body.className = 'body';
-        body.style.color = s.bodyColor;
+        body.style.color = paid ? 'var(--paid-text)' : s.bodyColor;
         body.style.fontWeight = s.bodyBold ? 'bold' : 'normal';
         body.textContent = bodyText;
         content.appendChild(body);

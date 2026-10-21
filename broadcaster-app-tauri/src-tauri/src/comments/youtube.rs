@@ -109,8 +109,12 @@ pub struct ChatMessage {
     pub id: String,
     pub author: String,
     pub text: String,
-    /// スーパーチャットの金額(例: "¥500")
+    /// スーパーチャットの金額(例: "¥500")。メンバーシップは「メンバー」等
     pub amount: Option<String>,
+    /// 応援の種類: "superchat" / "sticker"(スーパーステッカー) / "member"(メンバーシップ)
+    pub kind: Option<&'static str>,
+    /// YouTubeが付けている色(スーパーチャットの金額ごとの色。#rrggbb)
+    pub color: Option<String>,
     /// 書いた人のアイコン画像のURL
     pub photo: Option<String>,
 }
@@ -151,10 +155,23 @@ fn parse_actions(actions: &[serde_json::Value]) -> Vec<ChatMessage> {
             let Some(item) = a.pointer("/addChatItemAction/item") else {
                 continue;
             };
-            let (r, amount) = if let Some(r) = item.get("liveChatTextMessageRenderer") {
-                (r, None)
+            let amount_of = |r: &serde_json::Value| r.pointer("/purchaseAmountText/simpleText").and_then(|s| s.as_str()).map(String::from);
+            let (r, amount, kind, color) = if let Some(r) = item.get("liveChatTextMessageRenderer") {
+                (r, None, None, None)
             } else if let Some(r) = item.get("liveChatPaidMessageRenderer") {
-                (r, r.pointer("/purchaseAmountText/simpleText").and_then(|s| s.as_str()).map(String::from))
+                (r, amount_of(r), Some("superchat"), argb_hex(r.get("bodyBackgroundColor")))
+            } else if let Some(r) = item.get("liveChatPaidStickerRenderer") {
+                (r, amount_of(r), Some("sticker"), argb_hex(r.get("backgroundColor")))
+            } else if let Some(r) = item.get("liveChatMembershipItemRenderer") {
+                // 新しいメンバー(headerSubtext)・メンバー継続のお祝い(headerPrimaryText+メッセージ)
+                let label = runs_text(r.pointer("/headerPrimaryText/runs"));
+                let sub = r
+                    .pointer("/headerSubtext/simpleText")
+                    .and_then(|s| s.as_str())
+                    .map(String::from)
+                    .unwrap_or_else(|| runs_text(r.pointer("/headerSubtext/runs")));
+                let label = if label.trim().is_empty() { sub } else { label };
+                (r, Some(if label.trim().is_empty() { "メンバー".to_string() } else { label }), Some("member"), Some("#0f9d58".to_string()))
             } else {
                 continue;
             };
@@ -162,11 +179,17 @@ fn parse_actions(actions: &[serde_json::Value]) -> Vec<ChatMessage> {
             if text.trim().is_empty() && amount.is_none() {
                 continue;
             }
+            // 中身の無いもの(書いた人の分からないお知らせ等)は出さない
+            if kind.is_some() && r.pointer("/authorName/simpleText").is_none() {
+                continue;
+            }
             messages.push(ChatMessage {
                 id: r.get("id").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
                 author: r.pointer("/authorName/simpleText").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
                 text,
                 amount,
+                kind,
+                color,
                 photo: r
                     .pointer("/authorPhoto/thumbnails")
                     .and_then(|t| t.as_array())
@@ -178,6 +201,12 @@ fn parse_actions(actions: &[serde_json::Value]) -> Vec<ChatMessage> {
         }
     }
     messages
+}
+
+/// YouTubeの色(ARGBの数値)を #rrggbb にする
+fn argb_hex(v: Option<&serde_json::Value>) -> Option<String> {
+    let n = v?.as_u64()?;
+    Some(format!("#{:06x}", n & 0xFF_FFFF))
 }
 
 /// get_live_chatの応答(JSON)から新着コメントと次のcontinuationを取り出す。
@@ -400,11 +429,22 @@ mod tests {
                     "purchaseAmountText": { "simpleText": "¥500" },
                     "message": { "runs": [ { "text": "応援" } ] } } } } },
                 { "addChatItemAction": { "item": { "liveChatMembershipItemRenderer": {} } } },
+                { "addChatItemAction": { "item": { "liveChatPaidStickerRenderer": {
+                    "id": "a3", "authorName": { "simpleText": "@いぬ" }, "purchaseAmountText": { "simpleText": "¥200" },
+                    "backgroundColor": 4280191205u64 } } } },
+                { "addChatItemAction": { "item": { "liveChatMembershipItemRenderer": {
+                    "id": "a4", "authorName": { "simpleText": "@うさぎ" },
+                    "headerSubtext": { "runs": [ { "text": "メンバーシップへようこそ" } ] } } } } },
                 { "markChatItemAsDeletedAction": {} }
             ]
         } } });
         let page = parse_chat_response(&v);
-        assert_eq!(page.messages.len(), 2);
+        assert_eq!(page.messages.len(), 4);
+        assert_eq!(page.messages[1].kind, Some("superchat"));
+        assert_eq!(page.messages[2].kind, Some("sticker"));
+        assert_eq!(page.messages[2].color.as_deref(), Some("#1e88e5"));
+        assert_eq!(page.messages[3].kind, Some("member"));
+        assert_eq!(page.messages[3].amount.as_deref(), Some("メンバーシップへようこそ"));
         assert_eq!(page.messages[0].author, "@たぬき");
         assert_eq!(page.messages[0].text, "こんにちは😀:yt:");
         assert_eq!(page.messages[0].photo.as_deref(), Some("https://yt4.ggpht.com/a=s64"));

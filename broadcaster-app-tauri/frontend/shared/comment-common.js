@@ -95,6 +95,8 @@
       iconSize: 40,
       // 配信サイトのコメントに「YouTube」「Twitch」の印を付ける
       showSource: true,
+      // スーパーチャット・ビッツ等の応援を、色付きの札と金額で目立たせる
+      showPaid: true,
       customCss: '',
     },
     // ニコ生風(右から左に流れる)

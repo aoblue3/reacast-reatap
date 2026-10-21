@@ -90,6 +90,43 @@
     mask-size: 240% 100%;
     animation: quill-write 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
   }
+  /* WC風: 右からバチッと飛び込んで、ビリッと揺れて止まる */
+  #box.appear-wc-bolt.visible { transform-origin: right center; animation: wc-bolt 460ms cubic-bezier(.2, 1.4, .4, 1); }
+  @keyframes wc-bolt {
+    0% { opacity: 0; transform: var(--off) translateX(110px) skewX(-16deg); }
+    55% { opacity: 1; transform: var(--off) translateX(-10px) skewX(5deg); }
+    70% { transform: var(--off) translateX(5px) rotate(-1deg); }
+    85% { transform: var(--off) translateX(-2px) rotate(0.5deg); }
+    100% { opacity: 1; transform: var(--off); }
+  }
+  /* オーロラ: ぼかしから、ふわっと浮かび上がる */
+  #box.appear-aurora-rise.visible { animation: aurora-rise 900ms cubic-bezier(.2, .8, .2, 1); }
+  @keyframes aurora-rise {
+    from { opacity: 0; filter: blur(10px); transform: var(--off) translateY(16px) scale(0.98); }
+    to { opacity: 1; filter: blur(0); transform: var(--off) translateY(0) scale(1); }
+  }
+  /* 羽ペン: インクが書かれていく先を、羽ペンが左から右へ走る */
+  .quill-pen {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 1.6em;
+    height: 1.6em;
+    margin: -1.35em 0 0 -0.35em;
+    pointer-events: none;
+    animation: quill-pen 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
+  }
+  .quill-pen svg { width: 100%; height: 100%; animation: quill-wiggle 220ms ease-in-out infinite alternate; transform-origin: 10% 90%; }
+  @keyframes quill-pen {
+    0% { left: 2%; opacity: 0; }
+    8% { opacity: 1; }
+    88% { left: 100%; opacity: 1; }
+    100% { left: 104%; opacity: 0; }
+  }
+  @keyframes quill-wiggle {
+    from { transform: rotate(-6deg) translateY(1px); }
+    to { transform: rotate(5deg) translateY(-3px); }
+  }
   @keyframes quill-write {
     from { opacity: 1; -webkit-mask-position: 100% 0; mask-position: 100% 0; }
     to { opacity: 1; -webkit-mask-position: 0 0; mask-position: 0 0; }
@@ -193,7 +230,11 @@
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
 
-    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write'];
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'wc-bolt', 'aurora-rise'];
+    // 羽ペン(「インクで書かれていく」の時に、書いている先を走る)
+    const QUILL_SVG =
+      '<svg viewBox="0 0 40 40"><path d="M37 3 C 26 4 14 12 9 27 L 7 31 L 10 30 C 20 26 31 17 37 3 Z" fill="#f4efe2" stroke="#6b4a2a" stroke-width="1.2"/>' +
+      '<path d="M35 5 L 10 29" stroke="#8a6a44" stroke-width="1.1"/><path d="M10 29 L 4 37" stroke="#2b1d10" stroke-width="2.2" stroke-linecap="round"/></svg>';
 
     /** 届いた見た目の設定を使う。デスクトップ字幕で「プリセットと連動」がOFFなら、
      * プリセットの部分(フォント・色・背景・出し方・カスタムCSS)だけ既定に戻す。 */
@@ -335,6 +376,13 @@
         }, stepMs);
       }
       box.classList.add('visible');
+      if (style.subtitle.appear === 'quill-write' && !res.aa && !replay) {
+        const pen = document.createElement('span');
+        pen.className = 'quill-pen';
+        pen.innerHTML = QUILL_SVG;
+        box.appendChild(pen);
+        setTimeout(() => pen.remove(), 1700);
+      }
       hideTimer = setTimeout(hide, Math.max(300, Number(durationMs) || 3000));
     }
 
