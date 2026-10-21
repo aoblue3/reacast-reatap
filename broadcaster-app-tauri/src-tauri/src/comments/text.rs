@@ -221,15 +221,41 @@ pub fn parse_reaction_rules(text: &str) -> Vec<ReactionRule> {
         .collect()
 }
 
-/// 本文に当てはまったルールのリアクションID(上の行から順に、同じIDは1回、最大max個)。
+/// 本文に当てはまったルールのリアクションID(最大max個)。同じ言葉が何回も入っていたら
+/// (「おにぎりおにぎりおにぎり」)その回数だけ出す。まず当てはまった種類を上の行から順に
+/// 1個ずつ、まだmaxに届いていなければ2個目、3個目…の順に足すので、maxが少ない時は
+/// 今まで通り色々な種類が優先される。同じIDのルールが複数ある時は、一番多く当てはまった回数。
 pub fn matched_reactions(body: &str, rules: &[ReactionRule], max: usize) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+    let mut counts: Vec<(&str, usize)> = Vec::new();
     for r in rules {
-        if out.len() >= max {
-            break;
+        if !r.re.is_match(body) {
+            continue;
         }
-        if !out.contains(&r.id) && r.re.is_match(body) {
-            out.push(r.id.clone());
+        // 同じ言葉の繰り返しだけを数える(「誕生日おめでとう」のように、同じルールの
+        // 違う言葉が1つずつ入っているだけなら1個)
+        let mut words: Vec<(&str, usize)> = Vec::new();
+        for m in r.re.find_iter(body).filter(|m| !m.as_str().is_empty()) {
+            match words.iter_mut().find(|(w, _)| *w == m.as_str()) {
+                Some(w) => w.1 += 1,
+                None => words.push((m.as_str(), 1)),
+            }
+        }
+        let n = words.iter().map(|w| w.1).max().unwrap_or(1);
+        match counts.iter_mut().find(|(id, _)| *id == r.id) {
+            Some(c) => c.1 = c.1.max(n),
+            None => counts.push((&r.id, n)),
+        }
+    }
+    let mut out: Vec<String> = Vec::new();
+    let most = counts.iter().map(|c| c.1).max().unwrap_or(0);
+    'round: for round in 0..most {
+        for (id, n) in &counts {
+            if out.len() >= max {
+                break 'round;
+            }
+            if round < *n {
+                out.push(id.to_string());
+            }
         }
     }
     out
@@ -420,6 +446,24 @@ mod tests {
         assert_eq!(matched_reactions("草www 888", &rules, 3), vec!["kusa", "clap"]);
         assert_eq!(matched_reactions("888 おめでとう www", &rules, 2), vec!["kusa", "clap"]);
         assert!(matched_reactions("こんにちは", &rules, 3).is_empty());
+    }
+
+    #[test]
+    fn reaction_rules_repeat_for_repeated_words() {
+        let rules = parse_reaction_rules("[wｗ]{3,}/kusa
+草/kusa
+おにぎり|🍙/onigiri
+888/clap");
+        assert_eq!(matched_reactions("おにぎりおにぎりおにぎり", &rules, 5), vec!["onigiri"; 3]);
+        // 最大数より多くは出さない
+        assert_eq!(matched_reactions("🍙🍙🍙🍙🍙🍙", &rules, 4), vec!["onigiri"; 4]);
+        // 種類が違う時は、まず1個ずつ
+        assert_eq!(matched_reactions("おにぎりおにぎり草 888", &rules, 3), vec!["kusa", "onigiri", "clap"]);
+        assert_eq!(matched_reactions("おにぎりおにぎり草 888", &rules, 5), vec!["kusa", "onigiri", "clap", "onigiri"]);
+        // 同じルールの違う言葉が1つずつなら1個
+        assert_eq!(matched_reactions("🍙おにぎり", &rules, 5), vec!["onigiri"]);
+        // 同じIDのルールが複数当てはまっても、足し算はしない
+        assert_eq!(matched_reactions("草www", &rules, 5), vec!["kusa"]);
     }
 
     #[test]

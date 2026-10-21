@@ -129,6 +129,9 @@
   button.secondary { background: var(--c-333333); }
   :root[data-theme="light"] button.secondary { color: #222; }
   button.danger { background: var(--c-6b2b2b); }
+  /* ライトの時、薄いピンクに白い文字だと押せない(グレーアウトした)ボタンに見えるので濃い赤にする */
+  :root[data-theme="light"] button.danger { background: #c94444; }
+  :root[data-theme="light"] button.secondary { border: 1px solid #b8b8c0; }
   button:disabled { opacity: 0.5; cursor: default; }
   #errorMsg { color: var(--c-ff8a8a); font-size: 12px; margin-top: 8px; min-height: 16px; }
   #connStatus { font-size: 12px; margin-top: 8px; min-height: 16px; }

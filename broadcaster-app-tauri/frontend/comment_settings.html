@@ -578,7 +578,7 @@
     <section data-tab="reactions">
       <div class="hint">字幕に出したレスの本文がルールに当てはまると、視聴者のリアクションと同じように配信画面へリアクションを飛ばします(例: 「www」で草、「888」で拍手、「おつ」でおつかれ)。コントロールパネルでOFFにしたリアクションは飛びません。AAには反応しません。</div>
       <div class="field"><label>コメントとリアクションを連動する</label><div><input type="checkbox" data-key="reactionLink" /></div></div>
-      <div class="field"><label>1件のレスで飛ばす最大数</label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個(上のルールほど優先)</span></div></div>
+      <div class="field"><label>1件のレスで飛ばす最大数</label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個(上のルールほど優先。同じ言葉が何回も入っていたら、この数までその回数だけ飛ばす)</span></div></div>
       <h3>ルール(上にあるものほど優先)</h3>
       <div class="rule-editor" data-rules-for="reactionRules" data-target="reaction"></div>
       <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="reactionRules" /> テキストで直接編集する(上級者向け: 1行に「正規表現/リアクションのID」)</label>

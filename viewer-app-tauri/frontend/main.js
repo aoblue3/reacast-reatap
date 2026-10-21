@@ -92,9 +92,13 @@ const updateStatusMessageEl = document.getElementById('updateStatusMessage');
  * 固まって見える」ように映り、通常終了もできなくなる(タスクトレイの「終了」も
  * 効かなくなる)ことがある。同じ問題を避けるため、確認ダイアログは常に
  * この関数(=ページ内の普通のdiv要素)を使う。 */
-function showConfirmDialog(message) {
+function showConfirmDialog(message, opts = {}) {
   return new Promise((resolve) => {
     confirmMessageEl.textContent = message;
+    // 削除などは赤いOK、更新の確認などは青いボタンにする(ボタンの文字も変えられる)
+    confirmOkBtn.textContent = opts.okLabel || 'OK';
+    confirmCancelBtn.textContent = opts.cancelLabel || 'キャンセル';
+    confirmOkBtn.classList.toggle('danger', opts.danger !== false);
     confirmOverlay.classList.add('visible');
     let settled = false;
     const cleanup = () => {
@@ -1516,7 +1520,8 @@ async function checkForUpdateOnStartup() {
   const title = info.title || info.version;
   const notes = info.notes && info.notes.trim() ? `\n\n${info.notes.trim()}` : '';
   const ok = await showConfirmDialog(
-    `新しいバージョンが利用可能です。今すぐ更新しますか?\n\n${title}${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`
+    `新しいバージョンが利用可能です。今すぐ更新しますか?\n\n${title}${notes}\n\n(更新中はこのアプリが一旦終了し、自動的に再起動します)`,
+    { okLabel: '更新する', cancelLabel: 'あとで', danger: false }
   );
   if (!ok) return;
 

@@ -351,11 +351,16 @@ function applyRightModeColumnLayout() {
   barEl.style.gridTemplateRows = `repeat(${itemsPerColumn}, auto)`;
 }
 
+/** アイコン列の大きさ(物理ピクセル)。ウィンドウの位置・大きさはRust側で物理ピクセルとして
+ * 扱う(対象ウィンドウの位置もWin32の物理ピクセル)ので、CSSのピクセルを画面の拡大率倍する。
+ * 以前は掛けていなかったため、Windowsの拡大率が125%・150%などの環境ではウィンドウが
+ * 中身より小さくなり、下の方(右の配置では右の方)のアイコンが切れて見えなかった */
 function measureBarSize() {
   const rect = reactionPanelInner.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
   return {
-    width: Math.ceil(rect.width) + BAR_EXTRA_PADDING_PX,
-    height: Math.ceil(rect.height) + BAR_EXTRA_PADDING_PX,
+    width: Math.ceil((rect.width + BAR_EXTRA_PADDING_PX) * dpr),
+    height: Math.ceil((rect.height + BAR_EXTRA_PADDING_PX) * dpr),
   };
 }
 
