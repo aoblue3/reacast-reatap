@@ -1992,11 +1992,28 @@ fn run_speech_command(s: &CommentSettings, post: &Post, spoken: &str) {
     }
 }
 
+/// 初めて使う時(と「全部の設定を最初の状態に戻す」)の設定。既定値に加えて、
+/// VOICEVOXが入っていれば(または起動中なら)読み上げソフトをVOICEVOXにしておく
+/// (無ければ今までどおり「コマンドで渡す(民安★TALK)」)。
+pub fn initial_settings() -> CommentSettings {
+    let mut s = CommentSettings::default();
+    let mut probe = s.clone();
+    probe.speech_engine = "voicevox".into();
+    if crate::tts::find_exe(&probe).is_some() {
+        s.speech_engine = "voicevox".into();
+    }
+    s
+}
+
 pub fn load_settings(store: &ConfigStore) -> CommentSettings {
-    let mut s: CommentSettings = store
-        .get(SETTINGS_KEY)
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    let Some(saved) = store.get(SETTINGS_KEY) else {
+        // 初めて使う時
+        let s = initial_settings();
+        log::info!("コメント読み上げ・字幕: 初めての起動なので、最初の設定を作りました(読み上げソフト: {})", s.speech_engine);
+        let _ = save_settings(store, &s);
+        return s;
+    };
+    let mut s: CommentSettings = serde_json::from_value(saved).unwrap_or_default();
     if !s.reading_presets_v2 {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
@@ -2089,6 +2106,16 @@ pub fn comments_save_settings(
     // 話した字幕のON/OFF・聞き取る言葉が変わっていれば、Edgeの窓を開く・閉じる・開き直す
     crate::voice::sync(&app);
     Ok(())
+}
+
+/// 「全部の設定を最初の状態に戻す」: コメント読み上げ・字幕の設定を全部、初めて使う時の
+/// 状態に戻して、戻した設定を返す(設定画面が表示し直す)。
+#[tauri::command(async)]
+pub fn comments_reset_settings(app: AppHandle, engine: Engine, store: tauri::State<ConfigStore>) -> Result<CommentSettings, String> {
+    let settings = initial_settings();
+    log::info!("コメント読み上げ・字幕: 全部の設定を最初の状態に戻しました");
+    comments_save_settings(app, engine, store, settings.clone())?;
+    Ok(settings)
 }
 
 /// 次スレのタイトルと>>1の本文を、設定のテンプレートと今のスレッドから作る。
@@ -2514,6 +2541,12 @@ mod tests {
         assert_eq!(read("やったー😀👍"), "やったー");
         assert_eq!(read("kwsk"), "くわしく");
         assert_eq!(read("8888"), "パチパチ");
+    }
+
+    #[test]
+    #[ignore] // VOICEVOXが入っているPCで: 初めて使う時の読み上げソフトがVOICEVOXになる
+    fn initial_settings_pick_voicevox_when_installed() {
+        assert_eq!(initial_settings().speech_engine, "voicevox");
     }
 
     #[test]

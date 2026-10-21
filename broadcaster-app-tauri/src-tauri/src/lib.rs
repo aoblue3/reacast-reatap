@@ -1259,6 +1259,7 @@ pub fn run() {
             comments::comments_toggle_pause,
             comments::comments_suspend_hotkeys,
             comments::comments_hotkey_from_page,
+            comments::comments_reset_settings,
             fonts::list_system_fonts,
             comments::comments_apply_hotkeys,
             comments::comments_get_thread,

@@ -596,6 +596,38 @@ document.getElementById('ttsTestBtn').addEventListener('click', async () => {
   }
 });
 
+// ---- 全部の設定を最初の状態に戻す(押し間違いを防ぐため、5秒以内にもう一度押した時だけ) ----
+(() => {
+  const btn = document.getElementById('resetAllBtn');
+  const msg = document.getElementById('resetAllMsg');
+  let armedUntil = 0;
+  let timer = null;
+  btn.addEventListener('click', async () => {
+    if (Date.now() > armedUntil) {
+      armedUntil = Date.now() + 5000;
+      btn.textContent = '本当に戻す(もう一度押す)';
+      msg.textContent = 'すべての設定が消えます。戻す時は5秒以内にもう一度押してください';
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        btn.textContent = '全部の設定を最初の状態に戻す';
+        msg.textContent = '';
+      }, 5000);
+      return;
+    }
+    armedUntil = 0;
+    clearTimeout(timer);
+    btn.textContent = '全部の設定を最初の状態に戻す';
+    try {
+      clearTimeout(saveTimer);
+      settings = await invoke('comments_reset_settings');
+      renderFields();
+      msg.textContent = '最初の状態に戻しました';
+    } catch (e) {
+      msg.textContent = `戻せませんでした: ${e}`;
+    }
+  });
+})();
+
 // ---- 参照ボタン ----
 document.getElementById('pickExeBtn').addEventListener('click', async () => {
   const path = await invoke('comments_pick_exe').catch(() => null);
