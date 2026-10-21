@@ -72,6 +72,7 @@ const EMOJI_SET = [
   { id: 'cheers', char: '🍻', label: '乾杯', anim: 'cheers' },
   { id: 'ramen', char: '🍜', label: 'ラーメン', anim: 'ramen' },
   { id: 'sushi', char: '🍣', label: '寿司', anim: 'sushi' },
+  { id: 'onigiri', char: '🍙', label: 'おにぎり', anim: 'onigiri' },
   { id: 'cake', char: '🎂', label: 'おめでとう', anim: 'cake' },
 
   // ==================== 動物・生き物系 ====================

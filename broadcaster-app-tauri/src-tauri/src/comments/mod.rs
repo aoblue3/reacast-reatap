@@ -186,6 +186,9 @@ pub struct CommentSettings {
     /// v1.6.3で🌈を足した時の、既定のルールの追加(reaction_presets_v2と同じ仕組み)
     #[serde(default)]
     pub reaction_presets_v3: bool,
+    /// v1.6.6で🍙を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v4: bool,
     pub ng_words: String,
     // ---- コメントとリアクションの連動 ----
     /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
@@ -326,6 +329,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "乾杯|かんぱい|カンパイ|🍻|🍺/cheers",
     "ラーメン|らーめん|拉麺/ramen",
     "寿司|すし|スシ|🍣/sushi",
+    "おにぎり|おむすび|オニギリ|🍙/onigiri",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -432,6 +436,7 @@ impl Default for CommentSettings {
             reading_presets_v2: true,
             reaction_presets_v2: true,
             reaction_presets_v3: true,
+            reaction_presets_v4: true,
             ng_words: String::new(),
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
@@ -2056,7 +2061,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2105,6 +2110,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_rules = lines.join("\n");
     s.reaction_presets_v2 = true;
     s.reaction_presets_v3 = true;
+    s.reaction_presets_v4 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {

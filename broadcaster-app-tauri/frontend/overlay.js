@@ -388,6 +388,13 @@ const ANIM_PRESETS = {
     glyphAnimDurationFactor: 0.08,
     glyphAnimIterations: 20,
   },
+  // 🍙 おにぎり: おむすびころりん。画面の上の方のランダムな高さから、右上→左下か
+  // 左上→右下へ、くるくる回りながら小さく弾んで斜めに転がっていく(rollモーション)
+  onigiri: {
+    motion: 'roll',
+    riseFactor: 1,
+    durationFactor: 1.5,
+  },
   // 🍒 さくらんぼ: 上からふわっと降りてきながら、茎を支点に振り子のように揺れる
   // (anim-cherry)。まわりにキラキラとハートが舞う。
   cherry: {
@@ -1163,6 +1170,49 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
       waypoints,
       endX: curX,
       endY: curY,
+    };
+  }
+
+  if (motion === 'roll') {
+    // 🍙: 画面の外(左右どちらか)の上の方から入ってきて、反対側の下の方へ、転がる
+    // (進んだ距離の分だけ回る)・小さく弾むを繰り返しながら斜めに転がって出ていく
+    const fromRight = Math.random() < 0.5;
+    const dir = fromRight ? -1 : 1;
+    const startX = fromRight ? vw + size * 0.2 : -size * 1.2;
+    const startY = vh * (0.04 + Math.random() * 0.26);
+    const endX = fromRight ? -size * 1.4 : vw + size * 0.4;
+    const endY = Math.min(vh - size, startY + vh * (0.22 + Math.random() * 0.25));
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const legs = 7;
+    // 消え始める(表示時間の75%)より少し前に、画面の外まで転がり切る
+    const leg = Math.max(120, Math.round((duration * 0.72) / (legs * 2)));
+    const radius = size / 2;
+    const waypoints = [];
+    let t = 0;
+    let angle = 0;
+    for (let i = 1; i <= legs; i++) {
+      const f0 = (i - 0.5) / legs;
+      const f1 = i / legs;
+      const hop = size * (0.18 + Math.random() * 0.14);
+      // 弾んだ頂点
+      angle += ((dx / legs / 2) / radius) * (180 / Math.PI) * 0.9;
+      waypoints.push({ atMs: t, legMs: leg, transform: `translate(${dx * f0}px, ${dy * f0 - hop}px) rotate(${angle}deg)` });
+      t += leg;
+      // 着地(少しつぶれる)
+      angle += ((dx / legs / 2) / radius) * (180 / Math.PI) * 0.9;
+      waypoints.push({ atMs: t, legMs: leg, transform: `translate(${dx * f1}px, ${dy * f1}px) rotate(${angle}deg) scale(1.06, 0.94)` });
+      t += leg;
+    }
+    return {
+      startX,
+      startY,
+      initialTransform: 'translate(0, 0) rotate(0deg)',
+      moveDuration: leg,
+      easing: 'cubic-bezier(.35,.1,.45,1)',
+      waypoints,
+      endX,
+      endY,
     };
   }
 

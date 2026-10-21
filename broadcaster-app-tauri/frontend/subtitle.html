@@ -82,14 +82,6 @@
   @keyframes neon-flicker {
     0% { opacity: 0; } 18% { opacity: 1; } 30% { opacity: 0.55; } 44% { opacity: 1; } 56% { opacity: 0.7; } 70% { opacity: 1; } 100% { opacity: 1; }
   }
-  /* 羽ペン: 左から右へ、インクがにじむように書かれていく */
-  #box.appear-quill-write.visible {
-    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 58%, transparent 100%);
-    -webkit-mask-size: 240% 100%;
-    mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 58%, transparent 100%);
-    mask-size: 240% 100%;
-    animation: quill-write 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
-  }
   /* OC風: 右からバチッと飛び込んで、ビリッと揺れて止まる */
   #box.appear-oc-bolt.visible { transform-origin: right center; animation: oc-bolt 460ms cubic-bezier(.2, 1.4, .4, 1); }
   @keyframes oc-bolt {
@@ -105,32 +97,33 @@
     from { opacity: 0; filter: blur(10px); transform: var(--off) translateY(16px) scale(0.98); }
     to { opacity: 1; filter: blur(0); transform: var(--off) translateY(0) scale(1); }
   }
-  /* 羽ペン: インクが書かれていく先を、羽ペンが左から右へ走る */
+  /* 羽ペン: まず紙(字幕の枠)がふわっと出て、羽ペンが1文字ずつさらさら書いていく(show参照) */
+  #box.appear-quill-write.visible { animation: quill-paper 320ms ease-out; }
+  @keyframes quill-paper {
+    from { opacity: 0; transform: var(--off) translateY(6px) scale(0.97); }
+    to { opacity: 1; transform: var(--off) translateY(0) scale(1); }
+  }
+  /* 書いたばかりの文字は、インクがにじむように濃くなる */
+  .ink { animation: ink-in 320ms ease-out; }
+  @keyframes ink-in {
+    from { opacity: 0; filter: blur(1.5px); }
+    to { opacity: 1; filter: blur(0); }
+  }
   .quill-pen {
     position: absolute;
-    top: 50%;
-    left: 0;
-    width: 1.6em;
-    height: 1.6em;
-    margin: -1.35em 0 0 -0.35em;
+    width: 1.5em;
+    height: 1.5em;
+    margin: -1.35em 0 0 -0.25em;
     pointer-events: none;
-    animation: quill-pen 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
+    transition: left 70ms linear, top 70ms linear, opacity 300ms ease-out;
   }
-  .quill-pen svg { width: 100%; height: 100%; animation: quill-wiggle 220ms ease-in-out infinite alternate; transform-origin: 10% 90%; }
-  @keyframes quill-pen {
-    0% { left: 2%; opacity: 0; }
-    8% { opacity: 1; }
-    88% { left: 100%; opacity: 1; }
-    100% { left: 104%; opacity: 0; }
-  }
+  .quill-pen svg { width: 100%; height: 100%; animation: quill-wiggle 160ms ease-in-out infinite alternate; transform-origin: 10% 90%; }
   @keyframes quill-wiggle {
-    from { transform: rotate(-6deg) translateY(1px); }
-    to { transform: rotate(5deg) translateY(-3px); }
+    from { transform: rotate(-7deg) translateY(1px); }
+    to { transform: rotate(4deg) translateY(-2px); }
   }
-  @keyframes quill-write {
-    from { opacity: 1; -webkit-mask-position: 100% 0; mask-position: 100% 0; }
-    to { opacity: 1; -webkit-mask-position: 0 0; mask-position: 0 0; }
-  }
+  /* 1文字ずつ出している間、まだ出していない文字(場所だけ確保して見せない) */
+  .tw-rest { visibility: hidden; }
   /* 黄色ライン: 左から右へ、さっと拭くように出る */
   #box.appear-wipe-left.visible { animation: wipe-left 360ms ease-out; }
   @keyframes wipe-left {
@@ -297,7 +290,9 @@
       if (scale < 1) box.style.fontSize = `${Math.max(6, Math.floor(base * scale))}px`;
     }
 
-    function setContent(res, body) {
+    /** shownを渡すと、本文はshown文字目までを見せて、残りは場所だけ確保して隠す
+     * (1文字ずつ出している途中でも、全部出した時と同じ大きさ・折り返しにするため) */
+    function setContent(res, body, shown) {
       box.textContent = '';
       const sub = style.subtitle;
       if (!res.aa) {
@@ -328,15 +323,37 @@
           box.appendChild(el);
         }
       }
-      box.appendChild(document.createTextNode(body));
+      if (typeof shown === 'number') {
+        const chars = Array.from(body);
+        const ink = style.subtitle.appear === 'quill-write' && shown > 0;
+        box.appendChild(document.createTextNode(chars.slice(0, ink ? shown - 1 : shown).join('')));
+        if (ink) {
+          const last = document.createElement('span');
+          last.className = 'ink';
+          last.textContent = chars[shown - 1];
+          box.appendChild(last);
+        }
+        // 羽ペンの位置の目印(書いている所)
+        const caret = document.createElement('span');
+        caret.className = 'tw-caret';
+        box.appendChild(caret);
+        const rest = document.createElement('span');
+        rest.className = 'tw-rest';
+        rest.textContent = chars.slice(shown).join('');
+        box.appendChild(rest);
+      } else {
+        box.appendChild(document.createTextNode(body));
+      }
       // レスの翻訳(届いていれば。1文字ずつ出している途中は、出し終わってから)。
       // 翻訳するレス(tid付き)は、翻訳が届く前から1行分の場所を空けておく
       // (届いた時に枠がぴょこっと広がらないように)
       const waiting = res.tid && !res.translation && !res.aa;
-      if ((res.translation && !res.aa && !res.typing) || waiting) {
+      if ((res.translation && !res.aa) || waiting) {
         const t = document.createElement('span');
         t.className = 'translation';
-        t.textContent = waiting || res.typing ? '\u00a0' : res.translation;
+        t.textContent = waiting ? '\u00a0' : res.translation;
+        // 1文字ずつ出している間は、場所だけ確保して見せない
+        if (res.typing) t.style.visibility = 'hidden';
         t.style.color = style.subtitle.translationColor || '#ffe066';
         t.style.fontSize = `${Math.max(0.3, Number(style.subtitle.translationScale) || 0.75)}em`;
         box.appendChild(t);
@@ -350,7 +367,9 @@
       quotedMode = !!res.quoted;
       applyBoxStyle(res.aa);
       const body = String(res.body || '');
-      const typewriter = style.subtitle.appear === 'typewriter' && !res.aa && !replay && body.length > 1;
+      const appear = style.subtitle.appear;
+      const quill = appear === 'quill-write';
+      const typewriter = (appear === 'typewriter' || quill) && !res.aa && !replay && body.length > 1;
       // スライド等のアニメーションを毎回最初から再生し直す
       box.classList.remove('visible');
       void box.offsetWidth;
@@ -358,31 +377,60 @@
         setContent(res, body);
         fitToStage(res.aa);
       } else {
-        // 「瞬間表示」OFF: 1文字ずつ表示する(全体で最大1.2秒、字幕を出す時間の半分まで)
+        // 1文字ずつ表示する。最初に全文分の場所を確保して、文字の大きさはその時に1回だけ
+        // 決める(出し終わった瞬間に、翻訳などが増えて文字が小さくなって見えないように)。
+        // 羽ペンは、紙が出てから、少しゆっくり書いていく
         const chars = Array.from(body);
-        const totalMs = Math.min(1200, Math.max(200, durationMs / 2));
+        const totalMs = quill
+          ? Math.min(3200, Math.max(500, chars.length * 55, durationMs / 3))
+          : Math.min(1200, Math.max(200, durationMs / 2));
         const stepMs = Math.max(16, totalMs / chars.length);
         let shown = 0;
-        setContent(res, '');
         res.typing = true;
-        typeTimer = setInterval(() => {
+        setContent(res, body, 0);
+        fitToStage(false);
+        let pen = null;
+        if (quill) {
+          pen = document.createElement('span');
+          pen.className = 'quill-pen';
+          pen.innerHTML = QUILL_SVG;
+        }
+        const placePen = () => {
+          if (!pen) return;
+          const caret = box.querySelector('.tw-caret');
+          box.appendChild(pen);
+          if (caret) {
+            pen.style.left = `${caret.offsetLeft}px`;
+            pen.style.top = `${caret.offsetTop + caret.offsetHeight}px`;
+          }
+        };
+        const step = () => {
           shown = Math.min(chars.length, shown + Math.max(1, Math.round(16 / stepMs)));
+          setContent(res, body, shown);
+          placePen();
           if (shown >= chars.length) {
             clearInterval(typeTimer);
             res.typing = false;
+            setTimeout(() => {
+              if (current !== res) return;
+              setContent(res, body);
+              if (pen) {
+                box.appendChild(pen);
+                pen.style.opacity = '0';
+                setTimeout(() => pen.remove(), 350);
+              }
+            }, quill ? 250 : 0);
           }
-          setContent(res, chars.slice(0, shown).join(''));
-          fitToStage(false);
-        }, stepMs);
+        };
+        const start = () => {
+          if (current !== res) return;
+          placePen();
+          typeTimer = setInterval(step, stepMs);
+        };
+        if (quill) setTimeout(start, 320);
+        else start();
       }
       box.classList.add('visible');
-      if (style.subtitle.appear === 'quill-write' && !res.aa && !replay) {
-        const pen = document.createElement('span');
-        pen.className = 'quill-pen';
-        pen.innerHTML = QUILL_SVG;
-        box.appendChild(pen);
-        setTimeout(() => pen.remove(), 1700);
-      }
       hideTimer = setTimeout(hide, Math.max(300, Number(durationMs) || 3000));
     }
 
