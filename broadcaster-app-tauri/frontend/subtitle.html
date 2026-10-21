@@ -90,9 +90,9 @@
     mask-size: 240% 100%;
     animation: quill-write 1600ms cubic-bezier(.45, .1, .4, 1) forwards;
   }
-  /* WC風: 右からバチッと飛び込んで、ビリッと揺れて止まる */
-  #box.appear-wc-bolt.visible { transform-origin: right center; animation: wc-bolt 460ms cubic-bezier(.2, 1.4, .4, 1); }
-  @keyframes wc-bolt {
+  /* OC風: 右からバチッと飛び込んで、ビリッと揺れて止まる */
+  #box.appear-oc-bolt.visible { transform-origin: right center; animation: oc-bolt 460ms cubic-bezier(.2, 1.4, .4, 1); }
+  @keyframes oc-bolt {
     0% { opacity: 0; transform: var(--off) translateX(110px) skewX(-16deg); }
     55% { opacity: 1; transform: var(--off) translateX(-10px) skewX(5deg); }
     70% { transform: var(--off) translateX(5px) rotate(-1deg); }
@@ -230,7 +230,7 @@
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
 
-    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'wc-bolt', 'aurora-rise'];
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'oc-bolt', 'aurora-rise'];
     // 羽ペン(「インクで書かれていく」の時に、書いている先を走る)
     const QUILL_SVG =
       '<svg viewBox="0 0 40 40"><path d="M37 3 C 26 4 14 12 9 27 L 7 31 L 10 30 C 20 26 31 17 37 3 Z" fill="#f4efe2" stroke="#6b4a2a" stroke-width="1.2"/>' +

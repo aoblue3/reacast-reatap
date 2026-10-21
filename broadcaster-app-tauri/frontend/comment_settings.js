@@ -803,15 +803,15 @@ const LIST_PRESETS = {
       '@keyframes dq-pop { from { transform: scale(1, 0.1); } to { transform: scale(1, 1); } }',
     ].join('\n'),
   },
-  // WC風: 右寄せ、白い名前の札+黒い本文の吹き出しに稲妻のしっぽ。右からバチッと飛び込む。
+  // OC風: 右寄せ、白い名前の札+黒い本文の吹き出しに稲妻のしっぽ。右からバチッと飛び込む。
   // 応援(スパチャ等)は本文の吹き出しがその色になる
-  wc: {
+  oc: {
     fontFamily: 'Noto Sans JP',
     headFontSize: 12, headBold: true, numberColor: '#000000', nameColor: '#000000', dateColor: '#555555',
     bodyColor: '#ffffff', bodyBold: true, outlineWidth: 0, outlineColor: '#000000',
     itemBgColor: '#000000', itemBgOpacity: 0, itemPadding: 2, itemRadius: 0,
     customCss: [
-      '.item { flex-direction: row-reverse; text-align: right; animation: wc-bolt 420ms cubic-bezier(.2, 1.4, .4, 1); }',
+      '.item { flex-direction: row-reverse; text-align: right; animation: oc-bolt 420ms cubic-bezier(.2, 1.4, .4, 1); }',
       '.item .content { display: flex; flex-direction: column; align-items: flex-end; margin-right: 18px; }',
       '.head { background: #ffffff; border: 2px solid #111111; padding: 0 0.5em; margin-right: 14px; margin-bottom: -3px; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25); position: relative; z-index: 1; }',
       '.body { position: relative; background: #111111; padding: 0.25em 0.7em; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); text-align: left; }',
@@ -819,7 +819,7 @@ const LIST_PRESETS = {
       '.item.paid { background: transparent !important; box-shadow: none; }',
       '.item.paid .body { background: var(--paid-color); color: var(--paid-text) !important; }',
       '.item.paid .head span:not(.paid-badge) { color: #000000 !important; }',
-      '@keyframes wc-bolt { 0% { opacity: 0; transform: translateX(70px) skewX(-14deg); } 60% { opacity: 1; transform: translateX(-8px) skewX(4deg); } 80% { transform: translateX(3px); } 100% { transform: translateX(0); } }',
+      '@keyframes oc-bolt { 0% { opacity: 0; transform: translateX(70px) skewX(-14deg); } 60% { opacity: 1; transform: translateX(-8px) skewX(4deg); } 80% { transform: translateX(3px); } 100% { transform: translateX(0); } }',
     ].join('\n'),
   },
   // オーロラ(おすすめ): 夜空色のすりガラスの札に、ゆっくり色が流れるオーロラの縁。
@@ -928,10 +928,10 @@ const SUBTITLE_PRESETS = {
       '@keyframes dq-blink { 50% { opacity: 0; } }',
     ].join('\n'),
   },
-  // WC風: 白い名前の札+黒い吹き出し、右に稲妻のしっぽ。右からバチッと飛び込む
-  wc: {
+  // OC風: 白い名前の札+黒い吹き出し、右に稲妻のしっぽ。右からバチッと飛び込む
+  oc: {
     fontFamily: 'Noto Sans JP', bold: true, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
-    bgColor: '#111111', bgOpacity: 100, padding: 8, radius: 0, appear: 'wc-bolt', translationColor: '#ffd23f',
+    bgColor: '#111111', bgOpacity: 100, padding: 8, radius: 0, appear: 'oc-bolt', translationColor: '#ffd23f',
     customCss: [
       '#box { margin: 1.1em 22px 0 0; box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.22); }',
       '.res-head { display: table; background: #ffffff; color: #111111; border: 2px solid #111111; padding: 0 0.5em; margin: -1.25em 0 0.15em -0.2em; font-size: 0.55em; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25); }',
