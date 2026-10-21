@@ -130,6 +130,15 @@ function showConfirmDialog(message, opts = {}) {
   });
 }
 
+// 上のタブ(配信者 / リアクション / その他)
+document.getElementById('mainTabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  for (const b of document.querySelectorAll('#mainTabs button')) b.classList.toggle('active', b === btn);
+  for (const s of document.querySelectorAll('#setupPanel > section')) s.classList.toggle('active', s.dataset.tab === btn.dataset.tab);
+  window.HelpTips.close();
+});
+
 let profiles = [];
 let activeProfileIds = [];
 let reactionOrder = null;
@@ -1181,11 +1190,11 @@ async function buildDefaultSettingsPanel() {
   hkHeading.style.marginTop = '4px';
   hkHeading.textContent = 'ホットキーのひな形(新規追加時にコピーされます)';
   panel.appendChild(hkHeading);
-  const hkHint = document.createElement('p');
-  hkHint.className = 'field-hint';
-  hkHint.style.margin = '0 0 4px';
-  hkHint.textContent = 'ここで設定したキーは、新しく配信者を追加した時点で他の接続中の配信者と重複していないものだけが自動的にコピーされます(重複するものは未設定のままになるので、追加後に個別に設定してください)。';
-  panel.appendChild(hkHint);
+  const hkHint = document.createElement('span');
+  hkHint.className = 'help';
+  hkHint.dataset.help = 'ここで設定したキーは、新しく配信者を追加した時に、ほかの接続中の配信者と重ならないものだけがコピーされます(重なるものは未設定のままになるので、追加した後に個別に設定してください)。';
+  hkHeading.appendChild(hkHint);
+  window.HelpTips.setup(hkHeading);
   const hkList = document.createElement('div');
   hkList.className = 'ps-hotkey-list';
   panel.appendChild(hkList);

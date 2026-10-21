@@ -333,6 +333,17 @@
   .confirm-message { font-size: 13px; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
   .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .confirm-buttons button { margin: 0; }
+  /* 上のタブ(配信者 / リアクション / その他)。説明はⓘ(shared/help.js)を押すと出る */
+  .tabs { display: flex; gap: 4px; margin: 6px 0 16px; border-bottom: 1px solid var(--c-2a2b30); }
+  .tabs button { margin: 0; background: none; color: var(--c-aaaaaa); border-radius: 6px 6px 0 0; padding: 7px 14px; border-bottom: 2px solid transparent; }
+  .tabs button:hover { color: var(--c-eeeeee); background: none; }
+  .tabs button.active { color: var(--c-eeeeee); border-bottom-color: var(--c-3a6df0); }
+  section[data-tab] { display: none; }
+  section[data-tab].active { display: block; }
+  .lead { margin: 0 0 6px; font-size: 12px; color: var(--c-aaaaaa); line-height: 1.5; }
+  .help { display: inline-flex; margin-left: 5px; color: var(--c-888888); cursor: pointer; font-size: 13px; line-height: 1; user-select: none; font-weight: normal; }
+  .help:hover, .help:focus-visible { color: var(--c-3a6df0); outline: none; }
+  .help-pop { position: fixed; z-index: 2000; max-width: 300px; padding: 8px 11px; background: var(--c-24252b); color: var(--c-eeeeee); border: 1px solid var(--c-333333); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.6; }
 </style>
 <script src="shared/theme.js"></script>
 </head>
@@ -340,88 +351,95 @@
   <div id="setupPanel">
     <div class="app-brand">ReaTap(視聴者アプリ) <span id="appVersion"></span></div>
 
-    <h1>配信者を追加</h1>
-    <p style="margin: 0 0 6px;">配信者から教えてもらった合言葉を入力してください。「配信者名」は、PeerCastで多重に配信を開いている場合にリアクションバーが違う配信者のプレイヤーへ移ってしまうのを防ぐための任意項目です(空欄でも接続できます)。</p>
-    <form id="addProfileForm">
-      <div class="field-row">
-        <label for="passphraseInput">合言葉</label>
-        <input type="text" id="passphraseInput" placeholder="例: ao3" maxlength="32" spellcheck="false" />
-      </div>
-      <div class="field-row">
-        <label for="broadcasterNameInput">配信者名(任意・PeerCast/PCRPlayerの表示名)</label>
-        <input type="text" id="broadcasterNameInput" placeholder="例: あお" maxlength="64" spellcheck="false" />
-        <p class="field-hint">入力すると、PCRPlayerのタイトルにこの文字が含まれるウィンドウにだけ追従します(多重配信対策)。空欄なら従来通り絞り込みなしで検出します。</p>
-      </div>
-      <div class="field-row">
-        <label for="displayLabelInput">一覧での表示名(任意)</label>
-        <input type="text" id="displayLabelInput" placeholder="未入力なら配信者名か合言葉を使用" maxlength="64" spellcheck="false" />
-      </div>
-      <button id="submitBtn" type="submit">接続を確認して追加</button>
-    </form>
-    <div id="errorMsg"></div>
-    <div id="connStatus"></div>
-
-    <details id="advancedRelayDetails">
-      <summary>詳細設定(通常は変更不要): 中継サーバーのアドレス</summary>
-      <p style="margin: 6px 0;">既定では、このアプリをビルドした時に指定されたアドレスに繋ぎに行きます。配信者から別のアドレスを指定された場合のみ、ここで上書きしてください(すべての配信者プロファイルに共通の設定です)。</p>
-      <label>ホスト: <input type="text" id="relayHostInput" placeholder="(既定を使用)" spellcheck="false" /></label>
-      <label style="margin-left: 8px;">ポート: <input type="number" id="relayPortInput" min="1" max="65535" placeholder="(既定を使用)" /></label>
-    </details>
-
-    <details id="defaultSettingsDetails">
-      <summary>新規追加時の詳細設定ひな形(デフォルト値)を編集</summary>
-      <p style="margin: 6px 0;">ここで設定した内容(表示位置・行数・追従/最前面・ホットキー)は、この後「配信者を追加」した時の詳細設定の初期値として自動的にコピーされます。既に追加済みの配信者の設定には影響しません。</p>
-      <div id="defaultSettingsPanelEl"></div>
-    </details>
-
-    <hr />
-
-    <h1>接続中・登録済みの配信者</h1>
-    <p style="margin: 0 0 4px;">複数の配信者に同時接続できます。それぞれ「接続する」を押すと、その配信者専用のリアクションバーが独立したウィンドウで表示されます。「詳細設定」から表示位置やホットキーを配信者ごとに設定できます。</p>
-    <div id="emptyProfilesMsg">まだ配信者が登録されていません。上の欄から追加してください。</div>
-    <div id="profileListEl"></div>
-
-    <hr />
-
-    <h1>表示するリアクション・並び順</h1>
-    <p style="margin: 0 0 4px;">ここでの表示/非表示・並び順はすべての配信者で共通です(ホットキーは配信者ごとに「詳細設定」から設定します)。</p>
-    <div id="reactionOrderList"></div>
-
-    <hr />
-
-    <h1>リアクションバーの見た目</h1>
-    <p style="margin: 0 0 4px;">ここでの設定もすべての配信者で共通です。表示位置は各配信者の「詳細設定」から個別に設定してください。</p>
-    <div class="field-row">
-      <label for="barIconScaleInput">アイコンの大きさ: <span id="barIconScaleValue"></span></label>
-      <input type="range" id="barIconScaleInput" min="0.5" max="2" step="0.05" style="width: 220px;" />
-    </div>
-    <div class="field-row">
-      <label for="barIconBgAlphaInput">アイコン背景の濃さ: <span id="barIconBgAlphaValue"></span></label>
-      <input type="range" id="barIconBgAlphaInput" min="0" max="1" step="0.05" style="width: 220px;" />
+    <div class="tabs" id="mainTabs">
+      <button type="button" data-tab="streamers" class="active">配信者</button>
+      <button type="button" data-tab="reactions">リアクション</button>
+      <button type="button" data-tab="other">その他</button>
     </div>
 
-    <hr />
+    <!-- ================= 配信者 ================= -->
+    <section data-tab="streamers" class="active">
+      <h1>配信者を追加</h1>
+      <p class="lead">配信者から教えてもらった合言葉を入れて、「接続を確認して追加」を押してください。</p>
+      <form id="addProfileForm">
+        <div class="field-row">
+          <label for="passphraseInput">合言葉</label>
+          <input type="text" id="passphraseInput" placeholder="例: ao3" maxlength="32" spellcheck="false" />
+        </div>
+        <div class="field-row">
+          <label for="broadcasterNameInput">配信者名(なくてもOK)<span class="help" data-help="PeerCastで配信を何個も同時に開いている時に、リアクションバーが違う配信者のプレイヤーへ移ってしまうのを防ぎます。入れると、PCRPlayerのタイトルにこの文字が入っているウィンドウにだけ付いていきます。空欄なら絞り込みなしで探します。"></span></label>
+          <input type="text" id="broadcasterNameInput" placeholder="例: あお" maxlength="64" spellcheck="false" />
+        </div>
+        <div class="field-row">
+          <label for="displayLabelInput">一覧での表示名(なくてもOK)</label>
+          <input type="text" id="displayLabelInput" placeholder="未入力なら配信者名か合言葉を使用" maxlength="64" spellcheck="false" />
+        </div>
+        <button id="submitBtn" type="submit">接続を確認して追加</button>
+      </form>
+      <div id="errorMsg"></div>
+      <div id="connStatus"></div>
 
-    <h1>画面の色</h1>
-    <select data-ui-theme>
-      <option value="system">OSの設定に合わせる</option>
-      <option value="light">ライト</option>
-      <option value="dark">ダーク</option>
-    </select>
+      <hr />
 
-    <hr />
+      <h1>登録した配信者<span class="help" data-help="複数の配信者に同時に接続できます。「接続する」を押すと、その配信者専用のリアクションバーが別のウィンドウで出ます。表示する位置やホットキーは、配信者ごとに「詳細設定」から変えられます。"></span></h1>
+      <div id="emptyProfilesMsg">まだ配信者が登録されていません。上の欄から追加してください。</div>
+      <div id="profileListEl"></div>
+    </section>
 
-    <h1>設定のバックアップ・引っ越し</h1>
-    <p style="margin: 0 0 4px;">登録した配信者や見た目の設定を1つのファイルに書き出し、別のPCで読み込めます。</p>
-    <button type="button" id="exportSettingsBtn" class="secondary">設定を書き出す</button>
-    <button type="button" id="importSettingsBtn" class="secondary">設定を読み込む</button>
-    <p id="backupMsg" style="margin: 4px 0 0;"></p>
+    <!-- ================= リアクション ================= -->
+    <section data-tab="reactions">
+      <h1>リアクションバーの見た目<span class="help" data-help="全部の配信者に共通の設定です。表示する位置は、配信者ごとに「配信者」タブの「詳細設定」から変えられます。"></span></h1>
+      <div class="field-row">
+        <label for="barIconScaleInput">アイコンの大きさ: <span id="barIconScaleValue"></span></label>
+        <input type="range" id="barIconScaleInput" min="0.5" max="2" step="0.05" style="width: 220px;" />
+      </div>
+      <div class="field-row">
+        <label for="barIconBgAlphaInput">アイコン背景の濃さ: <span id="barIconBgAlphaValue"></span></label>
+        <input type="range" id="barIconBgAlphaInput" min="0" max="1" step="0.05" style="width: 220px;" />
+      </div>
 
-    <hr />
+      <hr />
 
-    <h1>不具合が起きた時</h1>
-    <p style="margin: 0 0 4px;">ログフォルダの中のファイル(ReaTap.log など)を送ってもらえると原因を調べやすくなります。</p>
-    <button type="button" id="openLogDirBtn" class="secondary">ログフォルダを開く</button>
+      <h1>表示するリアクション・並び順<span class="help" data-help="全部の配信者に共通です。左の掴む所をドラッグするか、番号を入れて並べ替えられます。ホットキーは配信者ごとに「詳細設定」から割り当てます。"></span></h1>
+      <div id="reactionOrderList"></div>
+    </section>
+
+    <!-- ================= その他 ================= -->
+    <section data-tab="other">
+      <h1>画面の色</h1>
+      <select data-ui-theme>
+        <option value="system">OSの設定に合わせる</option>
+        <option value="light">ライト</option>
+        <option value="dark">ダーク</option>
+      </select>
+
+      <hr />
+
+      <h1>設定のバックアップ・引っ越し<span class="help" data-help="登録した配信者や見た目の設定を1つのファイルに書き出して、別のPCで読み込めます。"></span></h1>
+      <button type="button" id="exportSettingsBtn" class="secondary">設定を書き出す</button>
+      <button type="button" id="importSettingsBtn" class="secondary">設定を読み込む</button>
+      <p id="backupMsg" style="margin: 4px 0 0;"></p>
+
+      <hr />
+
+      <h1>不具合が起きた時<span class="help" data-help="ログフォルダの中のファイル(ReaTap.log など)を送ってもらえると、原因を調べやすくなります。"></span></h1>
+      <button type="button" id="openLogDirBtn" class="secondary">ログフォルダを開く</button>
+
+      <hr />
+
+      <h1>詳しい設定</h1>
+      <details id="defaultSettingsDetails">
+        <summary>新しく追加する配信者の詳細設定の初期値</summary>
+        <p class="lead" style="margin: 6px 0;">ここで決めた表示位置・行数・追従/最前面・ホットキーが、この後「配信者を追加」した時の詳細設定の初期値になります(追加済みの配信者には影響しません)。</p>
+        <div id="defaultSettingsPanelEl"></div>
+      </details>
+      <details id="advancedRelayDetails">
+        <summary>中継サーバーのアドレス(通常は変更不要)</summary>
+        <p style="margin: 6px 0;">配信者から別のアドレスを指定された時だけ、ここで上書きしてください(全部の配信者に共通です)。</p>
+        <label>ホスト: <input type="text" id="relayHostInput" placeholder="(既定を使用)" spellcheck="false" /></label>
+        <label style="margin-left: 8px;">ポート: <input type="number" id="relayPortInput" min="1" max="65535" placeholder="(既定を使用)" /></label>
+      </details>
+    </section>
   </div>
 
   <!-- 削除確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
@@ -450,6 +468,7 @@
   <script src="shared/error-log.js"></script>
   <script src="shared/relay-client.js"></script>
   <script src="shared/emoji-set.js"></script>
+  <script src="shared/help.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

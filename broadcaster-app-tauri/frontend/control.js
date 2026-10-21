@@ -708,6 +708,19 @@ copyBtn.addEventListener('click', async () => {
   setTimeout(() => (copyBtn.textContent = 'コピー'), 1500);
 });
 
+// OBSのURLなどのコピー(data-copyに、コピーする文字が入った要素のid)
+for (const btn of document.querySelectorAll('[data-copy]')) {
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById(btn.dataset.copy).textContent);
+      btn.textContent = 'コピーしました';
+      setTimeout(() => (btn.textContent = 'コピー'), 1500);
+    } catch {
+      // 無視(手で選択してコピーできる)
+    }
+  });
+}
+
 /** 今の入力欄の値を、中継サーバーに合言葉として登録(変更)する。接続中なら
  * 既存の接続に乗せてそのまま送る(register済みの接続に対しても、中継サーバー側は
  * 合言葉の再登録として扱ってくれる)。まだ繋がっていなければ何もしない

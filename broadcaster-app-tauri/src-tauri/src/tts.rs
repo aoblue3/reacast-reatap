@@ -551,7 +551,7 @@ pub async fn ensure_running(s: &CommentSettings, wait: Duration) -> Result<(), S
         .map(|t| t.elapsed() < Duration::from_secs(90))
         .unwrap_or(false);
     if !recently {
-        let exe = find_exe(s).ok_or("読み上げソフトの場所が分かりません(「読み上げ」タブでソフトの場所を指定してください)")?;
+        let exe = find_exe(s).ok_or("読み上げソフトの場所が分かりません(「声・速さ」タブでソフトの場所を指定してください)")?;
         log::info!("読み上げソフトを起動します: {}", exe.display());
         let mut cmd = std::process::Command::new(&exe);
         if let Some(dir) = exe.parent() {
@@ -689,7 +689,7 @@ pub fn tts_list_devices() -> Vec<String> {
 #[tauri::command]
 pub async fn tts_test(settings: CommentSettings, text: String) -> Result<(), String> {
     if engine_kind(&settings) == EngineKind::Command {
-        return Err("コマンドで渡す読み上げソフトは、「取得」タブのテスト表示で試してください".into());
+        return Err("コマンドで渡す読み上げソフトは、「かんたん設定」タブのテスト表示で試してください".into());
     }
     speak(&settings, &text, "bbs").await
 }

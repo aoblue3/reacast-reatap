@@ -124,6 +124,10 @@ function onFieldChange(el) {
   const v = readField(el);
   if (v === undefined) return;
   setPath(settings, el.dataset.key, v);
+  // 同じ設定の欄が2か所にある時(「かんたん設定」と各タブ)は、もう一方も合わせる
+  for (const other of fields) {
+    if (other !== el && other.dataset.key === el.dataset.key) writeField(other, getPath(settings, el.dataset.key));
+  }
   rememberPresetEdit(el.dataset.key);
   renderPreview();
   scheduleSave();
@@ -176,12 +180,20 @@ for (const el of fields) {
 })();
 
 // ---- タブ ----
+function showTab(name) {
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b.dataset.tab === name);
+  for (const s of document.querySelectorAll('main section')) s.classList.toggle('active', s.dataset.tab === name);
+  document.querySelector('main').scrollTop = 0;
+  if (window.HelpTips) window.HelpTips.close();
+}
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-tab]');
-  if (!btn) return;
-  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b === btn);
-  for (const s of document.querySelectorAll('main section')) s.classList.toggle('active', s.dataset.tab === btn.dataset.tab);
+  if (btn) showTab(btn.dataset.tab);
 });
+// 「声・速さを選ぶ」「スレッドのレス」など、ほかのタブを開くボタン
+for (const btn of document.querySelectorAll('[data-open-tab]')) {
+  btn.addEventListener('click', () => showTab(btn.dataset.openTab));
+}
 
 // ---- 字幕位置の微調整 ----
 for (const btn of document.querySelectorAll('[data-nudge]')) {
@@ -530,7 +542,8 @@ async function fetchDevices() {
   writeField(sel, settings.ttsDevice);
 }
 
-document.getElementById('speechEngine').addEventListener('change', () => {
+// 読み上げソフトの選択は「かんたん設定」と「声・速さ」の2か所にある
+for (const sel of document.querySelectorAll('select[data-engine-select]')) sel.addEventListener('change', () => {
   // ソフトが変わると接続先も声の番号も別物になるので、選び直してもらう
   settings.ttsUrl = '';
   settings.ttsSpeaker = '';
@@ -1575,7 +1588,7 @@ const pauseBtn = document.getElementById('pauseBtn');
 pauseBtn.addEventListener('click', () => invoke('comments_toggle_pause').catch(() => {}));
 document.getElementById('skipBtn').addEventListener('click', () => invoke('comments_skip').catch(() => {}));
 
-// ホットキーの案内・エラーは、「読み上げ」タブと「話した字幕」タブの両方に出す
+// ホットキーの案内・エラーは「ホットキー」タブに出す
 const hotkeyMsgEls = [...document.querySelectorAll('.hotkey-msg')];
 for (const el of hotkeyMsgEls) el.dataset.hint = el.textContent;
 function showHotkeyMsg(text) {

@@ -231,76 +231,127 @@
   .random-row, .random-head { display: grid; grid-template-columns: 140px minmax(180px, 1fr) 80px 44px auto; gap: 6px; align-items: center; margin-bottom: 4px; }
   .random-head { font-size: 12px; color: var(--c-8d909c); }
   .random-row select, .random-row input { width: 100%; }
+  /* 各タブの最初の1行の説明、黄色い注意、ⓘ(shared/help.js)、たたんだ「詳しい設定」 */
+  .lead { color: var(--c-a9acb8); margin: 0 0 12px; line-height: 1.5; }
+  .note { background: rgba(255, 211, 107, 0.12); border: 1px solid rgba(255, 211, 107, 0.35); color: var(--c-ffd36b); border-radius: 6px; padding: 6px 10px; margin: 6px 0 12px; font-size: 12px; line-height: 1.5; }
+  .help { display: inline-flex; align-items: center; justify-content: center; margin-left: 5px; color: var(--c-8d909c); cursor: pointer; font-size: 13px; line-height: 1; border-radius: 50%; user-select: none; vertical-align: 1px; }
+  .help:hover, .help:focus-visible { color: var(--c-3b6df0); outline: none; }
+  .help-pop { position: fixed; z-index: 50; max-width: 340px; padding: 8px 11px; background: var(--c-24262d); color: var(--c-e6e6ea); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+  details.adv { margin: 14px 0 6px; border-top: 1px solid var(--c-33353d); padding-top: 8px; }
+  details.adv > summary { cursor: pointer; color: var(--c-a9acb8); margin-bottom: 8px; user-select: none; }
+  details.adv > summary:hover { color: var(--c-e6e6ea); }
+  details.adv[open] > summary { margin-bottom: 10px; }
+  h3 .help, .lead .help { font-weight: normal; }
+  .engine-box details.adv { margin-top: 6px; }
 </style>
 <script src="shared/theme.js"></script>
 </head>
 <body>
   <header>
     <div class="url-row">
-      <input id="threadUrl" type="text" data-key="threadUrl" placeholder="スレッド(または板)のURL 例: https://bbs.jpnkn.com/test/read.cgi/板の名前/スレッド番号/" />
+      <input id="threadUrl" type="text" data-key="threadUrl" placeholder="掲示板のスレッド(または板)のURL 例: https://bbs.jpnkn.com/test/read.cgi/板の名前/スレッド番号/" />
       <button id="startBtn">開始</button>
       <button id="stopBtn" class="secondary">停止</button>
       <button id="pauseBtn" class="secondary" title="読み上げを一時停止します(取得は続けて、順番待ちに溜めておきます)">一時停止</button>
       <button id="skipBtn" class="secondary" title="今のレスを飛ばして次のレスへ進みます">スキップ</button>
+      <button class="secondary" data-open-tab="thread" title="今読んでいるスレッドのレスを見たり、書き込んだりします">スレッドのレス</button>
     </div>
     <div id="status">停止中</div>
   </header>
 
   <div class="layout">
   <nav id="tabs">
+    <button data-tab="easy" class="active">かんたん設定</button>
     <div class="nav-group">コメントの取得</div>
-    <button data-tab="fetch" class="active">取得</button>
-    <button data-tab="thread">スレッドのレス</button>
+    <button data-tab="fetch">掲示板</button>
     <button data-tab="create">次スレ作成</button>
     <div class="nav-group">読み上げ</div>
-    <button data-tab="speech">読み上げ</button>
+    <button data-tab="speech">声・速さ</button>
     <button data-tab="words">NGワード・読み方</button>
-    <div class="nav-group">表示</div>
-    <button data-tab="subtitle">字幕</button>
+    <div class="nav-group">見た目</div>
+    <button data-tab="subtitle">下の字幕</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
-    <button data-tab="aa">AAモード</button>
-    <button data-tab="output">表示先(OBSなど)</button>
+    <button data-tab="aa">AA</button>
+    <button data-tab="output">デスクトップ字幕</button>
     <div class="nav-group">連動</div>
     <button data-tab="reactions">リアクション連動</button>
     <button data-tab="voice">話した字幕</button>
+    <div class="nav-group">その他</div>
+    <button data-tab="hotkeys">ホットキー</button>
+    <button data-tab="misc">設定のリセット</button>
   </nav>
   <div id="navResizer" title="ドラッグでタブの幅を変えられます(ダブルクリックで元の幅)"></div>
 
   <main>
-    <section data-tab="fetch" class="active">
-      <div class="hint">上の欄に、使いたい掲示板のスレッドのURLを入れて「開始」を押してください。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時点で既に書き込まれていたレスは読み上げず、右のレス一覧に直近の数件だけ載せます。</div>
-      <h3>配信サイトのコメント(空欄なら取得しません)</h3>
-      <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル(配信が始まるのを待って自動で繋ぎます)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
+    <!-- ================= かんたん設定 ================= -->
+    <section data-tab="easy" class="active">
+      <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。</p>
+
+      <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにしてください。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
+      <div class="field"><label>掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
+      <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
       <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
       <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
-      <div class="hint">掲示板・YouTube・Twitchのコメントは、すべて同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げされます(同時配信でも表示が重なりません)。掲示板のURLを空欄にすれば、配信サイトのコメントだけを取得できます。どちらも非公式の方法で取得しているため、各サイトの仕様変更で取得できなくなることがあります。</div>
-      <h3>掲示板</h3>
-      <div class="inline" style="margin-bottom:8px">
-        <button class="secondary" id="listThreadsBtn">スレッドを選ぶ</button>
-        <span class="unit">読み込んでいるスレッドが違う時に、板のスレッド一覧から手動で選んで切り替えられます(取得中のみ)</span>
-      </div>
-      <div id="threadPicker" style="display:none; max-height: 260px; overflow-y:auto; border:1px solid var(--c-3a3d47); border-radius:6px; margin-bottom:10px"></div>
-      <div class="field"><label>jpnknの即時通知を使う</label><div><input type="checkbox" data-key="jpnknFast" /><span class="unit">jpnknの板では、書き込まれた瞬間にレスを拾います(Fastインターフェース)。定期取得も取りこぼし対策として続けます</span></div></div>
-      <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
-      <div class="field"><label>&gt;&gt;1(テンプレート)を出さない</label><div><input type="checkbox" data-key="skipFirstPost" /><span class="unit">次スレの&gt;&gt;1は字幕・読み上げ・右のレス一覧に出しません(長いテンプレートで字幕の文字が小さくなったり、読み終わるまで次のレスが待たされたりするのを防ぎます)。「スレッドのレス」タブでは見られます</span></div></div>
-      <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
-      <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
-      <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
-      <div class="field"><label>落ちた時は続きから読む</label><div><input type="checkbox" data-key="resumeReading" /><span class="unit">読み上げの途中でPCやReaCastが落ちた時、1時間以内に同じスレッドで開始し直すと、前回読み終わったレスの次から読み上げます(「停止」で止めた時は続きから読みません)。好きなレスから読み直す時は、「スレッドのレス」タブでレスを右クリック→「ここから読み始める」</span></div></div>
-      <div class="field"><label>開始レス番号</label><div><input type="number" min="0" data-key="startResNo" /><span class="unit">開始時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら表示しません</span></div></div>
-      <div class="field"><label>初期表示テキスト</label><div><input type="text" class="wide" data-key="initialText" /><span class="unit">開始時に右のレス一覧に表示します(空欄なら表示しません)</span></div></div>
-      <h3>テスト表示</h3>
-      <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button></div>
-      <div class="hint">順番待ちの先頭に割り込んで表示・読み上げます(取得を開始していなくても使えます)。</div>
-      <h3>設定を最初の状態に戻す</h3>
-      <div class="inline"><button class="secondary" id="resetAllBtn">全部の設定を最初の状態に戻す</button><span class="unit" id="resetAllMsg"></span></div>
-      <div class="hint">コメント読み上げ・字幕のすべての設定(取得先・読み上げ・字幕・見た目・プリセットの手直し・ホットキーなど)を、初めて使った時の状態に戻します。元に戻せないので、残しておきたい時は先にコントロールパネルの「設定の書き出し」で保存してください。</div>
+
+      <h3>② 読み上げ</h3>
+      <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
+      <div class="field"><label>読み上げソフト</label><div class="inline">
+        <select data-key="speechEngine" data-engine-select class="speech-select">
+          <optgroup label="ReaCastが直接つないで鳴らす(おすすめ)">
+            <option value="voicevox">VOICEVOX</option>
+            <option value="coeiroink">COEIROINK(v2)</option>
+            <option value="coeiroinkv1">COEIROINK(v1)</option>
+            <option value="aivisspeech">AivisSpeech</option>
+            <option value="sharevox">SHAREVOX</option>
+            <option value="voicevoxcompat">その他のVOICEVOX互換ソフト(接続先を入力)</option>
+          </optgroup>
+          <optgroup label="ソフトに読ませる">
+            <option value="bouyomi">棒読みちゃん(HTTP連携)</option>
+            <option value="command">コマンドで渡す(民安★TALK・SofTalk・その他)</option>
+          </optgroup>
+        </select>
+        <button class="secondary" data-open-tab="speech">声・速さを選ぶ</button>
+      </div></div>
+
+      <h3>③ OBSに貼るURL<span class="help" data-help="OBSで「ブラウザ」ソースを追加して、URLに下のものを貼ります(「ローカルファイル」のチェックは入れません)。幅・高さは配信画面に合わせてください。ReaCastの起動中だけ表示されます。表示範囲を変えたい時は、ソースの角をドラッグせずに、プロパティの「幅」「高さ」を変えてから「変換をリセット」(Ctrl+R)すると、文字の大きさが変わりません。"></span></h3>
+      <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
+
+      <h3>④ 試してみる</h3>
+      <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button><span class="help" data-help="順番待ちの先頭に割り込んで、字幕に表示して読み上げます。取得を開始していなくても使えます。"></span></div>
+      <p class="lead" style="margin-top:14px">準備ができたら、一番上の「開始」を押してください。</p>
     </section>
 
+    <!-- ================= 掲示板 ================= -->
+    <section data-tab="fetch">
+      <p class="lead">掲示板からのレスの取り方と、次スレへの移り方。</p>
+      <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
+      <div class="field"><label>&gt;&gt;1(テンプレート)を出さない<span class="help" data-help="次スレの>>1は、字幕・読み上げ・右のレス一覧に出しません(長いテンプレートで字幕の文字が小さくなったり、読み終わるまで次のレスが待たされたりするのを防ぎます)。「スレッドのレス」では見られます。"></span></label><div><input type="checkbox" data-key="skipFirstPost" /></div></div>
+      <div class="field"><label>落ちた時は続きから読む<span class="help" data-help="読み上げの途中でPCやReaCastが落ちた時、1時間以内に同じスレッドで開始し直すと、前回読み終わったレスの次から読み上げます(「停止」で止めた時は続きから読みません)。好きなレスから読み直す時は、「スレッドのレス」でレスを右クリック→「ここから読み始める」。"></span></label><div><input type="checkbox" data-key="resumeReading" /></div></div>
+      <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
+      <div class="field"><label>jpnknの即時通知を使う<span class="help" data-help="jpnknの板では、書き込まれた瞬間にレスを拾います(Fastインターフェース)。取りこぼし対策として、いつもの定期取得も続けます。"></span></label><div><input type="checkbox" data-key="jpnknFast" /></div></div>
+      <div class="field"><label>読んでいるスレッドが違う時</label><div class="inline">
+        <button class="secondary" id="listThreadsBtn">スレッドを選ぶ</button>
+        <span class="help" data-help="板のURLで開始した時に、違うスレッドを読み込んでいたら、板のスレッド一覧から手動で選んで切り替えられます(取得中のみ)。"></span>
+      </div></div>
+      <div id="threadPicker" style="display:none; max-height: 260px; overflow-y:auto; border:1px solid var(--c-3a3d47); border-radius:6px; margin-bottom:10px"></div>
+      <details class="adv">
+        <summary>詳しい設定</summary>
+        <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+        <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
+        <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
+        <div class="field"><label>開始レス番号<span class="help" data-help="開始した時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら表示しません。"></span></label><div><input type="number" min="0" data-key="startResNo" /></div></div>
+        <div class="field"><label>初期表示テキスト<span class="help" data-help="開始した時に、右のレス一覧に表示する文字です。空欄なら表示しません。"></span></label><div><input type="text" class="wide" data-key="initialText" /></div></div>
+      </details>
+    </section>
+
+    <!-- ================= スレッドのレス(上の「スレッドのレス」ボタンで開く) ================= -->
     <section data-tab="thread">
-      <div class="hint">今読んでいるスレッドのレスを、1番から全部遡って見られます。「読み上げ」を押すと、そのレスを順番待ちの先頭に入れて、もう一度字幕に表示して読み上げます。「返信」を押すと、下の書き込み欄に「&gt;&gt;番号」を入れます。レスを右クリックすると、選んだ文字・名前・IDをNGワードに追加したり、選んだ文字の読み方を登録したりできます。</div>
+      <p class="lead">今読んでいるスレッドのレス。「読み上げ」でもう一度読み、「返信」で書き込み欄に&gt;&gt;番号を入れます。<span class="help" data-help="1番から全部遡って見られます。レスを右クリックすると、選んだ文字やレスの本文のコピー、選んだ文字のGoogle検索、「ここから読み始める」、NGワード・読み方の登録ができます。"></span></p>
       <div id="threadList"><div class="empty">取得を開始すると、ここにスレッドのレスが表示されます</div></div>
       <div class="inline" style="margin: 10px 0 6px">
         <span>名前</span><input type="text" data-key="postName" style="width: 180px" placeholder="空欄なら板の名無し" />
@@ -310,8 +361,8 @@
       <div class="inline" style="margin-top: 6px">
         <button id="postBtn">書き込む</button>
         <span id="postMsg" class="unit"></span>
+        <span class="help" data-help="jpnkn等の2ちゃんねる互換の掲示板だけに書き込めます(したらば掲示板には書き込めません)。"></span>
       </div>
-      <div class="hint">jpnkn等の2ちゃんねる互換の掲示板だけに対応しています(したらば掲示板には書き込めません)。</div>
       <div id="postMenu"></div>
       <div id="readingDialog">
         <div>
@@ -326,10 +377,11 @@
       <div id="postMenuMsg" class="hint"></div>
     </section>
 
+    <!-- ================= 声・速さ ================= -->
     <section data-tab="speech">
       <div class="field"><label>読み上げる</label><div><input type="checkbox" data-key="speechEnabled" /></div></div>
       <div class="field"><label>読み上げソフト</label><div>
-        <select data-key="speechEngine" id="speechEngine" class="speech-select">
+        <select data-key="speechEngine" id="speechEngine" data-engine-select class="speech-select">
           <optgroup label="ReaCastが直接つないで鳴らす(おすすめ)">
             <option value="voicevox">VOICEVOX</option>
             <option value="coeiroink">COEIROINK(v2)</option>
@@ -346,37 +398,36 @@
       </div></div>
 
       <div class="engine-box" data-engine="launch">
-        <div class="field"><label>起動していなければ自動で起動</label><div><input type="checkbox" data-key="ttsAutoLaunch" /><span class="unit">ReaCastの起動時と、読み上げる時に起動していなければ起動します(窓は最小化)</span></div></div>
+        <div class="field"><label>起動していなければ自動で起動<span class="help" data-help="ReaCastの起動時と、読み上げる時に起動していなければ起動します(窓は最小化)。"></span></label><div><input type="checkbox" data-key="ttsAutoLaunch" /></div></div>
         <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" id="ttsExePath" /><button class="secondary" id="ttsPickExe">参照...</button><button class="secondary" id="ttsFindExe">自動で探す</button></div></div>
         <div class="hint" id="ttsExeMsg">空欄なら、起動中のソフトや標準のインストール先から自動で探します。</div>
       </div>
 
       <div class="engine-box" data-engine="http">
-        <div class="hint" style="margin-top:0">ReaCastが音声を受け取って鳴らすので、読み終わる時間が正確に分かり、字幕と声がずれません。スキップすると声も止まります。</div>
-        <div class="field"><label>接続先</label><div class="inline"><input type="text" data-key="ttsUrl" id="ttsUrl" style="width: 260px" /><span class="unit">空欄なら既定(<span id="ttsDefaultUrl"></span>)</span></div></div>
         <div class="field"><label>声</label><div class="inline"><select data-key="ttsSpeaker" data-speaker-select data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchSpeakers">声の一覧を取得</button></div></div>
-        <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
-        <div class="field"><label>声(Twitchのコメント)</label><div><select data-key="ttsSpeakerTwitch" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
         <div class="hint" id="ttsSpeakerMsg"></div>
-        <div class="field"><label>声をランダムにする</label><div><input type="checkbox" data-key="ttsRandom" id="ttsRandom" /><span class="unit">レスごとに、決めた割合でランダムな声で読みます(別々のソフトの声も混ぜられます)</span></div></div>
+        <div class="field"><label>声をランダムにする<span class="help" data-help="レスごとに、決めた割合でランダムな声で読みます(別々のソフトの声も混ぜられます)。YouTube・Twitchのコメントの声を指定している時は、そちらが優先されます。"></span></label><div><input type="checkbox" data-key="ttsRandom" id="ttsRandom" /></div></div>
         <div id="randomVoicesBox">
           <div class="random-head"><span>ソフト</span><span>声</span><span>割合</span><span></span><span></span></div>
           <div id="randomVoices"></div>
           <div class="inline" style="margin: 4px 0 6px"><button class="secondary" id="randomAddBtn">声を追加</button><label><input type="checkbox" data-key="ttsRandomByPerson" /> 同じ人(掲示板はID、YouTube・Twitchは名前)には毎回同じ声</label></div>
           <div class="hint" id="randomVoicesMsg"></div>
-          <div class="hint">YouTube・Twitchのコメントの声を指定している時は、そちらが優先されます。話速などのスライダーはどの声にも共通です。</div>
         </div>
-        <div class="field" id="paramsEngineRow"><label>調整するソフト</label><div class="inline"><select id="ttsParamsEngine"></select><span class="unit">ランダムで混ぜたソフトごとに、話速や音量を別々に調整できます</span></div></div>
+        <div class="field" id="paramsEngineRow"><label>調整するソフト<span class="help" data-help="ランダムで混ぜたソフトごとに、話速や音量を別々に調整できます。"></span></label><div class="inline"><select id="ttsParamsEngine"></select></div></div>
         <div class="field"><label>話速</label><div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-param="speed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>音高</label><div class="slider-row"><input type="range" min="-0.15" max="0.15" step="0.01" data-key="ttsPitch" data-param="pitch" data-default="0" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>抑揚</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsIntonation" data-param="intonation" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-param="volume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>開始無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-param="preSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field"><label>終了無音</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-param="postSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-param="pauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
-        <div class="hint">開始無音・終了無音は秒。間の長さはVOICEVOX・AivisSpeechなど対応しているソフトだけ効きます。</div>
-        <div class="field"><label>音の出力先</label><div class="inline"><select data-key="ttsDevice" id="ttsDevice" data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchDevices">更新</button></div></div>
-        <div class="hint">VB-CABLEなどの仮想オーディオデバイスを選ぶと、OBSで読み上げの音だけを別に取り込めます。</div>
+        <div class="field"><label>音の出力先<span class="help" data-help="VB-CABLEなどの仮想オーディオデバイスを選ぶと、OBSで読み上げの音だけを別に取り込めます。"></span></label><div class="inline"><select data-key="ttsDevice" id="ttsDevice" data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchDevices">更新</button></div></div>
+        <details class="adv">
+          <summary>詳しい設定(YouTube・Twitchの声、無音、間の長さ、接続先)</summary>
+          <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
+          <div class="field"><label>声(Twitchのコメント)</label><div><select data-key="ttsSpeakerTwitch" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
+          <div class="field"><label>開始無音(秒)</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-param="preSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+          <div class="field"><label>終了無音(秒)</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-param="postSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+          <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ<span class="help" data-help="VOICEVOX・AivisSpeechなど、対応しているソフトだけ効きます。"></span></label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-param="pauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
+          <div class="field"><label>接続先</label><div class="inline"><input type="text" data-key="ttsUrl" id="ttsUrl" style="width: 260px" /><span class="unit">空欄なら既定(<span id="ttsDefaultUrl"></span>)</span></div></div>
+        </details>
       </div>
 
       <div class="engine-box" data-engine="bouyomi">
@@ -396,61 +447,40 @@
 
       <div class="engine-box" data-engine="command">
         <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
-        <div class="field"><label>引数</label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
-        <div class="field"><label>よく使う設定</label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button></div></div>
-        <div class="hint">#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。<br>VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。SofTalkは「SofTalk」を押してから、ソフトの場所をsoftalkw.exe(またはSofTalk.exe)に合わせてください。</div>
+        <div class="field"><label>引数<span class="help" data-help="#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。"></span></label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
+        <div class="field"><label>よく使う設定<span class="help" data-help="SofTalkは「SofTalk」を押してから、ソフトの場所をsoftalkw.exe(またはSofTalk.exe)に合わせてください。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button></div></div>
+        <div class="note">民安★TALKを使う時は、民安★TALKの設定の「ただちに再生」をOFFにしてください(ONだと、長いレスの途中で次のレスが届いた時に読み上げが打ち切られます)。</div>
       </div>
 
       <div class="field" data-engine="test"><label>試しに読み上げ</label><div class="inline"><input type="text" id="ttsTestText" value="テストです。こんにちは、ReaCastです。" style="width: 280px" /><button id="ttsTestBtn">読み上げる</button></div></div>
       <div class="hint" id="ttsTestMsg"></div>
-      <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>レス読み上げ間隔(ターボモード)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>ターボを開始するレス件数</label><div><input type="number" min="1" data-key="turboThreshold" /><span class="unit">順番待ちがこの件数以上溜まったら短い間隔にします</span></div></div>
-      <div class="field"><label>ターボ中の話速</label><div><input type="number" min="1" max="2" step="0.1" data-key="turboSpeedScale" /><span class="unit">倍(VOICEVOX・COEIROINKなど)。ターボ中も声は最後まで読み、話す速さをこの倍率で上げて追いつきます</span></div></div>
-      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /><span class="unit">ONにすると本文の前に番号を付けて渡します(既定OFF)</span></div></div>
-      <div class="field"><label>読み上げ時間の目安</label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
-      <div class="hint">VOICEVOXなどReaCastが直接鳴らすソフトでは本当の長さを使うので、この目安は長いレスを「以下略」で打ち切る時だけに使います。<br>文字数からおおよその読み上げ時間を見積もり、読み終わるまで次のレスに進まない(字幕もその間は表示しておく)ようにします。既定の160はVOICEVOXの標準の速さの目安です。話す速さを変えている時は合わせて調整してください。<br>※ 民安★TALK(vrx.exe)を使う場合は、民安★TALKの設定の「ただちに再生」をOFFにしてください。ONのままだと、読み上げ中に次のレスが届いた時点で読み上げが打ち切られます。</div>
-      <div class="field"><label>ホットキー: スキップ</label><div class="inline"><input type="text" readonly data-hotkey="hotkeySkip" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeySkip">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeySkip">解除</button></div></div>
-      <div class="field"><label>ホットキー: 一時停止/再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyPause" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyPause">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyPause">解除</button></div></div>
-      <div class="hint hotkey-msg" id="hotkeyMsg">他のアプリを使っている時でも効きます(例: Ctrl+Alt+S)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。スキップすると字幕と待ち時間を飛ばし、VOICEVOX等・棒読みちゃんの声も止めます(コマンドで渡した声は止まらないので、民安★TALK側で止めてください)。<br>※ 管理者として起動したアプリ(OBS・ゲーム・専ブラなど)を操作している間は、Windowsの決まりでホットキーが届きません。その場合は、ReaCast.exeも右クリック→「プロパティ」→「互換性」→「管理者としてこのプログラムを実行する」にチェックを入れて、管理者として起動してください。</div>
-      <div class="field"><label>1件の最大待ち時間</label><div><input type="number" min="0" step="1000" data-key="maxWaitMs" /><span class="unit">ミリ秒(0で無制限)。これより長くかかるレスは、読み上げをこの時間に収まる所で打ち切って「以下略」を付け、次のレスへ進みます</span></div></div>
-      <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
+
+      <h3>読む順番と速さ</h3>
+      <div class="field"><label>1件の最大待ち時間<span class="help" data-help="これより長くかかるレスは、この時間に収まる所で読み上げを打ち切って「以下略」を付け、次のレスへ進みます。0で無制限。"></span></label><div><input type="number" min="0" step="1000" data-key="maxWaitMs" /><span class="unit">ミリ秒(0で無制限)</span></div></div>
+      <div class="field"><label>溜まったら速く読む(ターボ)<span class="help" data-help="順番待ちが指定した件数以上溜まったら、レスとレスの間を短くして、話す速さを上げて追いつきます(声は最後まで読みます)。話速の倍率はVOICEVOX・COEIROINKなどで効きます。"></span></label><div class="inline"><input type="number" min="1" data-key="turboThreshold" style="width:70px" /><span class="unit">件以上で、話速</span><input type="number" min="1" max="2" step="0.1" data-key="turboSpeedScale" style="width:70px" /><span class="unit">倍</span></div></div>
+      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="readResNumber" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(間隔・文字数・読み上げ時間の目安)</summary>
+        <div class="field"><label>レス読み上げ間隔</label><div><input type="number" min="0" step="100" data-key="readIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+        <div class="field"><label>レス読み上げ間隔(ターボ中)</label><div><input type="number" min="0" step="100" data-key="turboIntervalMs" /><span class="unit">ミリ秒</span></div></div>
+        <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
+        <div class="field"><label>読み上げ時間の目安<span class="help" data-help="文字数からおおよその読み上げ時間を見積もって、読み終わるまで次のレスに進まない(字幕もその間は出しておく)ようにします。VOICEVOXなどReaCastが直接鳴らすソフトでは本当の長さを使うので、長いレスを「以下略」で打ち切る時だけに使います。既定の160はVOICEVOXの標準の速さの目安です。"></span></label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
+      </details>
     </section>
 
+    <!-- ================= NGワード・読み方 ================= -->
+    <section data-tab="words">
+      <h3>NGワード<span class="help" data-help="1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは、表示も読み上げもしません。"></span></h3>
+      <textarea data-key="ngWords"></textarea>
+      <h3>読み方<span class="help" data-help="上から順に置き換えます。言葉は「、」で区切ると複数まとめて指定できます。読み方を空欄にすると、その言葉は読みません。SpeechCastMeの「読み方」は、テキストで直接編集に切り替えて、そのまま貼り付けられます(¥はバックスラッシュとして扱います)。"></span></h3>
+      <div class="rule-editor" data-rules-for="readingRules" data-target="reading"></div>
+      <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="readingRules" /> テキストで直接編集する(上級者向け: 1行に「単語/読み方」、単語は正規表現)</label>
+      <textarea data-key="readingRules" style="min-height: 220px; display: none"></textarea>
+    </section>
+
+    <!-- ================= 下の字幕 ================= -->
     <section data-tab="subtitle">
-      <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>長いレスは長く表示する</label><div class="inline">1文字あたり <input type="number" min="0" step="10" data-key="displayPerCharMs" /> ミリ秒足す、最長 <input type="number" min="1000" step="500" data-key="displayMaxMs" /> ミリ秒</div></div>
-      <div class="hint">例: 既定(80ミリ秒・最長12000)なら、10文字で約3.8秒、50文字で7秒、100文字で11秒、113文字以上は12秒表示します。0にすると長さに関係なく「字幕が消える時間」で消えます。</div>
-      <div class="field"><label>アンカー先のレスを先に表示する</label><div class="inline">
-        <input type="checkbox" data-key="anchorPreview" />
-        <input type="number" min="300" step="100" data-key="anchorPreviewMs" /><span class="unit">ミリ秒表示 / 色</span>
-        <input type="color" data-key="style.subtitle.quoteColor" />
-      </div></div>
-      <div class="field"><label>レスを翻訳して下に出す</label><div class="inline">
-        <input type="checkbox" data-key="subtitleTranslate" />
-        <span class="unit">色</span><input type="color" data-key="style.subtitle.translationColor" />
-        <span class="unit">大きさ</span><input type="number" min="30" max="150" step="5" data-percent data-key="style.subtitle.translationScale" /><span class="unit">%(本文に対して)</span>
-      </div></div>
-      <div class="field"><label>日本語のレスの翻訳先</label><div><select data-key="subtitleTranslateTarget">
-        <option value="en">英語</option>
-        <option value="ko">韓国語</option>
-        <option value="zh-CN">中国語(簡体字)</option>
-        <option value="zh-TW">中国語(繁体字)</option>
-        <option value="es">スペイン語</option>
-        <option value="pt">ポルトガル語</option>
-        <option value="fr">フランス語</option>
-        <option value="de">ドイツ語</option>
-        <option value="it">イタリア語</option>
-        <option value="ru">ロシア語</option>
-        <option value="vi">ベトナム語</option>
-        <option value="th">タイ語</option>
-        <option value="id">インドネシア語</option>
-      </select><span class="unit">日本語以外のレスは、何語でも日本語に翻訳します</span></div></div>
-      <div class="hint">下の字幕だけで、日本語のレスは上で選んだ言語に、それ以外のレスは日本語に翻訳して本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。</div>
-      <div class="hint">新しいレスに「&gt;&gt;12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(下の字幕のみ。アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。</div>
-      <div class="field"><label>字幕を出し終わるまで次のレスを待つ</label><div><input type="checkbox" data-key="waitForDisplay" /><span class="unit">長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)</span></div></div>
-      <h3>見た目</h3>
-      <div class="field"><label>デザインのプリセット</label><div class="inline">
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・字幕の出し方(アニメーション)・カスタムCSSがそのデザインに変わります(文字の大きさ・位置などはそのまま)。下で手直しした内容はプリセットごとに覚えておきます。"></span></label><div class="inline">
         <select id="subtitlePreset" data-preset-group="subtitle">
           <option value="default">デフォルト</option>
           <option value="yellowLine">黄色ライン(半透明の帯＋左端の黄色い線)</option>
@@ -467,17 +497,11 @@
         </select>
         <button class="secondary" data-preset-reset="subtitle">このプリセットの初期値に戻す</button>
       </div></div>
-      <div class="hint">プリセットを選ぶと、フォント・色・背景・字幕の出し方(アニメーション)・カスタムCSSがそのデザインに変わります(文字の大きさ・位置などはそのまま)。下の項目で手直しした内容はプリセットごとに覚えておきます。</div>
-      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
+      <iframe id="subtitlePreview" class="preview-frame subtitle-frame" src="subtitle.html?preview"></iframe>
+      <div class="field" style="margin-top:8px"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
-      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.subtitle.outlineWidth" /><span class="unit">px</span></div></div>
-      <div class="field"><label>太字 / 斜体 / 縦書き</label><div class="inline">
-        <label><input type="checkbox" data-key="style.subtitle.bold" /> 太字</label>
-        <label><input type="checkbox" data-key="style.subtitle.italic" /> 斜体</label>
-        <label><input type="checkbox" data-key="style.subtitle.vertical" /> 縦書き</label>
-      </div></div>
-      <div class="field"><label>字幕の出し方</label><div><select data-key="style.subtitle.appear">
+      <div class="field"><label>字幕の出し方</label><div class="inline"><select data-key="style.subtitle.appear">
         <option value="instant">瞬間表示</option>
         <option value="typewriter">1文字ずつ(左から右へ)</option>
         <option value="fade">フェードイン</option>
@@ -493,57 +517,94 @@
         <option value="oc-bolt">右からバチッと飛び込む(OC風)</option>
         <option value="aurora-rise">ぼかしからふわっと浮かぶ(オーロラ)</option>
       </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
-      <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.bgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
-      <div class="field"><label>背景の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="60" data-key="style.subtitle.padding" /><span class="unit">px(0で既定)</span><input type="number" min="0" max="60" data-key="style.subtitle.radius" /><span class="unit">px</span></div></div>
-      <div class="field"><label>デスクトップ字幕もプリセットの見た目にする</label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /><span class="unit">OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします</span></div></div>
-      <div class="field"><label>見出しに表示するもの</label><div class="inline">
-        <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
-        <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
-        <label><input type="checkbox" data-key="style.subtitle.showTime" /> 時刻</label>
+      <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。"></span></label><div class="inline">
+        <input type="checkbox" data-key="subtitleTranslate" />
+        <span class="unit">翻訳先</span>
+        <select data-key="subtitleTranslateTarget">
+          <option value="en">英語</option>
+          <option value="ko">韓国語</option>
+          <option value="zh-CN">中国語(簡体字)</option>
+          <option value="zh-TW">中国語(繁体字)</option>
+          <option value="es">スペイン語</option>
+          <option value="pt">ポルトガル語</option>
+          <option value="fr">フランス語</option>
+          <option value="de">ドイツ語</option>
+          <option value="it">イタリア語</option>
+          <option value="ru">ロシア語</option>
+          <option value="vi">ベトナム語</option>
+          <option value="th">タイ語</option>
+          <option value="id">インドネシア語</option>
+        </select>
       </div></div>
-      <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
-      <div class="field"><label>縦の位置</label><div><select data-key="style.subtitle.valign"><option value="top">上から(表示範囲の上端から下へ表示)</option><option value="bottom">下から(表示範囲の下端に揃えて上へ)</option></select></div></div>
-      <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
-        <div class="arrows">
-          <span></span><button class="secondary" data-nudge="0,-2">↑</button><span></span>
-          <button class="secondary" data-nudge="-2,0">←</button><button class="secondary" data-nudge="reset">○</button><button class="secondary" data-nudge="2,0">→</button>
-          <span></span><button class="secondary" data-nudge="0,2">↓</button><span></span>
-        </div>
-        <span class="unit">X <input type="number" data-key="style.subtitle.offsetX" /> Y <input type="number" data-key="style.subtitle.offsetY" /> px</span>
-      </div></div>
-      <iframe id="subtitlePreview" class="preview-frame subtitle-frame" src="subtitle.html?preview"></iframe>
-      <div class="hint">プレビューには文字揃え・縦の位置・位置の微調整も反映されます。実際の大きさで確かめたい時は「取得」タブの「テスト表示」を使ってください。</div>
-      <h3>カスタムCSS(上級者向け)</h3>
-      <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>
+      <div class="field"><label>アンカー先のレスを先に表示する<span class="help" data-help="新しいレスに「>>12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。"></span></label><div><input type="checkbox" data-key="anchorPreview" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(縁・背景・位置・表示時間・翻訳の見た目)</summary>
+        <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.subtitle.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>太字 / 斜体 / 縦書き</label><div class="inline">
+          <label><input type="checkbox" data-key="style.subtitle.bold" /> 太字</label>
+          <label><input type="checkbox" data-key="style.subtitle.italic" /> 斜体</label>
+          <label><input type="checkbox" data-key="style.subtitle.vertical" /> 縦書き</label>
+        </div></div>
+        <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.bgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
+        <div class="field"><label>背景の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="60" data-key="style.subtitle.padding" /><span class="unit">px(0で既定)</span><input type="number" min="0" max="60" data-key="style.subtitle.radius" /><span class="unit">px</span></div></div>
+        <div class="field"><label>見出しに表示するもの</label><div class="inline">
+          <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
+          <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
+          <label><input type="checkbox" data-key="style.subtitle.showTime" /> 時刻</label>
+        </div></div>
+        <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
+        <div class="field"><label>縦の位置</label><div><select data-key="style.subtitle.valign"><option value="top">上から(表示範囲の上端から下へ表示)</option><option value="bottom">下から(表示範囲の下端に揃えて上へ)</option></select></div></div>
+        <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
+          <div class="arrows">
+            <span></span><button class="secondary" data-nudge="0,-2">↑</button><span></span>
+            <button class="secondary" data-nudge="-2,0">←</button><button class="secondary" data-nudge="reset">○</button><button class="secondary" data-nudge="2,0">→</button>
+            <span></span><button class="secondary" data-nudge="0,2">↓</button><span></span>
+          </div>
+          <span class="unit">X <input type="number" data-key="style.subtitle.offsetX" /> Y <input type="number" data-key="style.subtitle.offsetY" /> px</span>
+        </div></div>
+        <div class="field"><label>長いレスは長く表示する<span class="help" data-help="例: 既定(80ミリ秒・最長12000)なら、10文字で約3.8秒、50文字で7秒、100文字で11秒、113文字以上は12秒表示します。0にすると長さに関係なく「字幕が消える時間」で消えます。"></span></label><div class="inline">1文字あたり <input type="number" min="0" step="10" data-key="displayPerCharMs" /> ミリ秒足す、最長 <input type="number" min="1000" step="500" data-key="displayMaxMs" /> ミリ秒</div></div>
+        <div class="field"><label>字幕を出し終わるまで次のレスを待つ<span class="help" data-help="長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)。"></span></label><div><input type="checkbox" data-key="waitForDisplay" /></div></div>
+        <div class="field"><label>アンカー先の表示時間 / 色</label><div class="inline"><input type="number" min="300" step="100" data-key="anchorPreviewMs" /><span class="unit">ミリ秒</span><input type="color" data-key="style.subtitle.quoteColor" /></div></div>
+        <div class="field"><label>翻訳の色 / 大きさ</label><div class="inline"><input type="color" data-key="style.subtitle.translationColor" /><input type="number" min="30" max="150" step="5" data-percent data-key="style.subtitle.translationScale" /><span class="unit">%(本文に対して)</span></div></div>
+        <div class="field"><label>デスクトップ字幕もプリセットの見た目にする<span class="help" data-help="OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします。"></span></label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /></div></div>
+        <h3>カスタムCSS(上級者向け)</h3>
+        <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>
+      </details>
     </section>
 
+    <!-- ================= AA ================= -->
     <section data-tab="aa">
-      <div class="field"><label>AAモードを有効にする</label><div><input type="checkbox" data-key="aaEnabled" /><span class="unit">条件に合うレスを専用のフォントで表示します</span></div></div>
+      <p class="lead">アスキーアートのレスを、専用のフォントで崩れないように表示します。</p>
+      <div class="field"><label>AAモードを使う</label><div><input type="checkbox" data-key="aaEnabled" /></div></div>
       <div class="field"><label>AAモードで字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="aaDisplayMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.aa.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.aa.fontSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.aa.color" /><input type="color" data-key="style.aa.outlineColor" /></div></div>
-      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.aa.outlineWidth" /><span class="unit">px</span></div></div>
       <div class="field"><label>字幕枠に合わせて縮小する</label><div class="inline">
         <label><input type="checkbox" data-key="style.aa.shrinkToWidth" /> 幅に合わせる</label>
         <label><input type="checkbox" data-key="style.aa.shrinkToHeight" /> 高さに合わせる</label>
       </div></div>
-      <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
-      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
-      <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
-      <h3>AAモードになる条件</h3>
-      <div class="inline"><input type="number" min="0" data-key="aaThresholdChars" /><span>文字以上(0で文字数では判定しない)、または下記の文字列を含む場合(1行に1つ)</span></div>
-      <textarea data-key="aaPatterns" style="margin-top:6px"></textarea>
+      <details class="adv">
+        <summary>詳しい設定(色・読み上げ・AAになる条件)</summary>
+        <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.aa.color" /><input type="color" data-key="style.aa.outlineColor" /></div></div>
+        <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.aa.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
+        <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
+        <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
+        <h3>AAモードになる条件</h3>
+        <div class="inline"><input type="number" min="0" data-key="aaThresholdChars" /><span>文字以上(0で文字数では判定しない)、または下記の文字列を含む場合(1行に1つ)</span></div>
+        <textarea data-key="aaPatterns" style="margin-top:6px"></textarea>
+      </details>
     </section>
 
+    <!-- ================= 次スレ作成 ================= -->
     <section data-tab="create">
-      <div class="hint">指定したレス数に達したら、同じ板に次スレを自動で建てます(取得中のスレッドと同じ掲示板に建てます。今のところjpnkn等の2ちゃんねる互換の掲示板のみ)。既に次スレが建っている場合は建てません。1000を超えた後は「取得」タブの設定どおり次スレへ自動で移ります。</div>
+      <p class="lead">指定したレス数に達したら、同じ板に次スレを自動で建てます。<span class="help" data-help="取得中のスレッドと同じ掲示板に建てます(今のところjpnkn等の2ちゃんねる互換の掲示板のみ)。既に次スレが建っている場合は建てません。1000を超えた後は「掲示板」タブの設定どおり次スレへ自動で移ります。"></span></p>
       <div class="field"><label>次スレを自動で建てる</label><div><input type="checkbox" data-key="autoCreateThread" /></div></div>
       <div class="field"><label>建てるレス数</label><div><input type="number" min="1" max="999" data-key="createThreadCount" /></div></div>
-      <div class="field"><label>次スレのタイトル</label><div><input type="text" class="wide" data-key="createTitleTemplate" /></div></div>
-      <div class="hint">{next} = 今のタイトルの最後の数字を1増やしたもの(「539」→「540」、「雑談 part9」→「雑談 part10」)、{n} = その数字だけ。例: 「配信スレ{n}」</div>
+      <div class="field"><label>次スレのタイトル<span class="help" data-help="{next} = 今のタイトルの最後の数字を1増やしたもの(「539」→「540」、「雑談 part9」→「雑談 part10」)、{n} = その数字だけ。例: 「配信スレ{n}」"></span></label><div><input type="text" class="wide" data-key="createTitleTemplate" /></div></div>
       <div class="field"><label>名前 / メール</label><div class="inline"><input type="text" data-key="createName" placeholder="空欄なら名無し" /><input type="text" data-key="createMail" placeholder="sage等" /></div></div>
-      <h3>&gt;&gt;1のテンプレート</h3>
+      <h3>&gt;&gt;1のテンプレート<span class="help" data-help="{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル。右側は入力に合わせてすぐ変わります(実際には建てません)。"></span></h3>
       <div class="inline" style="margin-bottom: 6px">
         <span class="unit">差し込む:</span>
         <button class="secondary" data-insert="{prevUrl}" title="今のスレッドのURL">前スレのURL</button>
@@ -562,24 +623,14 @@
           <pre id="threadPreview" class="draft-body"></pre>
         </div>
       </div>
-      <div class="hint">{prevUrl} = 今のスレッドのURL、{prevTitle} = 今のタイトル、{title} = 新しいタイトル。右側は入力に合わせてすぐ変わります(実際には建てません)。</div>
     </section>
 
-    <section data-tab="words">
-      <h3>NGワード(1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは表示も読み上げもしません)</h3>
-      <textarea data-key="ngWords"></textarea>
-      <h3>読み方(上から順に置き換えます)</h3>
-      <div class="rule-editor" data-rules-for="readingRules" data-target="reading"></div>
-      <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="readingRules" /> テキストで直接編集する(上級者向け: 1行に「単語/読み方」、単語は正規表現)</label>
-      <textarea data-key="readingRules" style="min-height: 220px; display: none"></textarea>
-      <div class="hint">言葉は「、」で区切ると複数まとめて指定できます。読み方を空欄にすると、その言葉は読みません。SpeechCastMeの「読み方」はテキストで直接編集に切り替えて、そのまま貼り付けられます(¥はバックスラッシュとして扱います)。</div>
-    </section>
-
+    <!-- ================= リアクション連動 ================= -->
     <section data-tab="reactions">
-      <div class="hint">字幕に出したレスの本文がルールに当てはまると、視聴者のリアクションと同じように配信画面へリアクションを飛ばします(例: 「www」で草、「888」で拍手、「おつ」でおつかれ)。コントロールパネルでOFFにしたリアクションは飛びません。AAには反応しません。</div>
+      <p class="lead">レスの言葉に合わせて、配信画面にリアクションを飛ばします(例: 「www」で草、「888」で拍手)。<span class="help" data-help="字幕に出したレスの本文がルールに当てはまると、視聴者のリアクションと同じように配信画面へリアクションを飛ばします。コントロールパネルでOFFにしたリアクションは飛びません。AAには反応しません。"></span></p>
       <div class="field"><label>コメントとリアクションを連動する</label><div><input type="checkbox" data-key="reactionLink" /></div></div>
-      <div class="field"><label>1件のレスで飛ばす最大数</label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個(上のルールほど優先。同じ言葉が何回も入っていたら、この数までその回数だけ飛ばす)</span></div></div>
-      <h3>ルール(上にあるものほど優先)</h3>
+      <div class="field"><label>1件のレスで飛ばす最大数<span class="help" data-help="上のルールほど優先します。同じ言葉が何回も入っていたら(「おにぎりおにぎりおにぎり」)、この数までその回数だけ飛ばします。"></span></label><div><input type="number" min="1" max="10" data-key="reactionLinkMax" /><span class="unit">個</span></div></div>
+      <h3>ルール(上にあるものほど優先)<span class="help" data-help="言葉は「、」で区切ると複数まとめて指定できます。「おつ」のような短い言葉は「ちょうど同じ」(レス全体がその言葉の時だけ)にすると、関係ないレスで反応しにくくなります。"></span></h3>
       <div class="rule-editor" data-rules-for="reactionRules" data-target="reaction"></div>
       <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="reactionRules" /> テキストで直接編集する(上級者向け: 1行に「正規表現/リアクションのID」)</label>
       <textarea data-key="reactionRules" style="min-height: 260px; display: none"></textarea>
@@ -587,23 +638,14 @@
         <button class="secondary" id="reactionRulesResetBtn">既定のルールに戻す</button>
         <span class="unit" id="reactionRulesMsg"></span>
       </div>
-      <div class="hint">言葉は「、」で区切ると複数まとめて指定できます。「おつ」のような短い言葉は「ちょうど同じ」(レス全体がその言葉の時だけ)にすると、関係ないレスで反応しにくくなります。</div>
     </section>
 
+    <!-- ================= 話した字幕 ================= -->
     <section data-tab="voice">
-      <div class="hint">配信者が話した言葉を字幕にして、自動で翻訳します。ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。Edgeの音声認識は合計で約10時間使うと使えなくなることがあるので、Chromeを入れておくのがおすすめです。聞き取りはGoogle(EdgeならMicrosoft)のサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。翻訳は仕様変更で使えなくなることがあります。</div>
+      <p class="lead">配信者が話した言葉を字幕にして、自動で翻訳します。<span class="help" data-help="ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはGoogle(EdgeならMicrosoft)のサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。"></span></p>
       <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
-      <div class="field"><label>マイク</label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button><span class="unit">電話や離席の時に。止めている間は聞き取り自体を止め、表示中の字幕も消します</span></div></div>
-      <div class="field"><label>ホットキー: マイクを止める</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
-      <div class="field"><label>ホットキー: マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
-      <div class="hint hotkey-msg">他のアプリを使っている時でも効きます(例: 止める Ctrl+Alt+M、再開 Ctrl+Alt+N)。ホットキーに割り当てたキーでも、文字は今までどおり打てます。押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。<br>※ 管理者として起動したアプリ(OBS・ゲーム・専ブラなど)を操作している間は、Windowsの決まりでホットキーが届きません。その場合は、ReaCast.exeも右クリック→「プロパティ」→「互換性」→「管理者としてこのプログラムを実行する」にチェックを入れて、管理者として起動してください。</div>
-      <div class="field"><label>音声認識に使うブラウザ</label><div><select data-key="voiceBrowser">
-        <option value="auto">自動(Chromeがあれば Chrome)</option>
-        <option value="chrome">Google Chrome</option>
-        <option value="edge">Microsoft Edge</option>
-      </select></div></div>
-      <div class="hint">聞き取りの精度はブラウザで違います。Edge(Microsoftの音声認識)は日本語の精度が高めですが、合計で約10時間使うと使えなくなることがあります。Chrome(Googleの音声認識)はその制限が見当たりません。選んだブラウザが入っていない時は、もう一方を使います。</div>
+      <div class="field"><label>マイク<span class="help" data-help="電話や離席の時に。止めている間は聞き取り自体を止めて、表示中の字幕も消します。ホットキーは「ホットキー」タブで割り当てられます。"></span></label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button></div></div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
         <option value="en-US">英語</option>
@@ -611,10 +653,7 @@
         <option value="zh-CN">中国語(簡体字)</option>
         <option value="zh-TW">中国語(繁体字)</option>
       </select></div></div>
-      <div class="field"><label>翻訳する</label><div><input type="checkbox" data-key="voiceTranslate" /></div></div>
-      <div class="field"><label>話した言葉でリアクションを飛ばす</label><div><input type="checkbox" data-key="voiceReactionLink" /><span class="unit">話し終わった1文が「リアクション連動」タブのルールに当てはまったら、配信画面にリアクションを飛ばします(例: 「おめでとう」→🎂)</span></div></div>
-      <div class="field"><label>話した言葉のリアクションに印を付ける</label><div><input type="checkbox" data-key="voiceReactionMark" /><span class="unit">自分の話した言葉で飛んだリアクションの周りを水色に光らせて、リスナーが送ったリアクションと見分けられるようにします</span></div></div>
-      <div class="field"><label>翻訳先の言葉</label><div><select data-key="voiceTargetLang">
+      <div class="field"><label>翻訳する</label><div class="inline"><input type="checkbox" data-key="voiceTranslate" /><span class="unit">翻訳先</span><select data-key="voiceTargetLang">
         <option value="en">英語</option>
         <option value="ja">日本語</option>
         <option value="ko">韓国語</option>
@@ -630,7 +669,14 @@
         <option value="th">タイ語</option>
         <option value="id">インドネシア語</option>
       </select></div></div>
-      <h3>表示(OBSの「ブラウザ」ソース)</h3>
+      <div class="field"><label>話した言葉でリアクションを飛ばす<span class="help" data-help="話し終わった1文が「リアクション連動」タブのルールに当てはまったら、配信画面にリアクションを飛ばします(例: 「おめでとう」→🎂)。"></span></label><div><input type="checkbox" data-key="voiceReactionLink" /></div></div>
+      <div class="field"><label>話した言葉のリアクションに印を付ける<span class="help" data-help="自分の話した言葉で飛んだリアクションの周りを水色に光らせて、リスナーが送ったリアクションと見分けられるようにします。"></span></label><div><input type="checkbox" data-key="voiceReactionMark" /></div></div>
+      <div class="field"><label>音声認識に使うブラウザ<span class="help" data-help="Edge(Microsoftの音声認識)は日本語の精度が高めですが、合計で約10時間使うと使えなくなることがあります。Chrome(Googleの音声認識)はその制限が見当たらないので、Chromeを入れておくのがおすすめです。選んだブラウザが入っていない時は、もう一方を使います。"></span></label><div><select data-key="voiceBrowser">
+        <option value="auto">自動(Chromeがあれば Chrome)</option>
+        <option value="chrome">Google Chrome</option>
+        <option value="edge">Microsoft Edge</option>
+      </select></div></div>
+      <h3>OBSに出す</h3>
       <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice">コピー</button></div>
       <div class="field"><label>出すもの</label><div><select data-key="style.voice.show">
         <option value="both">話した言葉と翻訳</option>
@@ -640,18 +686,22 @@
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.voice.fontFamily" /></div></div>
       <div class="field"><label>話した言葉の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.fontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.color" /></div></div>
       <div class="field"><label>翻訳の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.translationFontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.translationColor" /></div></div>
-      <div class="field"><label>太字</label><div><input type="checkbox" data-key="style.voice.bold" /></div></div>
-      <div class="field"><label>縁のサイズ / 色</label><div class="inline"><input type="number" min="0" max="20" step="0.5" data-key="style.voice.outlineWidth" /><span class="unit">px</span><input type="color" data-key="style.voice.outlineColor" /></div></div>
-      <div class="field"><label>文字揃え</label><div><select data-key="style.voice.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
-      <div class="field"><label>縦の位置</label><div><select data-key="style.voice.valign"><option value="bottom">下</option><option value="top">上</option></select></div></div>
-      <div class="field"><label>同時に出す段落の数</label><div><input type="number" min="1" max="5" data-key="style.voice.maxBlocks" /><span class="unit">話し終わった1文(+翻訳)を1段落として、最近のものをこの数だけ積み上げて残します</span></div></div>
-      <div class="field"><label>最低表示時間</label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒。長い文は、翻訳を読み切れるように自動でもっと長く出します</span></div></div>
-      <h3>カスタムCSS(上級者向け)</h3>
-      <textarea class="css" data-key="style.voice.customCss" placeholder=".translation { font-style: italic; }"></textarea>
+      <details class="adv">
+        <summary>詳しい設定(縁・位置・表示時間・カスタムCSS)</summary>
+        <div class="field"><label>太字</label><div><input type="checkbox" data-key="style.voice.bold" /></div></div>
+        <div class="field"><label>縁のサイズ / 色</label><div class="inline"><input type="number" min="0" max="20" step="0.5" data-key="style.voice.outlineWidth" /><span class="unit">px</span><input type="color" data-key="style.voice.outlineColor" /></div></div>
+        <div class="field"><label>文字揃え</label><div><select data-key="style.voice.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
+        <div class="field"><label>縦の位置</label><div><select data-key="style.voice.valign"><option value="bottom">下</option><option value="top">上</option></select></div></div>
+        <div class="field"><label>同時に出す段落の数<span class="help" data-help="話し終わった1文(+翻訳)を1段落として、最近のものをこの数だけ積み上げて残します。"></span></label><div><input type="number" min="1" max="5" data-key="style.voice.maxBlocks" /></div></div>
+        <div class="field"><label>最低表示時間<span class="help" data-help="長い文は、翻訳を読み切れるように自動でもっと長く出します。"></span></label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒</span></div></div>
+        <h3>カスタムCSS(上級者向け)</h3>
+        <textarea class="css" data-key="style.voice.customCss" placeholder=".translation { font-style: italic; }"></textarea>
+      </details>
     </section>
 
+    <!-- ================= 右のレス一覧 ================= -->
     <section data-tab="list">
-      <div class="field"><label>デザインのプリセット</label><div class="inline">
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・見出し・カスタムCSSがそのデザインに変わります(文字の大きさ・件数などはそのまま)。下で手直しした内容はプリセットごとに覚えておくので、別のプリセットに切り替えて戻ってきても、手直しした見た目になります。「このプリセットの初期値に戻す」で手直しを消せます。"></span></label><div class="inline">
         <select id="listPreset" data-preset-group="list">
           <option value="default">デフォルト</option>
           <option value="yellowLine">黄色ライン(半透明の背景＋左端の黄色い線)</option>
@@ -668,96 +718,112 @@
         </select>
         <button class="secondary" data-preset-reset="list">このプリセットの初期値に戻す</button>
       </div></div>
-      <div class="hint">プリセットを選ぶと、フォント・色・背景・見出し・カスタムCSSがそのデザインに変わります(文字の大きさ・件数などはそのまま)。下の項目で手直しした内容はプリセットごとに覚えておくので、別のプリセットに切り替えて戻ってきても、手直しした見た目になります。「このプリセットの初期値に戻す」で、手直しを消してそのプリセットの元の見た目に戻せます。</div>
-      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
-      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
-      <div class="field"><label>見出しの大きさ</label><div class="inline"><input type="number" min="0" max="200" data-key="style.list.headFontSize" /><span class="unit">px(0なら本文の80%)</span><label><input type="checkbox" data-key="style.list.headBold" /> 太字</label></div></div>
-      <div class="field"><label>レス番号 / 名前 / 時刻の色</label><div class="inline"><input type="color" data-key="style.list.numberColor" /><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.dateColor" /></div></div>
-      <div class="field"><label>レスごとの背景</label><div class="inline">
-        <input type="color" data-key="style.list.itemBgColor" />
-        不透明度 <input type="number" min="0" max="100" data-key="style.list.itemBgOpacity" />%
-        余白 <input type="number" min="0" max="60" data-key="style.list.itemPadding" />px
-        角の丸み <input type="number" min="0" max="60" data-key="style.list.itemRadius" />px
-      </div></div>
-      <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
-      <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(文字の大きさに対して。既定1.3)</span></div></div>
-      <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
-      <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
-      <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
-      <div class="field"><label>見出しに表示するもの</label><div class="inline">
-        <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
-        <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
-        <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
-      </div></div>
-      <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
-      <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
-      <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
-        <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">レス一覧に表示</option></select>
-        <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
-      </div></div>
-      <h3>アイコン</h3>
-      <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" data-pick-folder="iconFolderBbs">参照...</button></div></div>
-      <div class="field"><label>アイコンのフォルダ(YouTube)</label><div class="path-row"><input type="text" data-key="iconFolderYoutube" /><button class="secondary" data-pick-folder="iconFolderYoutube">参照...</button></div></div>
-      <div class="field"><label>アイコンのフォルダ(Twitch)</label><div class="path-row"><input type="text" data-key="iconFolderTwitch" /><button class="secondary" data-pick-folder="iconFolderTwitch">参照...</button></div></div>
-      <div class="field"><label>取得元の印を付ける</label><div><input type="checkbox" data-key="style.list.showSource" /><span class="unit">YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します</span></div></div>
-      <div class="field"><label>スーパーチャット・ビッツを目立たせる</label><div><input type="checkbox" data-key="style.list.showPaid" /><span class="unit">YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイドを、色付きの札と金額で目立たせます</span></div></div>
-      <div class="hint">右のレス一覧には、字幕に表示されたのと同じタイミングでレスが追加されます(字幕・読み上げとずれません)。</div>
-      <h3>カスタムCSS(上級者向け。unacastのように見た目を自由に変えられます)</h3>
-      <textarea class="css" data-key="style.list.customCss" placeholder=".item { border-left: 4px solid #7dff7d; }&#10;.name { font-style: italic; }"></textarea>
-      <div class="hint">使えるクラス: .item(レス全体) .icon(アイコン) .head(見出し) .no(番号) .name(名前) .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA)</div>
-      <h3>プレビュー</h3>
       <iframe id="listPreview" class="preview-frame" src="comments.html?preview"></iframe>
       <div class="inline" style="margin-top:6px">
         <input id="listTestName" type="text" value="名無し＠BBSさん" style="width:160px" />
         <input id="listTestText" type="text" value="右のレス一覧の文字のテストです" style="flex:1" />
-        <button class="secondary" id="listTestBtn">右の一覧・ニコ生風だけにテスト表示</button>
+        <button class="secondary" id="listTestBtn">テスト表示</button>
+        <span class="help" data-help="テスト表示は、OBSの右のレス一覧とニコ生風の画面にだけ出ます(字幕・読み上げはしません)。"></span>
       </div>
-      <div class="hint">テスト表示は、OBSの右のレス一覧とニコ生風の画面にだけ出ます(字幕・読み上げはしません)。</div>
+      <div class="field" style="margin-top:10px"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
+      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
+      <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
+      <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
+      <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
+      <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイドを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(見出し・色・背景・間隔・サムネイル)</summary>
+        <div class="field"><label>見出しの大きさ</label><div class="inline"><input type="number" min="0" max="200" data-key="style.list.headFontSize" /><span class="unit">px(0なら本文の80%)</span><label><input type="checkbox" data-key="style.list.headBold" /> 太字</label></div></div>
+        <div class="field"><label>レス番号 / 名前 / 時刻の色</label><div class="inline"><input type="color" data-key="style.list.numberColor" /><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.dateColor" /></div></div>
+        <div class="field"><label>見出しに表示するもの</label><div class="inline">
+          <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
+          <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
+          <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
+        </div></div>
+        <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
+        <div class="field"><label>レスごとの背景</label><div class="inline">
+          <input type="color" data-key="style.list.itemBgColor" />
+          不透明度 <input type="number" min="0" max="100" data-key="style.list.itemBgOpacity" />%
+          余白 <input type="number" min="0" max="60" data-key="style.list.itemPadding" />px
+          角の丸み <input type="number" min="0" max="60" data-key="style.list.itemRadius" />px
+        </div></div>
+        <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(既定1.3)</span></div></div>
+        <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
+        <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
+        <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
+        <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
+          <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">レス一覧に表示</option></select>
+          <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
+        </div></div>
+        <h3>アイコン</h3>
+        <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
+        <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" data-pick-folder="iconFolderBbs">参照...</button></div></div>
+        <div class="field"><label>アイコンのフォルダ(YouTube)</label><div class="path-row"><input type="text" data-key="iconFolderYoutube" /><button class="secondary" data-pick-folder="iconFolderYoutube">参照...</button></div></div>
+        <div class="field"><label>アイコンのフォルダ(Twitch)</label><div class="path-row"><input type="text" data-key="iconFolderTwitch" /><button class="secondary" data-pick-folder="iconFolderTwitch">参照...</button></div></div>
+        <h3>カスタムCSS(上級者向け)<span class="help" data-help="unacastのように見た目を自由に変えられます。使えるクラス: .item(レス全体) .icon(アイコン) .head(見出し) .no(番号) .name(名前) .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA)"></span></h3>
+        <textarea class="css" data-key="style.list.customCss" placeholder=".item { border-left: 4px solid #7dff7d; }&#10;.name { font-style: italic; }"></textarea>
+      </details>
     </section>
 
+    <!-- ================= ニコ生風 ================= -->
     <section data-tab="nico">
-      <div class="hint">レスを右から左に流します(ニコニコ生放送のコメントのような表示)。OBSのブラウザソースに「表示先」タブのニコ生風のURLを指定し、配信画面と同じ大きさ(例: 1920×1080)にして重ねてください。レスは字幕に表示されるのと同じタイミングで流れます。</div>
+      <p class="lead">レスを右から左に流します(ニコニコ生放送のコメントのような表示)。<span class="help" data-help="OBSのブラウザソースに「かんたん設定」タブのニコ生風のURLを指定し、配信画面と同じ大きさ(例: 1920×1080)にして重ねてください。既定では、字幕に表示されるのと同じタイミングで1件ずつ流れます。"></span></p>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.nico.fontFamily" /></div></div>
       <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="300" data-key="style.nico.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.nico.bold" /> 太字</label></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.nico.color" /><input type="color" data-key="style.nico.outlineColor" /></div></div>
-      <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.nico.outlineWidth" /><span class="unit">px</span></div></div>
-      <div class="field"><label>流れる時間</label><div><input type="number" min="1" max="30" step="0.5" data-key="style.nico.durationSec" /><span class="unit">秒(画面を横切るのにかかる時間。長いコメントほど速く流れます)</span></div></div>
-      <div class="field"><label>不透明度</label><div><input type="number" min="10" max="100" data-key="style.nico.opacity" /><span class="unit">%</span></div></div>
-      <div class="field"><label>最大の行数</label><div><input type="number" min="0" max="50" data-key="style.nico.maxLines" /><span class="unit">0なら画面の高さに収まるだけ</span></div></div>
-      <div class="field"><label>AAも流す</label><div><input type="checkbox" data-key="style.nico.showAA" /><span class="unit">AAは見切れないよう、全体が画面に収まる位置(大きすぎる時は小さくして)に流します</span></div></div>
-      <div class="field"><label>AAだけを流す</label><div><input type="checkbox" data-key="style.nico.aaOnly" /><span class="unit">普通のコメントは流さず、AAだけを流します</span></div></div>
-      <div class="field"><label>届いたらすぐ流す</label><div><input type="checkbox" data-key="style.nico.instant" /><span class="unit">読み上げの順番を待たずに、コメントが届いた瞬間に流します(コメントが多い時は画面いっぱいに流れます)。OFFの時は字幕・読み上げと同じタイミングで1件ずつ流します</span></div></div>
-      <h3>カスタムCSS(上級者向け)</h3>
-      <textarea class="css" data-key="style.nico.customCss" placeholder=".nico { letter-spacing: 0.05em; }"></textarea>
+      <div class="field"><label>流れる時間</label><div><input type="number" min="1" max="30" step="0.5" data-key="style.nico.durationSec" /><span class="unit">秒(長いコメントほど速く流れます)</span></div></div>
+      <div class="field"><label>届いたらすぐ流す<span class="help" data-help="読み上げの順番を待たずに、コメントが届いた瞬間に流します(コメントが多い時は画面いっぱいに流れます)。OFFの時は、字幕・読み上げと同じタイミングで1件ずつ流します。"></span></label><div><input type="checkbox" data-key="style.nico.instant" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(縁・不透明度・行数・AA・カスタムCSS)</summary>
+        <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.nico.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>不透明度</label><div><input type="number" min="10" max="100" data-key="style.nico.opacity" /><span class="unit">%</span></div></div>
+        <div class="field"><label>最大の行数</label><div><input type="number" min="0" max="50" data-key="style.nico.maxLines" /><span class="unit">0なら画面の高さに収まるだけ</span></div></div>
+        <div class="field"><label>AAも流す<span class="help" data-help="AAは見切れないよう、全体が画面に収まる位置(大きすぎる時は小さくして)に流します。"></span></label><div><input type="checkbox" data-key="style.nico.showAA" /></div></div>
+        <div class="field"><label>AAだけを流す</label><div><input type="checkbox" data-key="style.nico.aaOnly" /><span class="unit">普通のコメントは流しません</span></div></div>
+        <h3>カスタムCSS(上級者向け)</h3>
+        <textarea class="css" data-key="style.nico.customCss" placeholder=".nico { letter-spacing: 0.05em; }"></textarea>
+      </details>
     </section>
 
+    <!-- ================= デスクトップ字幕 ================= -->
     <section data-tab="output">
-      <h3>OBSのブラウザソース</h3>
-      <div class="hint">OBSで「ブラウザ」ソースを追加し、URLに下記を指定してください(ReaCastの起動中だけ表示されます)。幅・高さは配信画面に合わせて調整してください(字幕は指定した範囲の下端に表示します)。</div>
-      <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
-
-      <h3>デスクトップ字幕(配信者のPCの画面に、読み上げ中のレスを表示)</h3>
+      <p class="lead">配信者のPCの画面に、読み上げ中のレスを重ねて表示します。<span class="help" data-help="字幕は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。フォント・色などは「下の字幕」タブの設定を使います。"></span></p>
       <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
-      <div class="field"><label>表示位置</label><div class="inline">
+      <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、字幕の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
         <button id="adjustDesktopBtn">マウスで位置を調整する</button>
         <button class="secondary" id="resetDesktopBtn">既定の位置に戻す</button>
         <span class="unit" id="desktopRectInfo"></span>
       </div></div>
-      <div class="hint">「マウスで位置を調整する」を押すと字幕の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。字幕は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません(DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられません。ボーダーレスウィンドウ設定にしてください)。</div>
-      <h3>既定の位置(マウスで位置を決めていない時に使います)</h3>
-      <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
-      <div class="field"><label>表示範囲(モニターに対する割合)</label><div class="inline">
-        左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
-        上 <input type="number" min="0" max="95" data-key="desktopY" data-percent />%
-        幅 <input type="number" min="5" max="100" data-key="desktopWidth" data-percent />%
-        高さ <input type="number" min="5" max="100" data-key="desktopHeight" data-percent />%
-      </div></div>
-      <div class="hint">字幕のフォント・色・位置の微調整は「字幕」タブの設定がそのまま使われます。デスクトップ字幕はクリックを透過するので、下のウィンドウの操作を邪魔しません。</div>
+      <details class="adv">
+        <summary>既定の位置(マウスで位置を決めていない時に使います)</summary>
+        <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
+        <div class="field"><label>表示範囲(モニターに対する割合)</label><div class="inline">
+          左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
+          上 <input type="number" min="0" max="95" data-key="desktopY" data-percent />%
+          幅 <input type="number" min="5" max="100" data-key="desktopWidth" data-percent />%
+          高さ <input type="number" min="5" max="100" data-key="desktopHeight" data-percent />%
+        </div></div>
+      </details>
+    </section>
+
+    <!-- ================= ホットキー ================= -->
+    <section data-tab="hotkeys">
+      <p class="lead">ほかのアプリを使っている時でも効くキーです(例: Ctrl+Alt+S)。割り当てたキーでも、文字は今までどおり打てます。</p>
+      <div class="note">管理者として起動したアプリ(OBS・ゲーム・専ブラなど)を操作している間は、ホットキーが届きません。<span class="help" data-help="Windowsの決まりです。ReaCast.exeを右クリック→「プロパティ」→「互換性」→「管理者としてこのプログラムを実行する」にチェックを入れて、ReaCastも管理者として起動すると効くようになります(起動のたびにWindowsの確認が出ることがあります)。"></span></div>
+      <h3>読み上げ</h3>
+      <div class="field"><label>スキップ<span class="help" data-help="字幕と待ち時間を飛ばして、VOICEVOX等・棒読みちゃんの声も止めます(コマンドで渡した声は止まらないので、民安★TALK側で止めてください)。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeySkip" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeySkip">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeySkip">解除</button></div></div>
+      <div class="field"><label>一時停止 / 再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyPause" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyPause">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyPause">解除</button></div></div>
+      <h3>話した字幕</h3>
+      <div class="field"><label>マイクを止める<span class="help" data-help="押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
+      <div class="field"><label>マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
+      <div class="hint hotkey-msg" id="hotkeyMsg"></div>
+    </section>
+
+    <!-- ================= テスト・リセット ================= -->
+    <section data-tab="misc">
+      <h3>設定を最初の状態に戻す</h3>
+      <div class="inline"><button class="secondary" id="resetAllBtn">全部の設定を最初の状態に戻す</button><span class="help" data-help="コメント読み上げ・字幕のすべての設定(取得先・読み上げ・字幕・見た目・プリセットの手直し・ホットキーなど)を、初めて使った時の状態に戻します。元に戻せないので、残しておきたい時は先にコントロールパネルの「設定を書き出す」で保存してください。"></span><span class="unit" id="resetAllMsg"></span></div>
     </section>
   </main>
   </div>
@@ -780,6 +846,7 @@
   <script src="shared/emoji-set.js"></script>
   <script src="shared/comment-common.js"></script>
   <script src="shared/hotkey-forward.js"></script>
+  <script src="shared/help.js"></script>
   <script src="comment_settings.js"></script>
 </body>
 </html>
