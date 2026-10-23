@@ -356,8 +356,9 @@ fn obs_set_poll(app: tauri::AppHandle, state: Option<serde_json::Value>) {
     app.state::<obs_bridge::ObsBridge>().set_poll(state);
 }
 
-/// リアクションの統計・盛り上がりマーカーの窓(stats.html)
-#[tauri::command]
+/// リアクションの統計・盛り上がりマーカーの窓(stats.html)。
+/// 窓を作るコマンドは必ずasyncにする(同期のコマンドで作ると、Windowsでは真っ白な窓のまま固まる)
+#[tauri::command(async)]
 fn open_stats_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("stats") {
         let _ = win.unminimize();
