@@ -1393,11 +1393,179 @@ function spawnRainbow(opts) {
   }, total);
 }
 
+/**
+ * 🏩 ホテル: 画面のどこかにホテルがぽんっと建って、生き物系のリアクション
+ * (emoji-set.jsでcreature:trueのもの。🐸🐧🐶🐷🐈)が2匹ペアでとことこ入っていき、
+ * ホテルの上にハートがふわふわ浮かぶ。
+ * 画面に生き物が出ていれば、近い子から2匹がそのままホテルへ向かう(元の動きは止めて
+ * 引き継ぐ)。足りない分は、ランダムな生き物が画面の端から歩いてくる。
+ * 全部をまとめた1つの要素(画面全体の大きさ)をactiveItemsに入れて、最後にまとめて消す。
+ */
+let hotelStyleAdded = false;
+function addHotelStyle() {
+  if (hotelStyleAdded) return;
+  hotelStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .hotel-part { position: absolute; line-height: 1; }
+    .hotel-hop { display: inline-block; animation: hotel-hop 260ms ease-in-out infinite alternate; }
+    @keyframes hotel-hop { from { transform: translateY(0); } to { transform: translateY(-16%); } }
+    .hotel-shake { animation: hotel-shake 120ms ease-in-out 6 alternate; }
+    @keyframes hotel-shake { from { transform: rotate(-3deg) scale(1.02); } to { transform: rotate(3deg) scale(0.98); } }
+    .hotel-heart { animation: hotel-heart 1700ms ease-out forwards; }
+    @keyframes hotel-heart {
+      0% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+      15% { opacity: 1; transform: translate(0, -10%) scale(1.1); }
+      100% { opacity: 0; transform: translate(var(--drift, 0px), -260%) scale(0.9); }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnHotel(opts) {
+  addHotelStyle();
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const base = settings.baseSizePx;
+  const hotelSize = base * 2;
+  const margin = base * 0.5;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item hotel-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 600ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+
+  const part = (char, size, x, y) => {
+    const p = document.createElement('span');
+    p.className = 'hotel-part';
+    p.style.left = `${x}px`;
+    p.style.top = `${y}px`;
+    p.style.fontSize = `${size}px`;
+    const g = document.createElement('span');
+    g.className = 'reaction-glyph';
+    g.textContent = char;
+    p.appendChild(g);
+    box.appendChild(p);
+    return p;
+  };
+
+  // ホテル(上にハートが浮かぶので、画面の上の方は少し空けておく)
+  const hx = margin + Math.random() * Math.max(0, vw - hotelSize - margin * 2);
+  const hy = Math.max(base * 2.2, margin) + Math.random() * Math.max(0, vh - hotelSize - base * 2.2 - margin);
+  const hotel = part('🏩', hotelSize, hx, hy);
+  hotel.style.transform = 'scale(0)';
+  hotel.style.transformOrigin = '50% 100%';
+  hotel.style.transition = 'transform 450ms cubic-bezier(.2, 1.6, .4, 1)';
+  requestAnimationFrame(() => requestAnimationFrame(() => (hotel.style.transform = 'scale(1)')));
+
+  // 入口(ホテルの下の真ん中)
+  const doorX = hx + hotelSize / 2;
+  const doorY = hy + hotelSize * 0.92;
+
+  // 画面に出ている生き物を、入口に近い順に2匹まで連れてくる
+  const pair = [];
+  const onScreen = activeItems
+    .filter((o) => o !== box && o.isConnected && o.dataset.creature && !o.dataset.dating)
+    .map((o) => ({ o, r: o.getBoundingClientRect() }))
+    .filter((c) => c.r.width > 0)
+    .sort((a, b) => Math.hypot(a.r.left - doorX, a.r.top - doorY) - Math.hypot(b.r.left - doorX, b.r.top - doorY))
+    .slice(0, 2);
+  for (const { o, r } of onScreen) {
+    o.dataset.dating = '1';
+    const g = o.querySelector('.reaction-glyph');
+    pair.push({
+      char: g ? g.textContent : '🐶',
+      filter: o.style.filter,
+      size: Math.max(base * 0.6, Math.min(base * 1.6, r.height || base)),
+      x: r.left,
+      y: r.top,
+    });
+    o.remove();
+    const idx = activeItems.indexOf(o);
+    if (idx !== -1) activeItems.splice(idx, 1);
+  }
+  // 足りない分は、ランダムな生き物が画面の端から来る(左右から1匹ずつ)
+  const creatures = EMOJI_SET.filter((e) => e.creature);
+  while (pair.length < 2 && creatures.length) {
+    const e = creatures[Math.floor(Math.random() * creatures.length)];
+    const fromLeft = pair.length === 0 ? doorX > vw / 2 : !(pair[0].x < doorX);
+    pair.push({
+      char: e.char,
+      filter: e.blackChance && Math.random() < e.blackChance ? 'grayscale(1) brightness(0.32) contrast(1.6)' : '',
+      size: base,
+      x: fromLeft ? -base * 1.2 : vw + base * 0.2,
+      y: doorY - base * (0.6 + Math.random() * 0.8),
+    });
+  }
+
+  // とことこ歩いて入口へ。着いたら小さくなって中に入る
+  let lastIn = 0;
+  pair.forEach((c, i) => {
+    const w = part(c.char, c.size, c.x, c.y);
+    if (c.filter) w.style.filter = c.filter;
+    w.firstChild.classList.add('hotel-hop');
+    const tx = doorX - c.size / 2 + (i === 0 ? -c.size * 0.25 : c.size * 0.25);
+    const ty = doorY - c.size;
+    // 🐈は左向きの絵文字なので、右へ歩く時は左右反転する
+    if (c.char === '🐈' && tx > c.x) w.style.transform = 'scaleX(-1)';
+    const dist = Math.hypot(tx - c.x, ty - c.y);
+    const walkMs = Math.round(Math.min(2400, Math.max(900, dist * 2.2)));
+    const startMs = 450 + i * 300;
+    w.style.transition = `left ${walkMs}ms linear, top ${walkMs}ms linear, opacity 350ms ease-in, font-size 350ms ease-in`;
+    setTimeout(() => {
+      w.style.left = `${tx}px`;
+      w.style.top = `${ty}px`;
+    }, startMs);
+    setTimeout(() => {
+      w.firstChild.classList.remove('hotel-hop');
+      w.style.left = `${doorX - c.size * 0.15}px`;
+      w.style.top = `${doorY - c.size * 0.35}px`;
+      w.style.fontSize = `${c.size * 0.3}px`;
+      w.style.opacity = '0';
+    }, startMs + walkMs);
+    lastIn = Math.max(lastIn, startMs + walkMs + 350);
+  });
+
+  // 2匹とも入ったら、ホテルが揺れて、上にハートが浮かぶ
+  setTimeout(() => {
+    hotel.firstChild.classList.add('hotel-shake');
+    const hearts = ['💕', '💗', '💓', '💖', '💞'];
+    for (let i = 0; i < 6; i++) {
+      setTimeout(() => {
+        const size = base * (0.55 + Math.random() * 0.5);
+        const h = part(hearts[i % hearts.length], size, hx + hotelSize * (0.2 + Math.random() * 0.6) - size / 2, hy - size * 0.2);
+        h.firstChild.classList.add('hotel-heart');
+        h.firstChild.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * base)}px`);
+      }, 250 + i * 260);
+    }
+  }, lastIn);
+
+  const total = lastIn + 3200;
+  setTimeout(() => (box.style.opacity = '0'), total - 600);
+  setTimeout(() => {
+    box.remove();
+    const idx = activeItems.indexOf(box);
+    if (idx !== -1) activeItems.splice(idx, 1);
+  }, total);
+}
+
 function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
   if (emojiId === 'rainbow') {
     spawnRainbow(opts);
+    return;
+  }
+  if (emojiId === 'lovehotel') {
+    spawnHotel(opts);
     return;
   }
 
@@ -1425,6 +1593,8 @@ function spawnReaction(emojiId, opts) {
 
   const el = document.createElement('div');
   el.className = 'reaction-item';
+  // 🏩が画面の生き物を見つけてホテルに連れていくための印
+  if (emoji.creature) el.dataset.creature = '1';
 
   const glyph = document.createElement('span');
   glyph.className = `reaction-glyph anim-${glyphAnimKey}`;
@@ -1699,7 +1869,7 @@ function spawnReaction(emojiId, opts) {
       let best = null;
       let bestD = Infinity;
       for (const other of activeItems) {
-        if (other === el || !other.isConnected || other.dataset.cat) continue;
+        if (other === el || !other.isConnected || other.dataset.cat || other.dataset.noChase) continue;
         const r = other.getBoundingClientRect();
         if (r.width === 0) continue;
         const d = Math.hypot(r.left + r.width / 2 - mx, r.top + r.height / 2 - my);

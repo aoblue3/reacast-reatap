@@ -190,6 +190,9 @@ pub struct CommentSettings {
     /// v1.6.6で🍙を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v4: bool,
+    /// v1.6.8で🏩を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v5: bool,
     pub ng_words: String,
     // ---- 荒らし対策(spam.rs) ----
     /// 荒らし対策を使う(既定OFF。連投するのは良いリスナーのことも多いので、数字も緩め)
@@ -346,6 +349,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "ラーメン|らーめん|拉麺/ramen",
     "寿司|すし|スシ|🍣/sushi",
     "おにぎり|おむすび|オニギリ|🍙/onigiri",
+    "ラブホ|🏩/lovehotel",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -453,6 +457,7 @@ impl Default for CommentSettings {
             reaction_presets_v2: true,
             reaction_presets_v3: true,
             reaction_presets_v4: true,
+            reaction_presets_v5: true,
             ng_words: String::new(),
             spam_filter: false,
             spam_same_text_count: 3,
@@ -2130,7 +2135,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2180,6 +2185,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v2 = true;
     s.reaction_presets_v3 = true;
     s.reaction_presets_v4 = true;
+    s.reaction_presets_v5 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {

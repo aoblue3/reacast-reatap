@@ -15,6 +15,8 @@
  * 表示する。指定が無ければ常にcharを使う(例: 「草」はランダムで「草」と「w」を
  * 混ぜたいのでこちらを使う)。
  *
+ * creature: 生き物(🏩のホテルにペアで入っていく。overlay.jsのspawnHotel参照)。
+ *
  * blackChance: 0〜1。この確率で、絵文字を色のフィルターで黒くして表示する
  * (🐈をたまに黒猫にする。黒猫の絵文字はWindows 10のフォントに無いため)。
  *
@@ -62,6 +64,7 @@ const EMOJI_SET = [
   { id: 'soccer', char: '⚽', label: 'サッカー', anim: 'soccer' },
   { id: 'fist', char: '👊', label: '拳', anim: 'fistbump' },
   { id: 'fireworks', char: '🎆', label: '花火', anim: 'fireworks' },
+  { id: 'lovehotel', char: '🏩', label: 'ホテル', anim: 'lovehotel' },
 
   // ==================== 食べ物系 ====================
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },
@@ -76,12 +79,12 @@ const EMOJI_SET = [
   { id: 'cake', char: '🎂', label: 'おめでとう', anim: 'cake' },
 
   // ==================== 動物・生き物系 ====================
-  { id: 'frog', char: '🐸', label: 'カエル', anim: 'frog' },
+  { id: 'frog', char: '🐸', label: 'カエル', anim: 'frog', creature: true },
   { id: 'baby', char: '👶', label: '赤ちゃん', anim: 'crawl' },
-  { id: 'penguin', char: '🐧', label: 'ペンギン', anim: 'waddle' },
-  { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark' },
-  { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink' },
-  { id: 'cat', char: '🐈', label: 'ネコ', anim: 'prowl', blackChance: 0.35 },
+  { id: 'penguin', char: '🐧', label: 'ペンギン', anim: 'waddle', creature: true },
+  { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark', creature: true },
+  { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink', creature: true },
+  { id: 'cat', char: '🐈', label: 'ネコ', anim: 'prowl', blackChance: 0.35, creature: true },
 
   // ==================== 短文系(絵文字ではなく文字として色付き表示する。
   // ニコニコ動画のコメントをイメージし、右から左に流れて消えるnicoflow
