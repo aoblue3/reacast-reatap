@@ -708,6 +708,110 @@ copyBtn.addEventListener('click', async () => {
   setTimeout(() => (copyBtn.textContent = 'コピー'), 1500);
 });
 
+// ---- 統計・盛り上がりマーカー(stats.rs。既定OFF) ----
+const statsEnabledCheckboxEl = document.getElementById('statsEnabledCheckbox');
+let statsEnabled = false;
+invoke('cfg_get', { key: 'statsEnabled' }).then((v) => {
+  statsEnabled = v === true;
+  statsEnabledCheckboxEl.checked = statsEnabled;
+});
+statsEnabledCheckboxEl.addEventListener('change', () => {
+  statsEnabled = statsEnabledCheckboxEl.checked;
+  invoke('cfg_set', { key: 'statsEnabled', value: statsEnabled });
+});
+document.getElementById('openStatsBtn').addEventListener('click', () => invoke('open_stats_window').catch(() => {}));
+
+// ---- 視聴者アンケート ----
+// 中継サーバーに {type:'poll', poll} を送ると視聴者のバーに選ぶボタンが出て、票の数は
+// pollResult で届く。OBSの画面(poll.html)にはobs_set_pollで今の状態を送る。
+// poll: {id, question, options, counts, ended} | null(中継サーバーが覚えているのは
+// 終わるまでなので、締め切った後の結果はこちらだけが持っている)
+let poll = null;
+let pollHideTimer = null;
+const pollMsgEl = document.getElementById('pollMsg');
+
+function showPollMsg(text) {
+  pollMsgEl.textContent = text || '';
+}
+
+function renderPoll() {
+  document.getElementById('pollEdit').style.display = poll ? 'none' : '';
+  document.getElementById('pollLive').style.display = poll ? '' : 'none';
+  invoke('obs_set_poll', { state: poll }).catch(() => {});
+  if (!poll) return;
+  document.getElementById('pollLiveQuestion').textContent = poll.ended ? `${poll.question}(締め切りました)` : poll.question;
+  const total = poll.counts.reduce((a, b) => a + b, 0);
+  const bars = document.getElementById('pollLiveBars');
+  if (bars.children.length !== poll.options.length) {
+    bars.textContent = '';
+    for (const text of poll.options) {
+      const row = document.createElement('div');
+      row.className = 'poll-bar';
+      row.innerHTML = '<div class="fill" style="width:0"></div><div class="text"><span></span><span></span></div>';
+      row.querySelector('.text span').textContent = text;
+      bars.appendChild(row);
+    }
+  }
+  [...bars.children].forEach((row, i) => {
+    const pct = total ? Math.round((poll.counts[i] / total) * 100) : 0;
+    row.querySelector('.fill').style.width = `${pct}%`;
+    row.querySelector('.text span:last-child').textContent = `${pct}%(${poll.counts[i]})`;
+  });
+  document.getElementById('pollLiveTotal').textContent = `${total}票`;
+  document.getElementById('pollEndBtn').style.display = poll.ended ? 'none' : '';
+}
+
+/** 中継サーバーから届いたアンケート(ReaCastを開き直した時に、続いているものが戻ってくる) */
+function onPollFromRelay(p) {
+  if (!p) return;
+  if (poll && poll.id === p.id) return;
+  poll = { id: p.id, question: p.question, options: p.options, counts: p.options.map(() => 0), ended: false };
+  renderPoll();
+}
+
+function onPollResult(pollId, counts) {
+  if (!poll || poll.id !== pollId || poll.ended || !Array.isArray(counts)) return;
+  poll.counts = poll.options.map((_, i) => Number(counts[i]) || 0);
+  renderPoll();
+}
+
+document.getElementById('pollStartBtn').addEventListener('click', () => {
+  const question = document.getElementById('pollQuestion').value.trim();
+  const options = [...document.querySelectorAll('.poll-option')].map((el) => el.value.trim()).filter(Boolean);
+  if (!question) return showPollMsg('質問を入れてください');
+  if (options.length < 2) return showPollMsg('選択肢を2つ以上入れてください');
+  const id = Date.now().toString(36);
+  if (!relayClient || !relayClient.send({ type: 'poll', poll: { id, question, options } })) {
+    return showPollMsg('中継サーバーに繋がっていないので始められません');
+  }
+  // 中継サーバーは始めた配信者自身にはpollを送り返さないので、ここで覚えておく
+  // (内容が正しくなくて断られたら、invalid_pollのエラーで元に戻す)
+  clearTimeout(pollHideTimer);
+  showPollMsg('');
+  poll = { id, question, options, counts: options.map(() => 0), ended: false };
+  renderPoll();
+});
+
+document.getElementById('pollEndBtn').addEventListener('click', () => {
+  if (!poll) return;
+  if (relayClient) relayClient.send({ type: 'poll', poll: null });
+  poll.ended = true;
+  renderPoll();
+  // 結果はOBSに少し出しておいてから消す
+  clearTimeout(pollHideTimer);
+  pollHideTimer = setTimeout(() => {
+    poll = null;
+    renderPoll();
+  }, 30000);
+});
+
+document.getElementById('pollHideBtn').addEventListener('click', () => {
+  if (poll && !poll.ended && relayClient) relayClient.send({ type: 'poll', poll: null });
+  clearTimeout(pollHideTimer);
+  poll = null;
+  renderPoll();
+});
+
 // OBSのURLなどのコピー(data-copyに、コピーする文字が入った要素のid)
 for (const btn of document.querySelectorAll('[data-copy]')) {
   btn.addEventListener('click', async () => {
@@ -808,7 +912,21 @@ async function connectRelay(creds, relayAddress, passphrase) {
   relayClient.on('type:passphrase_ok', (m) => {
     showPassphraseMsg(`「${m.passphrase}」でこの配信への参加を受け付けています`, true);
   });
+  relayClient.on('type:poll', (m) => onPollFromRelay(m.poll));
+  relayClient.on('type:pollResult', (m) => onPollResult(m.pollId, m.counts));
   relayClient.on('type:error', (m) => {
+    if (m.code === 'invalid_poll') {
+      showPollMsg(m.message);
+      poll = null;
+      renderPoll();
+      return;
+    }
+    if (m.code === 'unknown_type' && /poll/.test(m.message || '')) {
+      showPollMsg('中継サーバーがアンケートに対応していません(中継サーバーの更新が必要です)');
+      poll = null;
+      renderPoll();
+      return;
+    }
     if (m.code === 'passphrase_taken' || m.code === 'invalid_passphrase') {
       showPassphraseMsg(m.message, false);
     } else if (m.code === 'outdated_app') {
@@ -822,6 +940,8 @@ async function connectRelay(creds, relayAddress, passphrase) {
     // OFFにしたリアクションは配信画面に一切表示しない(視聴者には何も
     // 通知しない。視聴者アプリのボタンは押せるがサイレントに無視される)。
     if (!isReactionEnabled(m.emoji)) return;
+    // 統計(ONの時だけ記録される)は、表示率・クールタイムで間引く前に数える
+    if (statsEnabled) invoke('stats_viewer_reaction', { emoji: m.emoji }).catch(() => {});
     // 表示率による間引き。100%未満の場合、受信したリアクション1件ごとに
     // その確率でだけ実際に表示する(視聴者への通知や連打防止判定は中継
     // サーバー側で完結しているので、ここで間引いても視聴者側には一切

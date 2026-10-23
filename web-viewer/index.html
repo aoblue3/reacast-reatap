@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>ReaTap Web</title>
+<!-- スマホの「ホーム画面に追加」で、アプリのようにアイコンから開けるようにする
+     (manifest.json・icons/。iPhoneはapple-touch-icon等を見る) -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#17181c" />
+<link rel="apple-touch-icon" href="icons/icon-256.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="ReaTap" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <!-- ブラウザが自動的にfavicon.icoを取りに行き、無いと404(コンソールにエラー
      表示)になってしまうのを避けるため、ファイルを追加せず済むdata URIの
      簡易アイコンを指定しておく。 -->
@@ -248,6 +257,13 @@
     padding: 3px 0;
     flex: 0 0 auto;
   }
+  /* 配信者がアンケートを始めた時だけ、ボタンの上に出す(app.jsのrenderPoll) */
+  #pollBox { margin: 10px 12px 0; padding: 10px 12px; background: #202127; border: 1px solid #2f3038; border-radius: 10px; }
+  #pollBox .poll-q { font-weight: bold; margin-bottom: 6px; word-break: break-word; }
+  #pollBox .poll-btn { position: relative; display: block; width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid #3a3b44; border-radius: 8px; background: #2a2b31; color: #eee; font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+  #pollBox .poll-btn.mine { border-color: #7a9bff; }
+  #pollBox .poll-fill { position: absolute; inset: 0 auto 0 0; background: rgba(90, 130, 255, 0.35); transition: width 400ms ease; }
+  #pollBox .poll-text { position: relative; display: flex; justify-content: space-between; gap: 8px; }
 </style>
 </head>
 <body>
@@ -269,6 +285,8 @@
         <h2 style="font-size:13px;color:#ccd;margin:18px 0 4px;">前回までの合言葉</h2>
         <div id="savedList"></div>
       </div>
+
+      <p id="homeScreenHint" style="font-size:12px;color:#99a;margin:18px 0 0;">📱 スマホでは、ブラウザのメニューの「ホーム画面に追加」で、アプリのようにアイコンから開けます。前回の合言葉は覚えているので、次からはタップするだけで繋がります。</p>
 
       <details id="advancedDetails">
         <summary>詳細設定(通常は変更不要)</summary>
@@ -294,6 +312,7 @@
       </div>
     </div>
     <div id="muteNotice"></div>
+    <div id="pollBox" style="display:none;"></div>
     <div id="grid"></div>
   </div>
 

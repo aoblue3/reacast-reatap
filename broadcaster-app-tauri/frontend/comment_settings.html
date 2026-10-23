@@ -193,6 +193,9 @@
   .template-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
   .draft-title { font-weight: bold; margin: 4px 0; min-height: 1.4em; }
   .draft-body { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 8px; min-height: 260px; border-radius: 6px; background: var(--c-15161a); border: 1px solid var(--c-3a3d47); font: inherit; }
+  .modal { position: fixed; z-index: 30; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
+  .modal.visible { display: flex; }
+  .modal > div { background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 460px; max-width: calc(100vw - 40px); }
   #readingDialog > div { background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
   .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
@@ -267,7 +270,7 @@
     <button data-tab="create">次スレ作成</button>
     <div class="nav-group">読み上げ</div>
     <button data-tab="speech">声・速さ</button>
-    <button data-tab="words">NGワード・読み方</button>
+    <button data-tab="words">NGワード・荒らし対策</button>
     <div class="nav-group">見た目</div>
     <button data-tab="subtitle">下の字幕</button>
     <button data-tab="list">右のレス一覧</button>
@@ -320,6 +323,7 @@
       <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
       <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">アンケート</span><code id="urlPoll">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="urlPoll">コピー</button></div>
 
       <h3>④ 試してみる</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button><span class="help" data-help="順番待ちの先頭に割り込んで、字幕に表示して読み上げます。取得を開始していなくても使えます。"></span></div>
@@ -476,6 +480,16 @@
       <div class="rule-editor" data-rules-for="readingRules" data-target="reading"></div>
       <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="readingRules" /> テキストで直接編集する(上級者向け: 1行に「単語/読み方」、単語は正規表現)</label>
       <textarea data-key="readingRules" style="min-height: 220px; display: none"></textarea>
+
+      <h3>荒らし対策<span class="help" data-help="荒らしらしい書き込みを読み上げ・字幕に出しません(「スレッドのレス」では見られます)。連投するのは良いリスナーのことも多いので、既定はOFFで、ONにしても緩めの数字にしてあります。同じ人かどうかは、掲示板はID、YouTube・Twitchは名前で見分けます。"></span></h3>
+      <div class="field"><label>荒らし対策を使う</label><div><input type="checkbox" data-key="spamFilter" /></div></div>
+      <details class="adv">
+        <summary>ルールの数字を変える(0にするとそのルールは使いません)</summary>
+        <div class="field"><label>同じ人の同じ文<span class="help" data-help="同じ人が同じ文を、指定した秒数のうちに何回も書いた時、指定した回数目から読みません(既定: 60秒以内の3回目から)。"></span></label><div class="inline"><input type="number" min="0" max="3600" data-key="spamSameTextSecs" style="width:70px" /><span class="unit">秒以内の</span><input type="number" min="0" max="50" data-key="spamSameTextCount" style="width:60px" /><span class="unit">回目から読まない</span></div></div>
+        <div class="field"><label>書き込みが多すぎる人<span class="help" data-help="同じ人が指定した秒数のうちに指定した件数を書き込んだら、その人のレスをしばらく読みません(既定: 10秒以内に10件で、60秒読まない)。"></span></label><div class="inline"><input type="number" min="0" max="600" data-key="spamFloodSecs" style="width:70px" /><span class="unit">秒以内に</span><input type="number" min="0" max="100" data-key="spamFloodCount" style="width:60px" /><span class="unit">件で、</span><input type="number" min="0" max="3600" data-key="spamMuteSecs" style="width:70px" /><span class="unit">秒読まない</span></div></div>
+        <div class="field"><label>みんなで同じコピペ<span class="help" data-help="違う人が同じ長文を1分以内に貼った時、指定した人数目から読みません(既定: 20文字以上の文を、3人目から)。「おめでとう」のような短い文は対象になりません。"></span></label><div class="inline"><input type="number" min="1" max="1000" data-key="spamCopypasteMinChars" style="width:70px" /><span class="unit">文字以上を、</span><input type="number" min="0" max="50" data-key="spamCopypastePeople" style="width:60px" /><span class="unit">人目から読まない</span></div></div>
+        <div class="field"><label>同じ文字の長い繰り返しを短く読む<span class="help" data-help="「wwwwwwwwwwwwwwwwwwwwwww」のように同じ文字が20文字より長く続く所は、5文字にして読み上げます(字幕はそのまま)。"></span></label><div><input type="checkbox" data-key="spamCompressRepeats" /></div></div>
+      </details>
     </section>
 
     <!-- ================= 下の字幕 ================= -->
@@ -497,6 +511,7 @@
         </select>
         <button class="secondary" data-preset-reset="subtitle">このプリセットの初期値に戻す</button>
       </div></div>
+      <div class="field"><label>この見た目を共有<span class="help" data-help="今の見た目(プリセットと手直しした内容)を、共有コード(文字)かファイルにして、ほかの配信者に渡せます。もらった共有コードやファイルは「読み込む」から使えます。文字の大きさ・位置・件数など、その人ごとの設定は入りません。"></span></label><div class="inline"><button class="secondary" data-preset-share="subtitle">共有コードをコピー</button><button class="secondary" data-preset-export="subtitle">ファイルに書き出す</button><button class="secondary" data-preset-import="subtitle">読み込む</button><span class="unit" data-preset-msg="subtitle"></span></div></div>
       <iframe id="subtitlePreview" class="preview-frame subtitle-frame" src="subtitle.html?preview"></iframe>
       <div class="field" style="margin-top:8px"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
       <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
@@ -718,6 +733,7 @@
         </select>
         <button class="secondary" data-preset-reset="list">このプリセットの初期値に戻す</button>
       </div></div>
+      <div class="field"><label>この見た目を共有<span class="help" data-help="今の見た目(プリセットと手直しした内容)を、共有コード(文字)かファイルにして、ほかの配信者に渡せます。もらった共有コードやファイルは「読み込む」から使えます。文字の大きさ・位置・件数など、その人ごとの設定は入りません。"></span></label><div class="inline"><button class="secondary" data-preset-share="list">共有コードをコピー</button><button class="secondary" data-preset-export="list">ファイルに書き出す</button><button class="secondary" data-preset-import="list">読み込む</button><span class="unit" data-preset-msg="list"></span></div></div>
       <iframe id="listPreview" class="preview-frame" src="comments.html?preview"></iframe>
       <div class="inline" style="margin-top:6px">
         <input id="listTestName" type="text" value="名無し＠BBSさん" style="width:160px" />
@@ -826,6 +842,21 @@
       <div class="inline"><button class="secondary" id="resetAllBtn">全部の設定を最初の状態に戻す</button><span class="help" data-help="コメント読み上げ・字幕のすべての設定(取得先・読み上げ・字幕・見た目・プリセットの手直し・ホットキーなど)を、初めて使った時の状態に戻します。元に戻せないので、残しておきたい時は先にコントロールパネルの「設定を書き出す」で保存してください。"></span><span class="unit" id="resetAllMsg"></span></div>
     </section>
   </main>
+  </div>
+
+  <div id="presetImportDialog" class="modal">
+    <div>
+      <div style="margin-bottom: 6px; font-weight: bold">見た目の読み込み</div>
+      <div class="unit" style="margin: 0 0 6px">もらった共有コードを貼り付けるか、ファイルを選んでください。</div>
+      <textarea id="presetImportText" style="min-height: 110px; font-family: Consolas, monospace; font-size: 12px" placeholder="ReaCastPreset1:..."></textarea>
+      <div id="presetImportInfo" class="hint" style="min-height: 1.4em; white-space: pre-wrap"></div>
+      <div class="inline" style="justify-content: flex-end; margin-top: 6px">
+        <button class="secondary" id="presetImportFile">ファイルから選ぶ</button>
+        <span style="flex: 1"></span>
+        <button class="secondary" id="presetImportCancel">キャンセル</button>
+        <button id="presetImportOk">読み込む</button>
+      </div>
+    </div>
   </div>
 
   <datalist id="fontList">

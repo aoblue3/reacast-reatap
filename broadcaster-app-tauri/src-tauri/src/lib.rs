@@ -6,6 +6,7 @@ mod connect_code;
 mod fonts;
 mod obs_bridge;
 mod preflight;
+mod stats;
 mod tts;
 mod voice;
 pub mod updater;
@@ -347,6 +348,30 @@ fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 #[tauri::command(async)]
 fn open_comment_settings(app: tauri::AppHandle) -> Result<(), String> {
     open_comment_settings_window(&app).map_err(|e| e.to_string())
+}
+
+/// 視聴者アンケートの状態をOBSの画面(poll.html)に送る(control.jsから。nullで消す)
+#[tauri::command]
+fn obs_set_poll(app: tauri::AppHandle, state: Option<serde_json::Value>) {
+    app.state::<obs_bridge::ObsBridge>().set_poll(state);
+}
+
+/// リアクションの統計・盛り上がりマーカーの窓(stats.html)
+#[tauri::command]
+fn open_stats_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("stats") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "stats", WebviewUrl::App("stats.html".into()))
+        .title("ReaCast - 統計・盛り上がりマーカー")
+        .inner_size(640.0, 720.0)
+        .min_inner_size(420.0, 360.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn open_comment_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -970,6 +995,8 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
         if disabled.iter().any(|v| v.as_str() == Some(emoji)) {
             return Ok(());
         }
+        // 統計(ONの時だけ)。視聴者からのリアクションはcontrol.jsが間引く前に数える
+        app.state::<stats::Stats>().linked_reaction(app, emoji);
     }
     // 「自分の画面には表示しない(OBS経由の配信画面にのみ表示)」設定。ONの間は
     // Tauri本体のオーバーレイウィンドウへの反映(=配信者自身のモニターに映る分)
@@ -1077,6 +1104,8 @@ pub fn run() {
             // create_overlay_window内で立ち上げる最前面取り直しスレッドが参照する
             // ため、ウィンドウを作る前に必ず管理下に置いておく。
             app.manage(TopmostReasserter::new());
+            app.manage(stats::Stats::default());
+            stats::start_flusher(app.handle().clone());
 
             // コメント読み上げ・字幕機能。設定を読み込み、見た目の設定をOBS向けの
             // 画面に配っておく(取得自体は「開始」を押すか、起動時に自動開始が
@@ -1271,6 +1300,14 @@ pub fn run() {
             comments::comments_desktop_reset,
             comments::comments_pick_exe,
             comments::comments_pick_folder,
+            comments::comments_save_preset_file,
+            comments::comments_open_preset_file,
+            stats::stats_viewer_reaction,
+            stats::stats_list,
+            stats::stats_get,
+            stats::stats_delete,
+            open_stats_window,
+            obs_set_poll,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1278,6 +1315,8 @@ pub fn run() {
             // 終了する時に、話した字幕のために開いたEdgeも閉じる
             if let tauri::RunEvent::Exit = event {
                 voice::stop(app);
+                // 統計のまだ保存していない分(最大30秒ぶん)を保存する
+                app.state::<stats::Stats>().flush(app);
             }
         });
 }

@@ -128,7 +128,7 @@ function formatHotkeyLabel(shortcut) {
 // ようにする(見た目のカーソルと実際の挙動を一致させる)。
 document.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
-  if (e.target.closest('.emoji-btn')) return;
+  if (e.target.closest('.emoji-btn, #pollBox')) return;
   getCurrentWindow()
     .startDragging()
     .catch(() => {
@@ -271,6 +271,49 @@ async function resolveRelayAddress() {
   };
 }
 
+// ---- 視聴者アンケート(配信者がReaCastで始めた時だけ、アイコン列の上に出す) ----
+// poll: {id, question, options, counts, myVote} | null。票は中継サーバーが数える
+// (1つのネットワークで1票。選び直すと前の票が移る)
+let poll = null;
+const pollBox = document.getElementById('pollBox');
+
+function renderPoll() {
+  if (!poll) {
+    pollBox.style.display = 'none';
+    pollBox.textContent = '';
+    return;
+  }
+  const total = poll.counts.reduce((a, b) => a + b, 0);
+  if (pollBox.dataset.pollId !== poll.id || pollBox.querySelectorAll('.poll-btn').length !== poll.options.length) {
+    pollBox.dataset.pollId = poll.id;
+    pollBox.textContent = '';
+    const q = document.createElement('div');
+    q.className = 'poll-q';
+    q.textContent = `📊 ${poll.question}`;
+    pollBox.appendChild(q);
+    poll.options.forEach((text, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'poll-btn';
+      btn.innerHTML = '<span class="poll-fill"></span><span class="poll-text"><span></span><span></span></span>';
+      btn.querySelector('.poll-text span').textContent = text;
+      btn.addEventListener('click', () => {
+        if (!poll || !relayClient) return;
+        relayClient.send({ type: 'vote', pollId: poll.id, option: i });
+        poll.myVote = i;
+        renderPoll();
+      });
+      pollBox.appendChild(btn);
+    });
+  }
+  pollBox.querySelectorAll('.poll-btn').forEach((btn, i) => {
+    const pct = total ? Math.round((poll.counts[i] / total) * 100) : 0;
+    btn.classList.toggle('mine', poll.myVote === i);
+    btn.querySelector('.poll-fill').style.width = `${pct}%`;
+    btn.querySelector('.poll-text span:last-child').textContent = total ? `${pct}%` : '';
+  });
+  pollBox.style.display = '';
+}
+
 function connectRelay(relayHost, relayPort) {
   if (relayClient) {
     relayClient.close();
@@ -281,6 +324,8 @@ function connectRelay(relayHost, relayPort) {
     hello: { type: 'join', passphrase: profile.passphrase },
   });
   broadcasterDisabledIds = new Set();
+  poll = null;
+  renderPoll();
   relayClient.on('type:disabledReactions', (m) => {
     broadcasterDisabledIds = new Set(Array.isArray(m.ids) ? m.ids : []);
     renderButtons();
@@ -288,6 +333,15 @@ function connectRelay(relayHost, relayPort) {
   relayClient.on('type:muted', (m) => {
     mutedUntil = m.untilMs;
     applyMuteUI();
+  });
+  relayClient.on('type:poll', (m) => {
+    poll = m.poll ? { ...m.poll, counts: m.poll.options.map(() => 0), myVote: Number.isInteger(m.myVote) ? m.myVote : null } : null;
+    renderPoll();
+  });
+  relayClient.on('type:pollResult', (m) => {
+    if (!poll || poll.id !== m.pollId || !Array.isArray(m.counts)) return;
+    poll.counts = poll.options.map((_, i) => Number(m.counts[i]) || 0);
+    renderPoll();
   });
   relayClient.on('open', () => {
     document.body.style.opacity = '1';

@@ -16,6 +16,7 @@ pub mod source;
 pub mod twitch;
 pub mod youtube;
 pub mod text;
+pub mod spam;
 
 use crate::config_store::ConfigStore;
 use crate::obs_bridge::ObsBridge;
@@ -190,6 +191,21 @@ pub struct CommentSettings {
     #[serde(default)]
     pub reaction_presets_v4: bool,
     pub ng_words: String,
+    // ---- 荒らし対策(spam.rs) ----
+    /// 荒らし対策を使う(既定OFF。連投するのは良いリスナーのことも多いので、数字も緩め)
+    pub spam_filter: bool,
+    /// 同じ人が同じ文を、この秒数以内にこの回数目に書いたら読まない(0で使わない)
+    pub spam_same_text_count: usize,
+    pub spam_same_text_secs: u64,
+    /// 同じ人がこの秒数以内にこの件数書いたら、その人をしばらく読まない(0で使わない)
+    pub spam_flood_count: usize,
+    pub spam_flood_secs: u64,
+    pub spam_mute_secs: u64,
+    /// 違う人が同じ長文(この文字数以上)を1分以内に貼ったら、この人数目から読まない(0で使わない)
+    pub spam_copypaste_people: usize,
+    pub spam_copypaste_min_chars: usize,
+    /// 同じ文字が長く続く所(wwwwwwwwwwww…)を短くして読む
+    pub spam_compress_repeats: bool,
     // ---- コメントとリアクションの連動 ----
     /// 字幕に出したレスの本文がルールに当てはまったら、そのリアクションを飛ばす
     pub reaction_link: bool,
@@ -438,6 +454,15 @@ impl Default for CommentSettings {
             reaction_presets_v3: true,
             reaction_presets_v4: true,
             ng_words: String::new(),
+            spam_filter: false,
+            spam_same_text_count: 3,
+            spam_same_text_secs: 60,
+            spam_flood_count: 10,
+            spam_flood_secs: 10,
+            spam_mute_secs: 60,
+            spam_copypaste_people: 3,
+            spam_copypaste_min_chars: 20,
+            spam_compress_repeats: true,
             reaction_link: true,
             reaction_rules: DEFAULT_REACTION_RULES.join("\n"),
             reaction_link_max: 2,
@@ -745,6 +770,8 @@ struct State {
     paused: bool,
     /// 最後に記録した読み上げ位置(同じ値を何度も書かないように)
     progress: Option<(String, u32)>,
+    /// 荒らし対策(届いた順に見るので、順番待ちに入れる前に判定する)
+    spam: spam::SpamFilter,
 }
 
 pub struct CommentEngine {
@@ -771,6 +798,7 @@ impl CommentEngine {
                 desktop_hold_until: None,
                 paused: false,
                 progress: None,
+                spam: spam::SpamFilter::default(),
             }),
             wake: Notify::new(),
             skip: Notify::new(),
@@ -921,6 +949,7 @@ impl CommentEngine {
             st.run_id += 1;
             st.queue.clear();
             st.thread_posts.clear();
+            st.spam.clear();
             st.settings.thread_url = url.trim().to_string();
             st.status = CommentStatus { running: true, sources, ..Default::default() };
             st.run_id
@@ -1359,6 +1388,28 @@ impl CommentEngine {
                     bridge.push_nico(p.to_json(detect_aa(&st.settings, &st.compiled, p)));
                 }
             }
+            // 荒らし対策(ONの時だけ)。続きから読むために入れ直したレス・お知らせは見ない
+            let posts: Vec<Post> = if st.settings.spam_filter {
+                let rules = spam_rules(&st.settings);
+                let now = std::time::Instant::now();
+                posts
+                    .into_iter()
+                    .filter(|p| {
+                        if p.system || p.catch_up {
+                            return true;
+                        }
+                        match st.spam.check(now, &p.person(), &p.body, &rules) {
+                            Some(why) => {
+                                log::info!("荒らし対策で読みませんでした({why}): {} {}", p.source, p.no);
+                                false
+                            }
+                            None => true,
+                        }
+                    })
+                    .collect()
+            } else {
+                posts
+            };
             st.queue.extend(posts);
             st.status.queue_len = st.queue.len();
         }
@@ -1761,6 +1812,9 @@ impl CommentEngine {
             if !post.system && post.is_ng(&compiled) {
                 continue;
             }
+            if !post.system {
+                self.app.state::<crate::stats::Stats>().comment(&self.app);
+            }
             let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
 
@@ -1993,10 +2047,25 @@ fn next_interval(backlog: usize, shown_ms: u64, speech_ms: u64, exact_speech: bo
 
 /// 読み上げ用の文字列を作る(AAなら固定文字列か「」の中だけ、読み方ルール、
 /// レス番号、文字数制限)。
+fn spam_rules(s: &CommentSettings) -> spam::SpamRules {
+    spam::SpamRules {
+        same_text_count: s.spam_same_text_count,
+        same_text_secs: s.spam_same_text_secs,
+        flood_count: s.spam_flood_count,
+        flood_secs: s.spam_flood_secs,
+        mute_secs: s.spam_mute_secs,
+        copypaste_people: s.spam_copypaste_people,
+        copypaste_min_chars: s.spam_copypaste_min_chars,
+    }
+}
+
 fn speech_text(post: &Post, aa: bool, s: &CommentSettings, c: &Compiled) -> String {
     let body = if aa {
         let quoted = if s.aa_read_quoted_only { text::quoted_only(&post.body) } else { String::new() };
         if quoted.is_empty() { s.aa_fixed_reading.clone() } else { quoted }
+    } else if s.spam_filter && s.spam_compress_repeats {
+        // 荒らし対策: 同じ文字が20文字より長く続く所は5文字にして読む(読み方の置き換えより先に)
+        spam::compress_repeats(&post.body, 20, 5)
     } else {
         post.body.clone()
     };
@@ -2529,6 +2598,48 @@ pub fn comments_pick_folder(app: AppHandle) -> Option<String> {
         .set_title("アイコン画像のフォルダを選択")
         .blocking_pick_folder()
         .map(|p| p.to_string())
+}
+
+/// 見た目のプリセットの共有: ファイルに書き出す(書き出した場所を返す。キャンセルしたらNone)。
+/// 中身(共有コードと同じJSON)は設定画面(comment_settings.js)で作る。
+#[tauri::command(async)]
+pub fn comments_save_preset_file(app: AppHandle, file_name: String, text: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_title("プリセットの書き出し先")
+        .set_file_name(&file_name)
+        .add_filter("ReaCastのプリセット", &["json"])
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("書き出せませんでした: {e}"))?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// 見た目のプリセットの共有: ファイルを選んで中身を返す(キャンセルしたらNone)。
+/// 中身が正しいかは設定画面で確かめる。
+#[tauri::command(async)]
+pub fn comments_open_preset_file(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_title("読み込むプリセット")
+        .add_filter("ReaCastのプリセット", &["json", "txt"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    // プリセットは数KB。間違えて大きなファイルを選んだ時に読み込まない
+    if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 512 * 1024 {
+        return Err("ファイルが大きすぎます(プリセットのファイルではないようです)".into());
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| format!("読み込めませんでした: {e}"))
 }
 
 #[cfg(test)]

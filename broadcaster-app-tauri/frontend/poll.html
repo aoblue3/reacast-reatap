@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" href="data:," />
+<title>ReaCast アンケート</title>
+<!--
+  視聴者アンケートのOBS用の画面(ブラウザソース)。control.jsがobs_set_pollで送った
+  {type:"poll", state:{id, question, options, counts, ended}} を表示する(stateがnullなら消す)。
+  票の棒は、票が入るたびにするっと伸びる。ブラウザソースの大きさ(例: 幅600×高さ400)の
+  左上に出す。
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif; color: #fff; }
+  #card {
+    box-sizing: border-box;
+    margin: 12px;
+    padding: 16px 20px 14px;
+    max-width: calc(100vw - 24px);
+    background: rgba(18, 20, 28, 0.82);
+    border: 2px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+  #card.visible { opacity: 1; transform: none; }
+  .head { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #9fc2ff; margin-bottom: 6px; }
+  .badge { background: #ffd36b; color: #3a2a00; border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: bold; display: none; }
+  #card.ended .badge { display: inline-block; }
+  .question { font-size: 26px; font-weight: bold; line-height: 1.3; margin-bottom: 12px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); word-break: break-word; }
+  .option { position: relative; margin-bottom: 8px; }
+  .bar { position: relative; height: 42px; border-radius: 10px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+  .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #3b6df0, #7a9bff); border-radius: 10px; transition: width 600ms cubic-bezier(.2, .8, .2, 1); }
+  .option.top .fill { background: linear-gradient(90deg, #f0a03b, #ffd36b); }
+  .label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font-size: 20px; font-weight: bold; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); gap: 12px; }
+  .label .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count { font-variant-numeric: tabular-nums; flex: none; }
+  .total { text-align: right; font-size: 14px; color: rgba(255, 255, 255, 0.75); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div id="card">
+    <div class="head">アンケート<span class="badge">結果</span></div>
+    <div class="question" id="question"></div>
+    <div id="options"></div>
+    <div class="total" id="total"></div>
+  </div>
+  <script src="shared/error-log.js"></script>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    const C = window.CommentCommon;
+    const card = document.getElementById('card');
+    const optionsEl = document.getElementById('options');
+    let shownId = null;
+
+    function render(state) {
+      if (!state) {
+        card.classList.remove('visible');
+        shownId = null;
+        return;
+      }
+      const counts = state.options.map((_, i) => Number(state.counts && state.counts[i]) || 0);
+      const total = counts.reduce((a, b) => a + b, 0);
+      const best = Math.max(...counts);
+      // 新しいアンケートの時だけ作り直す(同じアンケートの票の更新では、棒を伸ばすだけ)
+      if (shownId !== state.id || optionsEl.children.length !== state.options.length) {
+        shownId = state.id;
+        document.getElementById('question').textContent = state.question;
+        optionsEl.textContent = '';
+        for (const text of state.options) {
+          const row = document.createElement('div');
+          row.className = 'option';
+          row.innerHTML = '<div class="bar"><div class="fill"></div><div class="label"><span class="text"></span><span class="count"></span></div></div>';
+          row.querySelector('.text').textContent = text;
+          optionsEl.appendChild(row);
+        }
+      }
+      [...optionsEl.children].forEach((row, i) => {
+        const pct = total ? Math.round((counts[i] / total) * 100) : 0;
+        row.querySelector('.fill').style.width = `${pct}%`;
+        row.querySelector('.count').textContent = `${pct}%(${counts[i]})`;
+        row.classList.toggle('top', total > 0 && counts[i] === best);
+      });
+      document.getElementById('total').textContent = `${total}票`;
+      card.classList.toggle('ended', !!state.ended);
+      card.classList.add('visible');
+    }
+
+    C.connectBridge((msg) => {
+      if (msg.type === 'poll') render(msg.state);
+    });
+  </script>
+</body>
+</html>

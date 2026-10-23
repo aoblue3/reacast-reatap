@@ -470,6 +470,8 @@ function startConnect(rawPassphrase) {
   relayClient = client;
   isJoined = false;
   broadcasterDisabledIds = new Set();
+  poll = null;
+  renderPoll();
   // 古いクライアント(startConnectで作り直す前のもの)から遅れて届いたイベントで
   // 今の状態を上書きしないよう、各ハンドラは今のクライアントの時だけ動かす。
   const isCurrent = () => relayClient === client;
@@ -523,6 +525,18 @@ function startConnect(rawPassphrase) {
     applyMuteUI();
   });
 
+  client.on('type:poll', (m) => {
+    if (!isCurrent()) return;
+    poll = m.poll ? { ...m.poll, counts: m.poll.options.map(() => 0), myVote: Number.isInteger(m.myVote) ? m.myVote : null } : null;
+    renderPoll();
+  });
+
+  client.on('type:pollResult', (m) => {
+    if (!isCurrent() || !poll || poll.id !== m.pollId || !Array.isArray(m.counts)) return;
+    poll.counts = poll.options.map((_, i) => Number(m.counts[i]) || 0);
+    renderPoll();
+  });
+
   client.on('close', () => {
     if (!isCurrent()) return;
     isJoined = false;
@@ -537,12 +551,58 @@ function startConnect(rawPassphrase) {
   client.connect();
 }
 
+// ---- 視聴者アンケート(配信者がReaCastで始めた時だけ、ボタンの上に出す) ----
+// poll: {id, question, options, counts, myVote} | null。票は中継サーバーが数える
+// (1つのネットワークで1票。選び直すと前の票が移る)
+let poll = null;
+const pollBox = document.getElementById('pollBox');
+
+function renderPoll() {
+  if (!poll) {
+    pollBox.style.display = 'none';
+    pollBox.textContent = '';
+    return;
+  }
+  const total = poll.counts.reduce((a, b) => a + b, 0);
+  if (pollBox.dataset.pollId !== poll.id || pollBox.querySelectorAll('.poll-btn').length !== poll.options.length) {
+    pollBox.dataset.pollId = poll.id;
+    pollBox.textContent = '';
+    const q = document.createElement('div');
+    q.className = 'poll-q';
+    q.textContent = `📊 ${poll.question}`;
+    pollBox.appendChild(q);
+    poll.options.forEach((text, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'poll-btn';
+      btn.innerHTML = '<span class="poll-fill"></span><span class="poll-text"><span></span><span></span></span>';
+      btn.querySelector('.poll-text span').textContent = text;
+      btn.addEventListener('click', () => {
+        if (!poll || !relayClient || !isJoined) return;
+        relayClient.send({ type: 'vote', pollId: poll.id, option: i });
+        poll.myVote = i;
+        renderPoll();
+      });
+      pollBox.appendChild(btn);
+    });
+  }
+  pollBox.querySelectorAll('.poll-btn').forEach((btn, i) => {
+    const pct = total ? Math.round((poll.counts[i] / total) * 100) : 0;
+    btn.classList.toggle('mine', poll.myVote === i);
+    btn.querySelector('.poll-fill').style.width = `${pct}%`;
+    btn.querySelector('.poll-text span:last-child').textContent = total ? `${pct}%` : '';
+  });
+  pollBox.style.display = '';
+}
+
 function disconnect() {
   if (relayClient) {
     relayClient.close();
     relayClient = null;
   }
   isJoined = false;
+  poll = null;
+  renderPoll();
   document.body.style.opacity = '1';
   currentPassphrase = '';
   showScreen(connectScreen);

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
+<title>ReaCast - 統計・盛り上がりマーカー</title>
+<style>
+  /* 色はテーマ(shared/theme.js)で切り替える。変数名は元(ダークテーマ)の色(comment_settings.htmlと同じ) */
+  :root {
+    color-scheme: dark;
+    --c-15161a: #15161a;
+    --c-1c1d22: #1c1d22;
+    --c-24262d: #24262d;
+    --c-33353d: #33353d;
+    --c-3a3d47: #3a3d47;
+    --c-3b6df0: #3b6df0;
+    --c-8d909c: #8d909c;
+    --c-a9acb8: #a9acb8;
+    --c-e6e6ea: #e6e6ea;
+    --c-ffd36b: #ffd36b;
+    --c-ff8a8a: #ff8a8a;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --c-15161a: #eff0f2;
+    --c-1c1d22: #ebebee;
+    --c-24262d: #e4e5e9;
+    --c-33353d: #dadce0;
+    --c-3a3d47: #d4d6dc;
+    --c-3b6df0: #3b6df0;
+    --c-8d909c: #636672;
+    --c-a9acb8: #474a56;
+    --c-e6e6ea: #151519;
+    --c-ffd36b: #8f6a14;
+    --c-ff8a8a: #8f1414;
+  }
+  body { margin: 0; padding: 14px 16px 24px; font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif; font-size: 13px; background: var(--c-1c1d22); color: var(--c-e6e6ea); }
+  h2 { font-size: 14px; margin: 18px 0 8px; }
+  select, button { font: inherit; }
+  select { background: var(--c-15161a); color: var(--c-e6e6ea); border: 1px solid var(--c-3a3d47); border-radius: 4px; padding: 4px 6px; max-width: 100%; }
+  button { background: var(--c-3a3d47); color: inherit; border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+  :root[data-theme="light"] button { color: #222; }
+  button:hover { filter: brightness(1.15); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--c-8d909c); font-size: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
+  .tile { background: var(--c-24262d); border-radius: 8px; padding: 8px 12px; }
+  .tile .label { color: var(--c-8d909c); font-size: 12px; }
+  .tile .value { font-size: 20px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .emoji { font-family: "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+  .top-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .top-item { background: var(--c-24262d); border-radius: 999px; padding: 3px 10px 3px 7px; display: inline-flex; gap: 5px; align-items: center; }
+  .top-item .emoji { font-size: 16px; }
+  /* 1分ごとの数の棒グラフ(横にスクロール)。マーカーのある分は黄色 */
+  .chart-wrap { overflow-x: auto; background: var(--c-15161a); border: 1px solid var(--c-33353d); border-radius: 6px; padding: 8px 8px 4px; }
+  .chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; min-width: 100%; }
+  .bar { flex: 0 0 6px; background: var(--c-3b6df0); border-radius: 2px 2px 0 0; min-height: 1px; }
+  .bar.marked { background: var(--c-ffd36b); }
+  .axis { display: flex; justify-content: space-between; color: var(--c-8d909c); font-size: 11px; margin-top: 3px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--c-33353d); font-variant-numeric: tabular-nums; }
+  th { color: var(--c-8d909c); font-weight: normal; font-size: 12px; }
+  .empty { color: var(--c-8d909c); padding: 16px 0; }
+  .help { display: inline-flex; margin-left: 5px; color: var(--c-8d909c); cursor: pointer; font-size: 13px; line-height: 1; user-select: none; font-weight: normal; }
+  .help:hover { color: var(--c-3b6df0); }
+  .help-pop { position: fixed; z-index: 50; max-width: 320px; padding: 8px 11px; background: var(--c-24262d); color: var(--c-e6e6ea); border: 1px solid var(--c-3a3d47); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.6; }
+</style>
+<script src="shared/theme.js"></script>
+</head>
+<body>
+  <div class="row">
+    <select id="sessionSelect"></select>
+    <button id="refreshBtn">更新</button>
+    <button id="deleteBtn">この記録を消す</button>
+    <span class="help" data-help="コントロールパネルの「統計・盛り上がりマーカーを記録する」がONの間、届いたリアクションと字幕に出したコメントの数を記録します。30分何も届かなかったら、次からは別の配信として記録します。記録は新しいものから30回分だけ残します(1回あたり数KB)。コメントの本文や、誰が送ったかは記録しません。"></span>
+  </div>
+  <div id="msg" class="muted" style="margin-top: 6px"></div>
+
+  <div id="content">
+    <div class="tiles">
+      <div class="tile"><div class="label">記録した時間</div><div class="value" id="tDuration">-</div></div>
+      <div class="tile"><div class="label">視聴者からのリアクション</div><div class="value" id="tViewer">-</div></div>
+      <div class="tile"><div class="label">コメント連動・話した言葉</div><div class="value" id="tLinked">-</div></div>
+      <div class="tile"><div class="label">字幕に出したコメント</div><div class="value" id="tComments">-</div></div>
+    </div>
+
+    <h2>多かったリアクション</h2>
+    <div id="topList" class="top-list"></div>
+
+    <h2>1分ごとの数<span class="help" data-help="リアクションとコメントを合わせた、1分ごとの数です。黄色い棒は、盛り上がりマーカーが付いた分です。棒にマウスを乗せると、時刻と数が出ます。"></span></h2>
+    <div class="chart-wrap"><div id="chart" class="chart"></div></div>
+    <div class="axis"><span id="axisStart"></span><span id="axisEnd"></span></div>
+
+    <h2>盛り上がりマーカー<span class="help" data-help="10秒の間に、それまでの平均の3倍(少なくとも8個)より多くリアクション・コメントが届いた瞬間です。切り抜きや見返しの目印に使えます。「記録の開始から」は、最初のリアクション・コメントが届いた時からの時間です(配信の開始とは少しずれることがあります)。"></span></h2>
+    <div class="row" style="margin-bottom: 6px"><button id="copyMarkersBtn">一覧をコピー</button><span id="copyMsg" class="muted"></span></div>
+    <div id="markers"></div>
+  </div>
+
+  <script src="shared/error-log.js"></script>
+  <script src="shared/emoji-set.js"></script>
+  <script src="shared/help.js"></script>
+  <script src="stats.js"></script>
+</body>
+</html>

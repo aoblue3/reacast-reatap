@@ -172,11 +172,45 @@
     visibility: hidden;
   }
   #muteNotice.visible { visibility: visible; }
+  /* 配信者がアンケートを始めた時だけ、アイコン列の上に出す(bar.jsのrenderPoll) */
+  #pollBox {
+    box-sizing: border-box;
+    max-width: calc(260px * var(--icon-scale, 1));
+    min-width: calc(160px * var(--icon-scale, 1));
+    background: rgba(20, 20, 24, 0.85);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: calc(12px * var(--icon-scale, 1));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    cursor: default;
+  }
+  #pollBox .poll-q { font-weight: bold; margin-bottom: 4px; word-break: break-word; }
+  #pollBox .poll-btn {
+    position: relative;
+    display: block;
+    width: 100%;
+    margin-top: 3px;
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #eee;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  #pollBox .poll-btn:hover { background: rgba(255, 255, 255, 0.14); }
+  #pollBox .poll-btn.mine { border-color: #7a9bff; }
+  #pollBox .poll-fill { position: absolute; inset: 0 auto 0 0; background: rgba(90, 130, 255, 0.35); transition: width 400ms ease; }
+  #pollBox .poll-text { position: relative; display: flex; justify-content: space-between; gap: 8px; }
+  #pollBox .poll-text span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
   <div id="reactionPanel" data-tauri-drag-region>
     <div id="reactionPanelInner" data-tauri-drag-region>
+      <div id="pollBox" style="display: none"></div>
       <div id="bar" data-tauri-drag-region></div>
       <div id="muteNotice"></div>
     </div>

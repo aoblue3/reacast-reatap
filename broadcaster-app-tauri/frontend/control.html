@@ -261,6 +261,12 @@
   .help { display: inline-flex; margin-left: 5px; color: var(--c-999999); cursor: pointer; font-size: 13px; line-height: 1; user-select: none; font-weight: normal; }
   .help:hover, .help:focus-visible { color: var(--c-3a6df0); outline: none; }
   .help-pop { position: fixed; z-index: 2000; max-width: 320px; padding: 8px 11px; background: var(--c-24252b); color: var(--c-eeeeee); border: 1px solid var(--c-444444); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.6; }
+  .poll-input { font-family: inherit !important; font-size: 13px !important; letter-spacing: 0 !important; color: var(--c-eeeeee) !important; padding: 6px 8px !important; box-sizing: border-box; width: 100% !important; margin-bottom: 6px; }
+  .poll-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .poll-question { font-weight: bold; margin-bottom: 6px; }
+  .poll-bar { position: relative; height: 24px; border-radius: 6px; background: var(--c-24252b); overflow: hidden; margin-bottom: 4px; }
+  .poll-bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--c-3a6df0); opacity: 0.55; transition: width 400ms ease; }
+  .poll-bar .text { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 8px; font-size: 12px; }
   details.adv { margin-top: 10px; border-top: 1px solid var(--c-2a2b30); padding-top: 8px; }
   details.adv > summary { cursor: pointer; color: var(--c-999999); font-size: 12px; user-select: none; margin-bottom: 6px; }
   details.adv > summary:hover { color: var(--c-eeeeee); }
@@ -360,6 +366,38 @@
       <div class="muted" style="margin-bottom: 4px;">OFFにしたものも含めて、視聴者から送られたのと同じ見た目で表示します。</div>
       <div class="test-buttons" id="testButtons"></div>
     </details>
+  </div>
+
+  <div class="card reaction-only">
+    <h2>視聴者アンケート<span class="help" data-help="質問と選択肢(2〜4個)を決めて始めると、ReaTap・ReaTap Webのリアクションバーに選ぶボタンが出ます。結果はOBSの「ブラウザ」ソース(下のURL)に棒グラフで出ます。票は1つのネットワーク(IPアドレス)につき1票で、選び直しもできます。中継サーバーが覚えているのは今のアンケートの票だけで、終わったら消えます。"></span></h2>
+    <div id="pollEdit">
+      <input type="text" id="pollQuestion" class="poll-input" maxlength="80" placeholder="質問(例: 次にやるゲームは?)" />
+      <div class="poll-options">
+        <input type="text" class="poll-input poll-option" maxlength="30" placeholder="選択肢1" />
+        <input type="text" class="poll-input poll-option" maxlength="30" placeholder="選択肢2" />
+        <input type="text" class="poll-input poll-option" maxlength="30" placeholder="選択肢3(なくてもOK)" />
+        <input type="text" class="poll-input poll-option" maxlength="30" placeholder="選択肢4(なくてもOK)" />
+      </div>
+      <button id="pollStartBtn">アンケートを始める</button>
+    </div>
+    <div id="pollLive" style="display: none;">
+      <div id="pollLiveQuestion" class="poll-question"></div>
+      <div id="pollLiveBars"></div>
+      <div class="muted" id="pollLiveTotal"></div>
+      <button id="pollEndBtn">締め切る</button>
+      <button id="pollHideBtn" class="secondary">OBSから消して、次のアンケートへ</button>
+    </div>
+    <div id="pollMsg" class="muted"></div>
+    <div class="row" style="margin: 8px 0 0;">
+      <div class="muted" style="margin-bottom: 4px;">OBSに結果を出す時の「ブラウザ」ソースのURL(幅600・高さ400くらい)</div>
+      <code id="obsPollUrl" class="url">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="obsPollUrl">コピー</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>統計・盛り上がりマーカー<span class="help" data-help="ONの間、届いたリアクションと字幕に出したコメントの数を1分ごとに数えて、短い時間にたくさん届いた瞬間を「盛り上がりマーカー」として記録します(切り抜き・見返し用)。記録は1回の配信で数KBで、新しいものから30回分だけ残します。コメントの本文や、誰が送ったかは記録しません。"></span></h2>
+    <label class="muted"><input type="checkbox" id="statsEnabledCheckbox" /> 統計・盛り上がりマーカーを記録する</label>
+    <div><button id="openStatsBtn" class="secondary">記録を見る</button></div>
   </div>
 
   <div class="card">

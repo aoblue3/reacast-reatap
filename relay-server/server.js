@@ -25,6 +25,15 @@
  *   S->C muted     {type:'muted', untilMs}
  *   S->C viewerCount {type:'viewerCount', count}           (配信者のみ、参考情報)
  *   S->C disabledReactions {type:'disabledReactions', ids}  (視聴者のみ。join直後と、配信者が変更した時)
+ *   C->S poll      {type:'poll', poll:{id, question, options:[...]}|null}  (配信者のみ。アンケートを始める/終わる)
+ *   C->S vote      {type:'vote', pollId, option}           (join済み視聴者のみ。optionは0始まりの番号)
+ *   S->C poll      {type:'poll', poll|null, myVote?}        (視聴者・配信者。始まった/終わった時と、join・register直後)
+ *   S->C pollResult {type:'pollResult', pollId, counts:[...]}  (視聴者・配信者。投票があった時、まとめて0.5秒に1回まで)
+ *
+ * アンケート(poll/vote/pollResult)も後から追加したメッセージ。古い視聴者アプリは
+ * 知らないtypeを無視するだけなので、protocolVersionは上げていない。投票は
+ * 「部屋ID+接続元IP」ごとに1票(選び直しはできる)。中継サーバーが覚えているのは
+ * 今のアンケートの票だけで、終わったら捨てる。
  *
  * disabledReactionsは後から追加したメッセージ。古い視聴者アプリは知らないtypeを
  * 無視するだけ、古い中継サーバーは配信者にunknown_typeエラーを返すだけ(配信者
@@ -67,6 +76,13 @@ const RATE_STATE_MAX_IDLE_MS = 10 * 60_000; // このぶん操作が無いIP別�
 const MAX_MESSAGE_BYTES = 2048; // 1メッセージの最大サイズ(不正・過大なデータを弾く)
 const ALLOWED_EMOJI_ID_RE = /^[a-zA-Z0-9_-]{1,32}$/; // 絵文字IDの形式チェック
 const MAX_DISABLED_REACTIONS = 200; // disabledReactionsで受け付けるIDの最大数
+const POLL_ID_RE = /^[a-z0-9]{1,16}$/; // アンケートのID(配信者アプリが決める)
+const MAX_POLL_QUESTION_CHARS = 80;
+const MAX_POLL_OPTION_CHARS = 30;
+const MIN_POLL_OPTIONS = 2;
+const MAX_POLL_OPTIONS = 4;
+const POLL_RESULT_INTERVAL_MS = 500; // 途中経過を配る間隔(票が続けて入っても、まとめて送る)
+const VOTE_MIN_INTERVAL_MS = 1000; // 同じ人の選び直しはこれより短い間隔では受け付けない
 const ROOM_ID_RE = /^[0-9a-f]{10}$/; // 5byte hex
 const BROADCASTER_TOKEN_RE = /^[0-9a-f]{48}$/; // 24byte hex
 const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // 英数字で開始、3〜32文字(- _ 可)
@@ -422,6 +438,10 @@ class RelayServer {
         return this._handleDisabledReactions(ws, msg);
       case 'reaction':
         return this._handleReaction(ws, msg);
+      case 'poll':
+        return this._handlePoll(ws, msg);
+      case 'vote':
+        return this._handleVote(ws, msg);
       default:
         return this._send(ws, { type: 'error', code: 'unknown_type', message: `未知のtype: ${msg.type}` });
     }
@@ -450,6 +470,8 @@ class RelayServer {
         // 配信者がOFFにしているリアクションのID一覧(視聴者側でボタンを灰色に
         // するために中継する。中継サーバー自身はこれで転送を止めたりはしない)
         disabledReactions: [],
+        // 今のアンケート(無ければnull)。{id, question, options, counts, votes: Map(投票キー→番号), lastVoteAt: Map, resultTimer}
+        poll: null,
         broadcasterConn: null,
         viewerConns: new Set(),
         createdAt: Date.now(),
@@ -464,6 +486,11 @@ class RelayServer {
 
     this._send(ws, { type: 'registered', roomId });
     this._send(ws, { type: 'viewerCount', count: room.viewerConns.size });
+    // 配信者アプリを開き直した時に、続いているアンケートを戻せるように
+    if (room.poll) {
+      this._send(ws, { type: 'poll', poll: this._pollPublic(room.poll) });
+      this._send(ws, { type: 'pollResult', pollId: room.poll.id, counts: room.poll.counts });
+    }
     this.logger.log(`[relay] room ${roomId}: broadcaster registered`);
 
     // 合言葉の登録・変更(register時に指定されていれば)。部屋の登録自体は
@@ -546,6 +573,11 @@ class RelayServer {
 
     this._send(ws, { type: 'joined', roomId });
     this._send(ws, { type: 'disabledReactions', ids: room.disabledReactions });
+    if (room.poll) {
+      const myVote = room.poll.votes.get(this._voterKey(ws));
+      this._send(ws, { type: 'poll', poll: this._pollPublic(room.poll), myVote: myVote === undefined ? null : myVote });
+      this._send(ws, { type: 'pollResult', pollId: room.poll.id, counts: room.poll.counts });
+    }
     if (room.broadcasterConn) {
       this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
     }
@@ -569,6 +601,96 @@ class RelayServer {
     room.disabledReactions = [...new Set(ids)];
     for (const viewer of room.viewerConns) {
       this._send(viewer, { type: 'disabledReactions', ids: room.disabledReactions });
+    }
+  }
+
+  _pollPublic(poll) {
+    return { id: poll.id, question: poll.question, options: poll.options };
+  }
+
+  /** 1票の単位。exe版・ブラウザ版とも接続元IPごと(繋ぎ直しても同じ人とみなす) */
+  _voterKey(ws) {
+    return ws._ip;
+  }
+
+  _sendToRoom(room, obj) {
+    if (room.broadcasterConn) this._send(room.broadcasterConn, obj);
+    for (const viewer of room.viewerConns) this._send(viewer, obj);
+  }
+
+  _handlePoll(ws, msg) {
+    if (ws._role !== 'broadcaster' || !ws._roomId) {
+      return this._send(ws, { type: 'error', code: 'not_registered', message: '先にregisterしてください' });
+    }
+    const room = this.rooms.get(ws._roomId);
+    if (!room) return;
+    if (room.poll && room.poll.resultTimer) clearTimeout(room.poll.resultTimer);
+    if (msg.poll === null) {
+      room.poll = null;
+      for (const viewer of room.viewerConns) this._send(viewer, { type: 'poll', poll: null });
+      return;
+    }
+    const p = msg.poll;
+    const text = (v, max) => typeof v === 'string' && v.trim().length > 0 && [...v].length <= max;
+    if (
+      !p ||
+      typeof p !== 'object' ||
+      typeof p.id !== 'string' ||
+      !POLL_ID_RE.test(p.id) ||
+      !text(p.question, MAX_POLL_QUESTION_CHARS) ||
+      !Array.isArray(p.options) ||
+      p.options.length < MIN_POLL_OPTIONS ||
+      p.options.length > MAX_POLL_OPTIONS ||
+      !p.options.every((o) => text(o, MAX_POLL_OPTION_CHARS))
+    ) {
+      room.poll = null;
+      return this._send(ws, { type: 'error', code: 'invalid_poll', message: 'アンケートの内容が正しくありません' });
+    }
+    room.poll = {
+      id: p.id,
+      question: p.question.trim(),
+      options: p.options.map((o) => o.trim()),
+      counts: p.options.map(() => 0),
+      votes: new Map(),
+      lastVoteAt: new Map(),
+      resultTimer: null,
+    };
+    room.lastActiveAt = Date.now();
+    for (const viewer of room.viewerConns) {
+      this._send(viewer, { type: 'poll', poll: this._pollPublic(room.poll), myVote: null });
+    }
+    this._sendToRoom(room, { type: 'pollResult', pollId: room.poll.id, counts: room.poll.counts });
+    this.logger.log(`[relay] room ${ws._roomId}: poll started (${room.poll.options.length} options)`);
+  }
+
+  _handleVote(ws, msg) {
+    if (ws._role !== 'viewer' || !ws._roomId) {
+      return this._send(ws, { type: 'error', code: 'not_joined', message: '先にjoinしてください' });
+    }
+    const room = this.rooms.get(ws._roomId);
+    const poll = room && room.poll;
+    // 終わったアンケート・違うアンケートへの票は黙って捨てる(終わった直後に押した等)
+    if (!poll || msg.pollId !== poll.id) return;
+    if (!Number.isInteger(msg.option) || msg.option < 0 || msg.option >= poll.options.length) {
+      return this._send(ws, { type: 'error', code: 'invalid_vote', message: '票の内容が正しくありません' });
+    }
+    const key = this._voterKey(ws);
+    const now = Date.now();
+    if (now - (poll.lastVoteAt.get(key) || 0) < VOTE_MIN_INTERVAL_MS) return;
+    poll.lastVoteAt.set(key, now);
+    const prev = poll.votes.get(key);
+    if (prev === msg.option) return;
+    if (prev !== undefined) poll.counts[prev] -= 1;
+    poll.counts[msg.option] += 1;
+    poll.votes.set(key, msg.option);
+    room.lastActiveAt = now;
+    // 途中経過は、票が続けて入っても0.5秒に1回にまとめて配る
+    if (!poll.resultTimer) {
+      poll.resultTimer = setTimeout(() => {
+        poll.resultTimer = null;
+        if (room.poll === poll) this._sendToRoom(room, { type: 'pollResult', pollId: poll.id, counts: poll.counts });
+      }, POLL_RESULT_INTERVAL_MS);
+      if (typeof poll.resultTimer.unref === 'function') poll.resultTimer.unref();
     }
   }
 

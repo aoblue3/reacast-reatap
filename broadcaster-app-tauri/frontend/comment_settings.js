@@ -1055,6 +1055,183 @@ for (const btn of document.querySelectorAll('[data-preset-reset]')) {
   });
 }
 
+// ---- 見た目の共有(共有コード・ファイル) ----
+// 中身は {app:'ReaCast', kind:'preset', version:1, group, base, values}。
+// baseは元にしたプリセット、valuesはプリセットで置き換える項目(PRESET_KEYS)の今の値。
+// 共有コードはこのJSONをUTF-8のbase64にして、先頭に PRESET_CODE_PREFIX を付けたもの。
+const PRESET_CODE_PREFIX = 'ReaCastPreset1:';
+const PRESET_GROUP_NAMES = { subtitle: '下の字幕', list: '右のレス一覧' };
+
+function presetShareData(group) {
+  const g = PRESET_GROUPS[group];
+  const cur = C.mergeStyle(settings.style)[g.part];
+  const values = {};
+  for (const k of g.keys) values[k] = cur[k];
+  return { app: 'ReaCast', kind: 'preset', version: 1, group, base: presetState(group).current, values };
+}
+
+function toBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+function fromBase64(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/** 共有コード(またはファイルの中身のJSON)を確かめて、読み込める形にする。
+ * 知らない項目・型の違う値・長すぎる値は捨てる(壊れた共有コードで画面がおかしくならないように) */
+function parsePresetShare(text) {
+  let raw = String(text || '').trim();
+  if (!raw) throw new Error('共有コードを貼り付けてください');
+  let obj;
+  try {
+    if (raw.startsWith(PRESET_CODE_PREFIX)) raw = fromBase64(raw.slice(PRESET_CODE_PREFIX.length).replace(/\s+/g, ''));
+    obj = JSON.parse(raw);
+  } catch {
+    throw new Error('共有コードの形式が正しくありません(途中で切れていないか確かめてください)');
+  }
+  if (!obj || obj.app !== 'ReaCast' || obj.kind !== 'preset' || !PRESET_GROUPS[obj.group] || !obj.values || typeof obj.values !== 'object') {
+    throw new Error('ReaCastの見た目の共有コードではありません');
+  }
+  const g = PRESET_GROUPS[obj.group];
+  const defaults = C.DEFAULT_STYLE[g.part];
+  const values = {};
+  for (const k of g.keys) {
+    const v = obj.values[k];
+    if (v === undefined || typeof v !== typeof defaults[k]) continue;
+    if (typeof v === 'string' && v.length > (k === 'customCss' ? 30000 : 200)) continue;
+    if (typeof v === 'number' && !Number.isFinite(v)) continue;
+    values[k] = v;
+  }
+  const base = Object.prototype.hasOwnProperty.call(g.presets, obj.base) ? obj.base : 'default';
+  return { group: obj.group, base, values };
+}
+
+/** 読み込んだ見た目を使う。元にしたプリセットを選んで、違う所を「手直し」として覚える
+ * (「このプリセットの初期値に戻す」も今まで通り使える) */
+function applyPresetShare(data) {
+  const st = presetState(data.group);
+  const base = presetDefaults(data.group, data.base);
+  const diff = {};
+  for (const [k, v] of Object.entries(data.values)) if (v !== base[k]) diff[k] = v;
+  if (Object.keys(diff).length) st.custom[data.base] = diff;
+  else delete st.custom[data.base];
+  applyPreset(data.group, data.base, true);
+}
+
+function presetMsg(group, text) {
+  const el = document.querySelector(`[data-preset-msg="${group}"]`);
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => (el.textContent = ''), 6000);
+}
+
+/** プリセットの名前(選択肢の文字の、括弧の前まで) */
+function presetLabel(group, id) {
+  const sel = document.getElementById(PRESET_GROUPS[group].select);
+  const o = sel && Array.from(sel.options).find((x) => x.value === id);
+  return o ? o.textContent.replace(/\(.*$/, '') : id;
+}
+
+for (const btn of document.querySelectorAll('[data-preset-share]')) {
+  btn.addEventListener('click', async () => {
+    const group = btn.dataset.presetShare;
+    const code = PRESET_CODE_PREFIX + toBase64(JSON.stringify(presetShareData(group)));
+    try {
+      await navigator.clipboard.writeText(code);
+      presetMsg(group, '共有コードをコピーしました。そのまま貼り付けて渡せます');
+    } catch {
+      presetMsg(group, 'コピーできませんでした。「ファイルに書き出す」を使ってください');
+    }
+  });
+}
+for (const btn of document.querySelectorAll('[data-preset-export]')) {
+  btn.addEventListener('click', async () => {
+    const group = btn.dataset.presetExport;
+    const data = presetShareData(group);
+    const name = `ReaCastの見た目(${PRESET_GROUP_NAMES[group]}・${presetLabel(group, data.base)}).json`;
+    try {
+      const path = await invoke('comments_save_preset_file', { fileName: name, text: JSON.stringify(data, null, 2) });
+      if (path) presetMsg(group, `書き出しました: ${path}`);
+    } catch (e) {
+      presetMsg(group, String(e));
+    }
+  });
+}
+
+const presetImportDialog = document.getElementById('presetImportDialog');
+const presetImportText = document.getElementById('presetImportText');
+const presetImportInfo = document.getElementById('presetImportInfo');
+let presetImportGroup = 'subtitle';
+
+/** 貼り付けた内容を確かめて、何が読み込まれるかを窓の下に出す */
+function previewPresetImport() {
+  presetImportInfo.style.color = '';
+  if (!presetImportText.value.trim()) {
+    presetImportInfo.textContent = '';
+    return null;
+  }
+  try {
+    const data = parsePresetShare(presetImportText.value);
+    const name = presetLabel(data.group, data.base);
+    const notes = [`${PRESET_GROUP_NAMES[data.group]}の見た目(元のプリセット: ${name})`];
+    if (data.group !== presetImportGroup) notes.push(`${PRESET_GROUP_NAMES[data.group]}の共有コードなので、${PRESET_GROUP_NAMES[data.group]}に読み込みます`);
+    notes.push(`今の「${name}」の手直しは、読み込んだ内容に置き換わります`);
+    // カスタムCSSが外のサーバーの画像・フォントを読み込むと、OBSで開いている間そのサーバーに
+    // こちらのIPアドレスが伝わる。知らない人の共有コードの時に気づけるようにする
+    if (/url\s*\(\s*['"]?\s*(https?:)?\/\/|@import/i.test(data.values.customCss || '')) {
+      notes.push('※ カスタムCSSが外のサイトの画像・フォントを読み込みます(信頼できる人の共有コードか確かめてください)');
+    }
+    presetImportInfo.textContent = notes.join('\n');
+    return data;
+  } catch (e) {
+    presetImportInfo.textContent = e.message;
+    presetImportInfo.style.color = 'var(--c-ff8a8a)';
+    return null;
+  }
+}
+
+for (const btn of document.querySelectorAll('[data-preset-import]')) {
+  btn.addEventListener('click', () => {
+    presetImportGroup = btn.dataset.presetImport;
+    presetImportText.value = '';
+    presetImportInfo.textContent = '';
+    presetImportDialog.classList.add('visible');
+    presetImportText.focus();
+  });
+}
+presetImportText.addEventListener('input', previewPresetImport);
+document.getElementById('presetImportFile').addEventListener('click', async () => {
+  try {
+    const text = await invoke('comments_open_preset_file');
+    if (text != null) {
+      presetImportText.value = text;
+      previewPresetImport();
+    }
+  } catch (e) {
+    presetImportInfo.textContent = String(e);
+    presetImportInfo.style.color = 'var(--c-ff8a8a)';
+  }
+});
+document.getElementById('presetImportCancel').addEventListener('click', () => presetImportDialog.classList.remove('visible'));
+document.getElementById('presetImportOk').addEventListener('click', () => {
+  const data = previewPresetImport();
+  if (!data) {
+    if (!presetImportText.value.trim()) presetImportInfo.textContent = '共有コードを貼り付けるか、ファイルを選んでください';
+    return;
+  }
+  applyPresetShare(data);
+  presetImportDialog.classList.remove('visible');
+  presetMsg(data.group, '読み込みました');
+});
+
 // ---- デスクトップ字幕の位置調整 ----
 const adjustBtn = document.getElementById('adjustDesktopBtn');
 let adjusting = false;

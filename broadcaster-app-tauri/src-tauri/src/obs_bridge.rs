@@ -53,6 +53,8 @@ const ERROR_LOG_JS: &str = include_str!("../../frontend/shared/error-log.js");
 // 話した字幕: OBSに表示する画面と、Edgeで開く音声認識の画面(voice.rs)
 const VOICE_HTML: &str = include_str!("../../frontend/voice.html");
 const VOICE_INPUT_HTML: &str = include_str!("../../frontend/voice_input.html");
+// 視聴者アンケートの結果(配信画面に出す)
+const POLL_HTML: &str = include_str!("../../frontend/poll.html");
 
 /// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 100;
@@ -106,6 +108,8 @@ struct CommentBridgeState {
     history: VecDeque<serde_json::Value>,
     /// 今表示中の字幕と、それが消える時刻
     subtitle: Option<(serde_json::Value, Instant)>,
+    /// 視聴者アンケートの今の状態(OBSを後から開いた時にも出すため)
+    poll: Option<serde_json::Value>,
 }
 
 impl CommentBridgeState {
@@ -114,6 +118,9 @@ impl CommentBridgeState {
         let mut out = Vec::new();
         if let Some(style) = &self.style {
             out.push(serde_json::json!({ "type": "commentStyle", "style": style }).to_string());
+        }
+        if let Some(poll) = &self.poll {
+            out.push(serde_json::json!({ "type": "poll", "state": poll }).to_string());
         }
         let items: Vec<&serde_json::Value> = self.history.iter().collect();
         out.push(serde_json::json!({ "type": "commentHistory", "items": items }).to_string());
@@ -244,6 +251,13 @@ impl ObsBridge {
     pub fn clear_comments(&self) {
         self.comments.lock().unwrap().history.clear();
         let _ = self.tx.send(serde_json::json!({ "type": "commentClear" }).to_string());
+    }
+
+    /// 視聴者アンケートの状態(質問・選択肢・票の数・終わったか)をOBSの画面に送る。
+    /// Noneで消す。中身はcontrol.jsが作る
+    pub fn set_poll(&self, state: Option<serde_json::Value>) {
+        self.comments.lock().unwrap().poll = state.clone();
+        let _ = self.tx.send(serde_json::json!({ "type": "poll", "state": state }).to_string());
     }
 
     pub fn clear_subtitle(&self) {
@@ -391,6 +405,7 @@ Connection: close
         "/shared/error-log.js" => ("text/javascript; charset=utf-8", ERROR_LOG_JS),
         "/voice.html" => ("text/html; charset=utf-8", VOICE_HTML),
         "/voice_input.html" => ("text/html; charset=utf-8", VOICE_INPUT_HTML),
+        "/poll.html" => ("text/html; charset=utf-8", POLL_HTML),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {

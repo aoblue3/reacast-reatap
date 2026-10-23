@@ -341,6 +341,72 @@ async function run() {
     offViewer.close();
     offBroadcaster.close();
 
+    // --- 14c. アンケート: 配信者が始めると視聴者に届き、票は1つのIPで1票(選び直せる) ---
+    const nextOfType = async (ws, type) => {
+      for (;;) {
+        const m = await nextMessage(ws);
+        if (m.type === type) return m;
+      }
+    };
+    const pollPassphrase = `poll-${crypto.randomBytes(3).toString('hex')}`;
+    const pollRoomId = crypto.randomBytes(5).toString('hex');
+    const pollToken = crypto.randomBytes(24).toString('hex');
+    const pollBroadcaster = await connect();
+    send(pollBroadcaster, { type: 'register', roomId: pollRoomId, broadcasterToken: pollToken, passphrase: pollPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(pollBroadcaster)).type, 'registered');
+    const pollViewer = await connect();
+    send(pollViewer, { type: 'join', passphrase: pollPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextMessage(pollViewer)).type, 'joined');
+
+    send(pollBroadcaster, { type: 'poll', poll: { id: 'bad id', question: 'Q', options: ['a', 'b'] } });
+    assert.strictEqual((await nextOfType(pollBroadcaster, 'error')).code, 'invalid_poll');
+    send(pollBroadcaster, { type: 'poll', poll: { id: 'p1', question: 'Q', options: ['a'] } });
+    assert.strictEqual((await nextOfType(pollBroadcaster, 'error')).code, 'invalid_poll');
+    console.log('OK: 正しくないアンケート(IDの形・選択肢が1つ)は断られる');
+
+    send(pollBroadcaster, { type: 'poll', poll: { id: 'p1', question: '今日のおやつは?', options: ['おにぎり', 'ケーキ', 'すし'] } });
+    const started = await nextOfType(pollViewer, 'poll');
+    assert.deepStrictEqual(started.poll, { id: 'p1', question: '今日のおやつは?', options: ['おにぎり', 'ケーキ', 'すし'] });
+    assert.deepStrictEqual((await nextOfType(pollViewer, 'pollResult')).counts, [0, 0, 0]);
+    assert.deepStrictEqual((await nextOfType(pollBroadcaster, 'pollResult')).counts, [0, 0, 0]);
+    console.log('OK: 配信者がアンケートを始めると、視聴者に質問と選択肢が届く');
+
+    send(pollViewer, { type: 'vote', pollId: 'p1', option: 1 });
+    assert.deepStrictEqual((await nextOfType(pollBroadcaster, 'pollResult')).counts, [0, 1, 0]);
+    // 同じIPの別の接続(テストは全部127.0.0.1)は同じ人として選び直し扱い
+    const pollViewer2 = await connect();
+    send(pollViewer2, { type: 'join', passphrase: pollPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextOfType(pollViewer2, 'poll')).myVote, 1);
+    await new Promise((r) => setTimeout(r, 1100));
+    send(pollViewer2, { type: 'vote', pollId: 'p1', option: 2 });
+    assert.deepStrictEqual((await nextOfType(pollBroadcaster, 'pollResult')).counts, [0, 0, 1]);
+    console.log('OK: 票は1つのIPで1票で、選び直すと前の票が移る');
+
+    send(pollViewer, { type: 'vote', pollId: 'p1', option: 9 });
+    assert.strictEqual((await nextOfType(pollViewer, 'error')).code, 'invalid_vote');
+    send(pollBroadcaster, { type: 'vote', pollId: 'p1', option: 0 });
+    assert.strictEqual((await nextOfType(pollBroadcaster, 'error')).code, 'not_joined');
+    send(pollViewer, { type: 'poll', poll: null });
+    assert.strictEqual((await nextOfType(pollViewer, 'error')).code, 'not_registered');
+    console.log('OK: 範囲外の票・配信者からの票・視聴者からのアンケート操作は断られる');
+
+    // 配信者アプリを開き直しても、続いているアンケートが戻る
+    pollBroadcaster.close();
+    const pollBroadcaster2 = await connect();
+    send(pollBroadcaster2, { type: 'register', roomId: pollRoomId, broadcasterToken: pollToken, passphrase: pollPassphrase, protocolVersion: PROTOCOL_VERSION });
+    assert.strictEqual((await nextOfType(pollBroadcaster2, 'poll')).poll.id, 'p1');
+    assert.deepStrictEqual((await nextOfType(pollBroadcaster2, 'pollResult')).counts, [0, 0, 1]);
+    console.log('OK: 配信者が繋ぎ直すと、続いているアンケートと途中経過が届く');
+
+    send(pollBroadcaster2, { type: 'poll', poll: null });
+    assert.strictEqual((await nextOfType(pollViewer, 'poll')).poll, null);
+    send(pollViewer, { type: 'vote', pollId: 'p1', option: 0 });
+    assert.strictEqual(server.rooms.get(pollRoomId).poll, null);
+    console.log('OK: アンケートを終わると視聴者に届き、その後の票は捨てられる');
+    pollViewer.close();
+    pollViewer2.close();
+    pollBroadcaster2.close();
+
     // --- 15. 生存確認(ping)に応答する接続は切られない ---
     const alive = await connect();
     server._heartbeat();
