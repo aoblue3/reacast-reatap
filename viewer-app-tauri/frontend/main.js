@@ -1039,7 +1039,13 @@ async function buildProfileSettingsPanel(profile) {
     for (const w of windows) {
       const item = document.createElement('button');
       item.className = 'ps-window-item';
-      item.innerHTML = `${w.title}<span class="path">${w.path || '(パス不明)'}</span>`;
+      // 窓のタイトル(配信の名前など、他人が決めた文字が入る)はHTMLとして入れない。
+      // <img onerror=...>のような名前の窓があると、この画面でスクリプトが動いてしまうため
+      item.textContent = w.title;
+      const pathEl = document.createElement('span');
+      pathEl.className = 'path';
+      pathEl.textContent = w.path || '(パス不明)';
+      item.appendChild(pathEl);
       item.addEventListener('click', async () => {
         await setProfileSetting(id, 'manualOverridePath', w.path);
         await notifyIfActive(id);

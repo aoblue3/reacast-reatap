@@ -59,6 +59,24 @@ pub fn get_app_version() -> String {
     current_version().to_string()
 }
 
+/// このアプリのGitHubのリリースに置いたexe(ASSET_NAME)のURLか。
+/// 例: https://github.com/owner/repo/releases/download/v1.7.0/ReaTap.exe
+fn is_release_asset_url(url: &str, repo: &str) -> bool {
+    if repo.is_empty() || repo.contains("..") {
+        return false;
+    }
+    let Some(rest) = url.strip_prefix(&format!("https://github.com/{repo}/releases/download/")) else {
+        return false;
+    };
+    let mut parts = rest.split('/');
+    let tag = parts.next().unwrap_or("");
+    let name = parts.next().unwrap_or("");
+    parts.next().is_none()
+        && !tag.is_empty()
+        && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        && name == ASSET_NAME
+}
+
 /// アップデート確認先のGitHubリポジトリ("owner/repo"形式)。GitHub Actions側で
 /// `UPDATE_CHECK_REPO: ${{ github.repository }}` として自動的に渡される。
 fn update_repo() -> &'static str {
@@ -421,6 +439,18 @@ pub async fn download_and_apply_update(
     {
         use tauri::Manager;
 
+        // ダウンロードするのは、このアプリのGitHubのリリースのexeだけにする。URLとハッシュ値は
+        // 画面(JS)から渡されるので、画面でスクリプトを動かされた時(窓のタイトル等を誤って
+        // HTMLとして表示した、等)に、知らないexeをダウンロードして実行させられないように。
+        // ハッシュ値(.sha256)も必ず確かめる(リリースには常に付けている)
+        if !is_release_asset_url(&download_url, update_repo()) {
+            return Err("更新ファイルの場所が正しくありません".to_string());
+        }
+        let Some(sha256) = sha256.filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())) else {
+            return Err("更新ファイルのハッシュ値がありません。GitHubのReleasesページから手動でダウンロードしてください".to_string());
+        };
+        let sha256 = Some(sha256);
+
         // check_for_updateと同じ理由で、ダウンロード用クライアントにも明示的な
         // タイムアウトを設定する(exe本体は数MB〜十数MBあるため、接続確立自体は
         // 短めのタイムアウトにしつつ、転送全体には余裕を持たせてある)。
@@ -467,5 +497,23 @@ pub async fn download_and_apply_update(
         // 差し替え役(新exe自身)が自分の終了を待っているので、ここで実際に終了する。
         app.exit(0);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_release_assets_of_this_repo() {
+        let repo = "aoblue3/reacast-reatap";
+        let ok = format!("https://github.com/{repo}/releases/download/v1.7.0/{ASSET_NAME}");
+        assert!(is_release_asset_url(&ok, repo));
+        assert!(!is_release_asset_url(&ok, ""));
+        assert!(!is_release_asset_url(&format!("http://github.com/{repo}/releases/download/v1.7.0/{ASSET_NAME}"), repo));
+        assert!(!is_release_asset_url(&format!("https://github.com/evil/repo/releases/download/v1.7.0/{ASSET_NAME}"), repo));
+        assert!(!is_release_asset_url(&format!("https://github.com/{repo}/releases/download/v1.7.0/other.exe"), repo));
+        assert!(!is_release_asset_url(&format!("https://github.com/{repo}/releases/download/v1.7.0/../x/{ASSET_NAME}"), repo));
+        assert!(!is_release_asset_url(&format!("https://evil.example/https://github.com/{repo}/releases/download/v1/{ASSET_NAME}"), repo));
     }
 }
