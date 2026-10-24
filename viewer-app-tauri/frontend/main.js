@@ -1438,6 +1438,7 @@ async function migrateLegacyConfigIfNeeded() {
 /* ------------------------- 初期化 ------------------------- */
 
 async function init() {
+  window.RelayClient.appVersion = await invoke('get_app_version').catch(() => '');
   await migrateLegacyConfigIfNeeded();
 
   const savedProfiles = await invoke('cfg_get', { key: 'broadcasterProfiles' });

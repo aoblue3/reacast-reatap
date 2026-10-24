@@ -334,6 +334,14 @@ function connectRelay(relayHost, relayPort) {
     mutedUntil = m.untilMs;
     applyMuteUI();
   });
+  // 中継サーバーに「アプリが古い」と断られた。繋ぎ直しても同じなので止めて、バーに出す
+  relayClient.on('type:error', (m) => {
+    if (m.code !== 'outdated_app') return;
+    relayClient.close();
+    muteNoticeEl.textContent = 'ReaTapが古いため繋がりません。ReaTapを起動し直して更新してください';
+    muteNoticeEl.classList.add('visible');
+    document.body.style.opacity = '1';
+  });
   relayClient.on('type:poll', (m) => {
     poll = m.poll ? { ...m.poll, counts: m.poll.options.map(() => 0), myVote: Number.isInteger(m.myVote) ? m.myVote : null } : null;
     renderPoll();
@@ -641,6 +649,7 @@ listen('profile-settings-changed', () => {
 });
 
 async function init() {
+  window.RelayClient.appVersion = await invoke('get_app_version').catch(() => '');
   myLabel = getCurrentWindow().label;
   profileId = myLabel.replace(/^bar-/, '');
 

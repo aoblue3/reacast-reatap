@@ -3,7 +3,7 @@ const assert = require('assert');
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const http = require('http');
-const { RelayServer } = require('../server');
+const { RelayServer, isAppVersionAllowed } = require('../server');
 
 const PORT = 39299;
 const PROTOCOL_VERSION = 2; // relay-client.js側のPROTOCOL_VERSIONと同じ値にしておくこと
@@ -465,6 +465,32 @@ async function run() {
       console.log('OK: 1つのIPから繋げる数には上限があり、閉じればまた繋げる');
     } finally {
       await limited.stop();
+    }
+
+    // --- 18. 古いアプリを断る仕組み(minAppVersionを設定した時だけ。既定は断らない) ---
+    assert.ok(isAppVersionAllowed('', ''), '既定(空)は断らない');
+    assert.ok(isAppVersionAllowed('v1.7.2', 'v1.7.2'));
+    assert.ok(isAppVersionAllowed('v1.10.0', 'v1.7.2'));
+    assert.ok(isAppVersionAllowed('v2.0.0', 'v1.7.2'));
+    assert.ok(isAppVersionAllowed('web', 'v1.7.2'), 'ReaTap Webは通す');
+    assert.ok(!isAppVersionAllowed('v1.7.1', 'v1.7.2'));
+    assert.ok(!isAppVersionAllowed('', 'v1.7.2'), 'バージョンを送ってこない古いアプリは断る');
+    assert.ok(!isAppVersionAllowed('開発版', 'v1.7.2'));
+    const VER_PORT = PORT + 2;
+    const strict = new RelayServer({ port: VER_PORT, minAppVersion: 'v1.7.2', logger: { log: () => {} } }).start();
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const oldApp = await connect({ origin: 'http://tauri.localhost' }, VER_PORT);
+      send(oldApp, { type: 'join', passphrase: 'nobody-here', protocolVersion: PROTOCOL_VERSION });
+      assert.strictEqual((await nextMessage(oldApp)).code, 'outdated_app');
+      const newApp = await connect({ origin: 'http://tauri.localhost' }, VER_PORT);
+      send(newApp, { type: 'join', passphrase: 'nobody-here', protocolVersion: PROTOCOL_VERSION, appVersion: 'v1.7.2' });
+      assert.strictEqual((await nextMessage(newApp)).code, 'room_not_found');
+      oldApp.close();
+      newApp.close();
+      console.log('OK: minAppVersionを設定すると古いアプリ(バージョン無しを含む)を断り、新しいアプリは通す');
+    } finally {
+      await strict.stop();
     }
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');

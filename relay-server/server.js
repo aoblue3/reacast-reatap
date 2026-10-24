@@ -30,6 +30,11 @@
  *   S->C poll      {type:'poll', poll|null, myVote?}        (視聴者・配信者。始まった/終わった時と、join・register直後)
  *   S->C pollResult {type:'pollResult', pollId, counts:[...]}  (視聴者・配信者。投票があった時、まとめて0.5秒に1回まで)
  *
+ * register/joinには、アプリのバージョン(appVersion。例: "v1.7.2"、ReaTap Webは"web")も
+ * 付けて送られてくる(v1.7.2から)。minAppVersion(環境変数RELAY_MIN_APP_VERSION)を
+ * 設定すると、それより古いアプリ(バージョンを送ってこない古いアプリを含む)を
+ * outdated_appで断る。既定は空=断らない。
+ *
  * アンケート(poll/vote/pollResult)も後から追加したメッセージ。古い視聴者アプリは
  * 知らないtypeを無視するだけなので、protocolVersionは上げていない。投票は
  * 「部屋ID+接続元IP」ごとに1票(選び直しはできる)。中継サーバーが覚えているのは
@@ -109,6 +114,31 @@ const ROOM_CLEANUP_INTERVAL_MS = 10 * 60_000;
 // 同時に(新しい値に)上げること。
 const MIN_PROTOCOL_VERSION = 2;
 
+// これより古いバージョンのアプリを断る(例: "v1.7.2")。空なら断らない(既定)。
+// VPSでは systemctl edit reaction-relay.service で Environment=RELAY_MIN_APP_VERSION=v1.7.2 の
+// ように設定して再起動する
+const MIN_APP_VERSION = process.env.RELAY_MIN_APP_VERSION || '';
+
+/** "v1.7.2" → [1, 7, 2]。形が違えばnull */
+function parseAppVersion(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '').trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** appVersionがmin以上か(ReaTap Webの"web"はいつも最新なので通す) */
+function isAppVersionAllowed(appVersion, min) {
+  if (!min) return true;
+  if (appVersion === 'web') return true;
+  const a = parseAppVersion(appVersion);
+  const b = parseAppVersion(min);
+  if (!b) return true;
+  if (!a) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return true;
+}
+
 // ReaTap Web(web-viewer/)の静的ファイルの既定の場所。このファイル自身の
 // 場所(__dirname)基準の相対パスにしておくことで、`cd relay-server &&
 // node server.js`のようにどのディレクトリから起動しても正しく解決される
@@ -143,6 +173,7 @@ class RelayServer {
     heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     roomIdleTtlMs = ROOM_IDLE_TTL_MS,
     maxConnectionsPerIp = MAX_CONNECTIONS_PER_IP,
+    minAppVersion = MIN_APP_VERSION,
   } = {}) {
     this.port = port;
     this.logger = logger;
@@ -164,6 +195,7 @@ class RelayServer {
     // 接続元IPごとの今の接続(MAX_CONNECTIONS_PER_IP)
     this.connsByIp = new Map(); // ip -> Set<ws>
     this.maxConnectionsPerIp = maxConnectionsPerIp;
+    this.minAppVersion = minAppVersion;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.roomIdleTtlMs = roomIdleTtlMs;
     this.httpServer = null;
@@ -452,6 +484,16 @@ class RelayServer {
     // ため、ここでprotocolVersionを検査する(reactionは接続確立後のメッセージ
     // なので、その時点で既にversion確認済み=対象外)。
     if (msg.type === 'register' || msg.type === 'join') {
+      // 古いバージョンのアプリを断る(minAppVersionを設定した時だけ)
+      if (!isAppVersionAllowed(typeof msg.appVersion === 'string' ? msg.appVersion : '', this.minAppVersion)) {
+        this.logger.log(`[relay] refused an outdated app (${String(msg.appVersion || 'no version').slice(0, 20)})`);
+        return this._send(ws, {
+          type: 'error',
+          code: 'outdated_app',
+          message: 'アプリのバージョンが古いため接続できません。最新版のアプリに更新してください。',
+        });
+      }
+      ws._appVersion = typeof msg.appVersion === 'string' ? msg.appVersion.slice(0, 20) : '';
       if (!Number.isInteger(msg.protocolVersion) || msg.protocolVersion < MIN_PROTOCOL_VERSION) {
         return this._send(ws, {
           type: 'error',
@@ -524,7 +566,7 @@ class RelayServer {
       this._send(ws, { type: 'poll', poll: this._pollPublic(room.poll) });
       this._send(ws, { type: 'pollResult', pollId: room.poll.id, counts: room.poll.counts });
     }
-    this.logger.log(`[relay] room ${roomId}: broadcaster registered`);
+    this.logger.log(`[relay] room ${roomId}: broadcaster registered (${ws._appVersion || 'no version'})`);
 
     // 合言葉の登録・変更(register時に指定されていれば)。部屋の登録自体は
     // 上で既に完了させてあるので、合言葉が重複していて弾かれても再接続自体は
@@ -614,7 +656,7 @@ class RelayServer {
     if (room.broadcasterConn) {
       this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
     }
-    this.logger.log(`[relay] room ${roomId}: viewer joined (${room.viewerConns.size} total)`);
+    this.logger.log(`[relay] room ${roomId}: viewer joined (${room.viewerConns.size} total, ${ws._appVersion || 'no version'})`);
   }
 
   _handleDisabledReactions(ws, msg) {
@@ -796,7 +838,7 @@ class RelayServer {
   }
 }
 
-module.exports = { RelayServer };
+module.exports = { RelayServer, isAppVersionAllowed };
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 39200;

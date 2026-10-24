@@ -60,7 +60,7 @@ class RelayClient {
     ws.addEventListener('open', () => {
       this._currentDelay = this.reconnectDelayMs;
       this.emit('open');
-      if (this.hello) this.send({ ...this.hello, protocolVersion: PROTOCOL_VERSION });
+      if (this.hello) this.send({ ...this.hello, protocolVersion: PROTOCOL_VERSION, appVersion: RelayClient.appVersion });
     });
 
     ws.addEventListener('message', (evt) => {
@@ -120,5 +120,9 @@ class RelayClient {
 // send()を直接呼んでregisterを送り直す(合言葉の変更等)場合など、呼び出し側が
 // 自分でprotocolVersionを付与したい時のために公開しておく。
 RelayClient.PROTOCOL_VERSION = PROTOCOL_VERSION;
+// このアプリのバージョン(例: "v1.7.2"。ReaTap Webは"web")。register/joinに混ぜて送る。
+// 中継サーバーは、設定すれば古いバージョンのアプリを断れる(relay-server/server.jsの
+// minAppVersion)。各アプリが起動時に入れる(繋ぐ前に)
+RelayClient.appVersion = '';
 
 window.RelayClient = RelayClient;

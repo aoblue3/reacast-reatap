@@ -837,6 +837,7 @@ function sendPassphraseUpdate(passphrase) {
     broadcasterToken: credentials.broadcasterToken,
     passphrase,
     protocolVersion: window.RelayClient.PROTOCOL_VERSION,
+    appVersion: window.RelayClient.appVersion,
   });
 }
 
@@ -971,6 +972,7 @@ async function connectRelay(creds, relayAddress, passphrase) {
 }
 
 (async () => {
+  window.RelayClient.appVersion = await invoke('get_app_version').catch(() => '');
   const [creds, relayAddress, savedPassphrase, savedDisabled, negativeDefaultsApplied] = await Promise.all([
     invoke('get_credentials'),
     invoke('get_relay_address'),

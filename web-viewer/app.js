@@ -18,6 +18,8 @@
  */
 
 const LS_PREFIX = 'reatapweb.';
+// ReaTap Webは中継サーバー自身が配っている(いつも最新)ので、バージョンの代わりに"web"と送る
+window.RelayClient.appVersion = 'web';
 const DEBOUNCE_MS = 500;
 const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // relay-server/server.jsのPASSPHRASE_REと同じ
 
