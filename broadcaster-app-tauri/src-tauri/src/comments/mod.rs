@@ -193,7 +193,19 @@ pub struct CommentSettings {
     /// v1.6.8で🏩を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v5: bool,
+    /// v1.7.0で🕶️を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v6: bool,
     pub ng_words: String,
+    // ---- レス着信音 ----
+    /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
+    pub chime_enabled: bool,
+    /// 鳴らす音のファイル(wav・mp3・ogg)
+    pub chime_path: String,
+    /// 音量(0〜1。1でそのまま)
+    pub chime_volume: f64,
+    /// 溜まっている時(ターボ中)は鳴らさない(鳴らすと読むのが遅れるため)
+    pub chime_skip_turbo: bool,
     // ---- 荒らし対策(spam.rs) ----
     /// 荒らし対策を使う(既定OFF。連投するのは良いリスナーのことも多いので、数字も緩め)
     pub spam_filter: bool,
@@ -350,6 +362,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "寿司|すし|スシ|🍣/sushi",
     "おにぎり|おむすび|オニギリ|🍙/onigiri",
     "ラブホ|🏩/lovehotel",
+    "グラサン|サングラス|🕶/sunglasses",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -458,7 +471,12 @@ impl Default for CommentSettings {
             reaction_presets_v3: true,
             reaction_presets_v4: true,
             reaction_presets_v5: true,
+            reaction_presets_v6: true,
             ng_words: String::new(),
+            chime_enabled: false,
+            chime_path: String::new(),
+            chime_volume: 0.6,
+            chime_skip_turbo: true,
             spam_filter: false,
             spam_same_text_count: 3,
             spam_same_text_secs: 60,
@@ -1820,6 +1838,15 @@ impl CommentEngine {
             if !post.system {
                 self.app.state::<crate::stats::Stats>().comment(&self.app);
             }
+            // レス着信音(テスト表示でも鳴らす)。鳴り終わるまで(長くても1.5秒)待ってから字幕・読み上げ
+            let chime_target = !post.system || post.name == "テスト";
+            let turbo = backlog >= settings.turbo_threshold.max(1);
+            if settings.chime_enabled && chime_target && !post.catch_up && !(settings.chime_skip_turbo && turbo) {
+                match crate::tts::play_chime(&settings) {
+                    Ok(ms) => self.wait_or_skip(ms.clamp(200, 1500)).await,
+                    Err(e) => log::warn!("レス着信音: {e}"),
+                }
+            }
             let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
 
@@ -2135,7 +2162,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2186,6 +2213,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v3 = true;
     s.reaction_presets_v4 = true;
     s.reaction_presets_v5 = true;
+    s.reaction_presets_v6 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
@@ -2581,6 +2609,24 @@ pub fn comments_desktop_reset(app: AppHandle, engine: Engine, store: tauri::Stat
     let _ = app.emit("comments:settings", &s);
     crate::sync_subtitle_window(&app);
     Ok(())
+}
+
+/// レス着信音のファイルを選ぶダイアログ。
+#[tauri::command(async)]
+pub fn comments_pick_sound(app: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    app.dialog()
+        .file()
+        .set_title("着信音のファイルを選択")
+        .add_filter("音のファイル", &["wav", "mp3", "ogg"])
+        .blocking_pick_file()
+        .map(|p| p.to_string())
+}
+
+/// レス着信音を試しに鳴らす(設定画面の「試しに鳴らす」)。
+#[tauri::command(async)]
+pub fn comments_test_chime(settings: CommentSettings) -> Result<(), String> {
+    crate::tts::play_chime(&settings).map(|_| ())
 }
 
 /// 読み上げソフト(exe)を選ぶダイアログ。

@@ -1055,6 +1055,26 @@ for (const btn of document.querySelectorAll('[data-preset-reset]')) {
   });
 }
 
+// ---- レス着信音 ----
+const chimeMsgEl = document.getElementById('chimeMsg');
+document.getElementById('chimePickBtn').addEventListener('click', async () => {
+  const path = await invoke('comments_pick_sound').catch(() => null);
+  if (!path) return;
+  settings.chimePath = path;
+  renderFields();
+  scheduleSave();
+});
+document.getElementById('chimeTestBtn').addEventListener('click', async () => {
+  chimeMsgEl.style.color = '';
+  chimeMsgEl.textContent = '';
+  try {
+    await invoke('comments_test_chime', { settings });
+  } catch (e) {
+    chimeMsgEl.style.color = 'var(--c-ff8a8a)';
+    chimeMsgEl.textContent = String(e);
+  }
+});
+
 // ---- 見た目の共有(共有コード・ファイル) ----
 // 中身は {app:'ReaCast', kind:'preset', version:1, group, base, values}。
 // baseは元にしたプリセット、valuesはプリセットで置き換える項目(PRESET_KEYS)の今の値。

@@ -21,6 +21,9 @@ use std::time::Duration;
 enum AudioCmd {
     /// WAVを鳴らす。鳴らし始めたら、その長さ(ミリ秒)を返す
     Play { wav: Vec<u8>, device: String, done: mpsc::Sender<Result<u64, String>> },
+    /// レス着信音を鳴らす(読み上げとは別に鳴らすので、読み上げの声は止めない)。
+    /// 鳴らし始めたら、その長さ(ミリ秒。分からなければ0)を返す
+    Chime { data: Vec<u8>, device: String, volume: f32, done: mpsc::Sender<Result<u64, String>> },
     /// 鳴らしている音を止める(スキップ)
     Stop,
     /// 出力先(スピーカー等)の名前の一覧
@@ -41,32 +44,59 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>) {
     // 出力先ごとに開いたものを使い回す(開き直すと一瞬遅れるため)
     let mut stream: Option<(String, rodio::OutputStream, rodio::OutputStreamHandle)> = None;
     let mut sink: Option<rodio::Sink> = None;
+    let mut chime_sink: Option<rodio::Sink> = None;
+    // 出力先を開く(同じ出力先なら開いたものを使い回す)
+    let open = |stream: &mut Option<(String, rodio::OutputStream, rodio::OutputStreamHandle)>,
+                sink: &mut Option<rodio::Sink>,
+                chime_sink: &mut Option<rodio::Sink>,
+                device: &str|
+     -> Result<rodio::OutputStreamHandle, String> {
+        if stream.as_ref().map(|(d, _, _)| d != device).unwrap_or(true) {
+            *sink = None;
+            *chime_sink = None;
+            *stream = None;
+            let host = rodio::cpal::default_host();
+            let picked = if device.is_empty() {
+                None
+            } else {
+                host.output_devices()
+                    .ok()
+                    .and_then(|mut it| it.find(|d| d.name().map(|n| n == device).unwrap_or(false)))
+            };
+            // 指定の出力先が見つからない時は、Windowsの既定の出力先で鳴らす
+            let (s, h) = match picked {
+                Some(d) => rodio::OutputStream::try_from_device(&d),
+                None => rodio::OutputStream::try_default(),
+            }
+            .map_err(|e| format!("音を出せません: {e}"))?;
+            *stream = Some((device.to_string(), s, h));
+        }
+        Ok(stream.as_ref().unwrap().2.clone())
+    };
     while let Ok(cmd) = rx.recv() {
         match cmd {
+            AudioCmd::Chime { data, device, volume, done } => {
+                let result = (|| -> Result<u64, String> {
+                    use rodio::Source;
+                    let handle = open(&mut stream, &mut sink, &mut chime_sink, &device)?;
+                    let new_sink = rodio::Sink::try_new(&handle).map_err(|e| format!("音を出せません: {e}"))?;
+                    let source = rodio::Decoder::new(std::io::Cursor::new(data))
+                        .map_err(|_| "着信音のファイルを読めません(wav・mp3・oggに対応しています)".to_string())?;
+                    let ms = source.total_duration().map(|d| d.as_millis() as u64).unwrap_or(0);
+                    new_sink.set_volume(volume.clamp(0.0, 2.0));
+                    new_sink.append(source);
+                    if let Some(old) = chime_sink.replace(new_sink) {
+                        old.stop();
+                    }
+                    Ok(ms)
+                })();
+                let _ = done.send(result);
+            }
             AudioCmd::Play { wav, device, done } => {
                 let result = (|| -> Result<u64, String> {
                     let ms = wav_duration_ms(&wav).ok_or("音声の形式が分かりません")?;
-                    if stream.as_ref().map(|(d, _, _)| d != &device).unwrap_or(true) {
-                        sink = None;
-                        stream = None;
-                        let host = rodio::cpal::default_host();
-                        let picked = if device.is_empty() {
-                            None
-                        } else {
-                            host.output_devices()
-                                .ok()
-                                .and_then(|mut it| it.find(|d| d.name().map(|n| n == device).unwrap_or(false)))
-                        };
-                        // 指定の出力先が見つからない時は、Windowsの既定の出力先で鳴らす
-                        let (s, h) = match picked {
-                            Some(d) => rodio::OutputStream::try_from_device(&d),
-                            None => rodio::OutputStream::try_default(),
-                        }
-                        .map_err(|e| format!("音を出せません: {e}"))?;
-                        stream = Some((device.clone(), s, h));
-                    }
-                    let (_, _, handle) = stream.as_ref().unwrap();
-                    let new_sink = rodio::Sink::try_new(handle).map_err(|e| format!("音を出せません: {e}"))?;
+                    let handle = open(&mut stream, &mut sink, &mut chime_sink, &device)?;
+                    let new_sink = rodio::Sink::try_new(&handle).map_err(|e| format!("音を出せません: {e}"))?;
                     let source = rodio::Decoder::new(std::io::Cursor::new(wav)).map_err(|e| format!("音声を読めません: {e}"))?;
                     new_sink.append(source);
                     if let Some(old) = sink.replace(new_sink) {
@@ -122,6 +152,28 @@ fn play(wav: Vec<u8>, device: &str) -> Result<u64, String> {
         .lock()
         .unwrap()
         .send(AudioCmd::Play { wav, device: device.to_string(), done })
+        .map_err(|_| "音を鳴らす準備ができていません".to_string())?;
+    wait.recv_timeout(Duration::from_secs(10)).map_err(|_| "音を鳴らせませんでした".to_string())?
+}
+
+/// レス着信音を鳴らし始めて、長さ(ミリ秒。分からなければ0)を返す。
+/// 出力先は読み上げと同じ(「音の出力先」の設定)。
+pub fn play_chime(s: &CommentSettings) -> Result<u64, String> {
+    let path = s.chime_path.trim();
+    if path.is_empty() {
+        return Err("着信音のファイルを選んでください".into());
+    }
+    // 着信音は数秒の短い音のはず。間違えて大きなファイルを選んだ時に読み込まない
+    let meta = std::fs::metadata(path).map_err(|_| "着信音のファイルが見つかりません".to_string())?;
+    if meta.len() > 5 * 1024 * 1024 {
+        return Err("着信音のファイルが大きすぎます(5MBまで)".into());
+    }
+    let data = std::fs::read(path).map_err(|e| format!("着信音のファイルを読めません: {e}"))?;
+    let (done, wait) = mpsc::channel();
+    audio()
+        .lock()
+        .unwrap()
+        .send(AudioCmd::Chime { data, device: s.tts_device.clone(), volume: s.chime_volume as f32, done })
         .map_err(|_| "音を鳴らす準備ができていません".to_string())?;
     wait.recv_timeout(Duration::from_secs(10)).map_err(|_| "音を鳴らせませんでした".to_string())?
 }

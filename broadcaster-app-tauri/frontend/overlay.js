@@ -1395,7 +1395,7 @@ function spawnRainbow(opts) {
 
 /**
  * 🏩 ホテル: 画面のどこかにホテルがぽんっと建って、生き物系のリアクション
- * (emoji-set.jsでcreature:trueのもの。🐸🐧🐶🐷🐈)が2匹ペアでとことこ入っていき、
+ * (emoji-set.jsでcreature:trueのもの。🐸🐧🐶🐷🐈と、顔の絵文字・👺💀)が2匹ペアでとことこ入っていき、
  * ホテルの上にハートがふわふわ浮かぶ。
  * 画面に生き物が出ていれば、近い子から2匹がそのままホテルへ向かう(元の動きは止めて
  * 引き継ぐ)。足りない分は、ランダムな生き物が画面の端から歩いてくる。
@@ -1557,6 +1557,173 @@ function spawnHotel(opts) {
   }, total);
 }
 
+/**
+ * 画面に出ているリアクションを、別の演出(🏩・🕶️)が引き継ぐ。元の要素は消して、同じ見た目の
+ * 「歩く役」を演出の要素(box)の中に作り直す。返すのは {el, size, x, y, glyph}。
+ */
+function takeOver(item, box) {
+  const r = item.getBoundingClientRect();
+  const g = item.querySelector('.reaction-glyph');
+  const size = Math.max(settings.baseSizePx * 0.6, Math.min(settings.baseSizePx * 1.6, r.height || settings.baseSizePx));
+  item.remove();
+  const idx = activeItems.indexOf(item);
+  if (idx !== -1) activeItems.splice(idx, 1);
+  const el = document.createElement('span');
+  el.className = 'hotel-part';
+  el.style.left = `${r.left}px`;
+  el.style.top = `${r.top}px`;
+  el.style.fontSize = `${size}px`;
+  if (item.style.filter) el.style.filter = item.style.filter;
+  const glyph = document.createElement('span');
+  glyph.className = 'reaction-glyph';
+  glyph.textContent = g ? g.textContent : '😂';
+  el.appendChild(glyph);
+  box.appendChild(el);
+  return { el, glyph, size, x: r.left, y: r.top };
+}
+
+/**
+ * 🕶️ グラサン: 画面のどこかにグラサンが置かれる。顔のリアクション(emoji-set.jsでface:true。
+ * 😂🥺😭💀👺🐶など)が画面にいれば、近い子がグラサンの所まで来て、グラサンをかけて
+ * キメる。誰もいない間はグラサンが置かれたまま待っていて、待っている間に顔のリアクションが
+ * 出てきたら、その子がかけに来る。最後まで誰も来なければ、置かれたまま消える。
+ */
+let shadesStyleAdded = false;
+function spawnSunglasses(opts) {
+  addHotelStyle();
+  if (!shadesStyleAdded) {
+    shadesStyleAdded = true;
+    const st = document.createElement('style');
+    st.textContent = `
+      .shades-cool { animation: shades-cool 700ms ease-in-out infinite alternate; }
+      @keyframes shades-cool { from { transform: rotate(-6deg); } to { transform: rotate(6deg) translateY(-4%); } }
+      .shades-sparkle { animation: shades-sparkle 900ms ease-out forwards; }
+      @keyframes shades-sparkle { 0% { opacity: 0; transform: scale(0.2) rotate(0deg); } 30% { opacity: 1; transform: scale(1.2) rotate(40deg); } 100% { opacity: 0; transform: scale(0.6) rotate(90deg); } }
+    `;
+    document.head.appendChild(st);
+  }
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const base = settings.baseSizePx;
+  const gSize = base * 1.1;
+  const margin = base * 0.8;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item shades-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 600ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+
+  // グラサン(少し傾けて置いてある)
+  const gx = margin + Math.random() * Math.max(0, vw - gSize - margin * 2);
+  const gy = margin + Math.random() * Math.max(0, vh - gSize - margin * 2);
+  const glasses = document.createElement('span');
+  glasses.className = 'hotel-part';
+  glasses.style.left = `${gx}px`;
+  glasses.style.top = `${gy}px`;
+  glasses.style.fontSize = `${gSize}px`;
+  glasses.style.transform = 'scale(0) rotate(-8deg)';
+  glasses.style.transition = 'transform 450ms cubic-bezier(.2, 1.6, .4, 1)';
+  const gGlyph = document.createElement('span');
+  gGlyph.className = 'reaction-glyph';
+  gGlyph.textContent = '🕶️';
+  glasses.appendChild(gGlyph);
+  box.appendChild(glasses);
+  requestAnimationFrame(() => requestAnimationFrame(() => (glasses.style.transform = 'scale(1) rotate(-8deg)')));
+
+  const born = Date.now();
+  const waitUntil = born + Math.max(6000, settings.animationDurationMs * 2);
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 650);
+  };
+
+  const wear = (item) => {
+    const w = takeOver(item, box);
+    w.glyph.classList.add('hotel-hop');
+    // 顔の目のあたりがグラサンの位置に来るように歩いてくる
+    const fx = gx + gSize / 2 - w.size / 2;
+    const fy = gy + gSize / 2 - w.size * 0.38;
+    const dist = Math.hypot(fx - w.x, fy - w.y);
+    const walkMs = Math.round(Math.min(1800, Math.max(500, dist * 1.8)));
+    w.el.style.transition = `left ${walkMs}ms ease-out, top ${walkMs}ms ease-out`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      w.el.style.left = `${fx}px`;
+      w.el.style.top = `${fy}px`;
+    }));
+    setTimeout(() => {
+      w.glyph.classList.remove('hotel-hop');
+      // グラサンがひょいっと持ち上がって、目の所にかかる
+      const gs = w.size * 0.74;
+      glasses.style.transition = 'left 380ms ease-out, top 380ms ease-out, font-size 380ms ease-out, transform 380ms cubic-bezier(.3, 1.4, .5, 1)';
+      glasses.style.left = `${fx + w.size / 2 - gs / 2}px`;
+      glasses.style.top = `${fy + w.size * 0.36 - gs / 2}px`;
+      glasses.style.fontSize = `${gs}px`;
+      glasses.style.transform = 'scale(1) rotate(0deg)';
+      glasses.style.zIndex = '1';
+      setTimeout(() => {
+        // かけたらキメる(顔とグラサンを一緒に揺らす)。キラッと光る
+        const pair = document.createElement('span');
+        pair.className = 'hotel-part shades-cool';
+        pair.style.left = '0';
+        pair.style.top = '0';
+        pair.style.transformOrigin = `${fx + w.size / 2}px ${fy + w.size}px`;
+        box.appendChild(pair);
+        pair.style.width = `${vw}px`;
+        pair.style.height = `${vh}px`;
+        pair.appendChild(w.el);
+        pair.appendChild(glasses);
+        const sp = document.createElement('span');
+        sp.className = 'hotel-part';
+        sp.style.left = `${fx + w.size * 0.82}px`;
+        sp.style.top = `${fy + w.size * 0.05}px`;
+        sp.style.fontSize = `${w.size * 0.45}px`;
+        sp.innerHTML = '<span class="reaction-glyph shades-sparkle">✨</span>';
+        box.appendChild(sp);
+        finish(2800);
+      }, 400);
+    }, walkMs + 60);
+  };
+
+  // 顔のリアクションが来るのを待つ(0.3秒おきに見る)
+  const look = () => {
+    if (finished) return;
+    const now = Date.now();
+    if (now > waitUntil) {
+      finish(0);
+      return;
+    }
+    const cx = gx + gSize / 2;
+    const cy = gy + gSize / 2;
+    const face = activeItems
+      .filter((o) => o !== box && o.isConnected && o.dataset.face && !o.dataset.dating)
+      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .filter((c) => c.r.width > 0)
+      .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
+    if (face && now - born > 450) {
+      face.o.dataset.dating = '1';
+      wear(face.o);
+      return;
+    }
+    setTimeout(look, 300);
+  };
+  setTimeout(look, 450);
+}
+
 function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
@@ -1566,6 +1733,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'lovehotel') {
     spawnHotel(opts);
+    return;
+  }
+  if (emojiId === 'sunglasses') {
+    spawnSunglasses(opts);
     return;
   }
 
@@ -1595,6 +1766,8 @@ function spawnReaction(emojiId, opts) {
   el.className = 'reaction-item';
   // 🏩が画面の生き物を見つけてホテルに連れていくための印
   if (emoji.creature) el.dataset.creature = '1';
+  // 🕶️が画面の顔を見つけてグラサンをかけさせるための印
+  if (emoji.face) el.dataset.face = '1';
 
   const glyph = document.createElement('span');
   glyph.className = `reaction-glyph anim-${glyphAnimKey}`;

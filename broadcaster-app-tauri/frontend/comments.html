@@ -221,18 +221,26 @@
       }
     }
 
+    // ?source=youtube のように付けると、その取得元のレスだけを出す(複数は「,」区切り。
+    // bbs=掲示板 youtube=YouTube twitch=Twitch)。付けなければ全部。ReaCastからのお知らせは常に出す
+    const onlySources = (new URLSearchParams(location.search).get('source') || '')
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean);
+    const wanted = (res) => !onlySources.length || !res || res.system || res.source === 'system' || onlySources.includes(res.source);
+
     function handle(msg) {
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
         render();
       } else if (msg.type === 'commentHistory') {
-        items = Array.isArray(msg.items) ? msg.items.slice(-100) : [];
+        items = Array.isArray(msg.items) ? msg.items.filter(wanted).slice(-100) : [];
         render();
       } else if (msg.type === 'commentClear') {
         items = [];
         render();
       } else if (msg.type === 'comment' && msg.res) {
-        add(msg.res);
+        if (wanted(msg.res)) add(msg.res);
       }
     }
 

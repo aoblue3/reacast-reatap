@@ -1301,6 +1301,8 @@ pub fn run() {
             comments::comments_desktop_reset,
             comments::comments_pick_exe,
             comments::comments_pick_folder,
+            comments::comments_pick_sound,
+            comments::comments_test_chime,
             comments::comments_save_preset_file,
             comments::comments_open_preset_file,
             stats::stats_viewer_reaction,

@@ -470,6 +470,13 @@
         <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
         <div class="field"><label>読み上げ時間の目安<span class="help" data-help="文字数からおおよその読み上げ時間を見積もって、読み終わるまで次のレスに進まない(字幕もその間は出しておく)ようにします。VOICEVOXなどReaCastが直接鳴らすソフトでは本当の長さを使うので、長いレスを「以下略」で打ち切る時だけに使います。既定の160はVOICEVOXの標準の速さの目安です。"></span></label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
       </details>
+
+      <h3>レス着信音<span class="help" data-help="レスを字幕に出す前に、選んだ音を鳴らします(鳴り終わるまで、長くても1.5秒待ってから読み上げます)。音のファイルはwav・mp3・oggが使えます。鳴らす先は「音の出力先」と同じです。"></span></h3>
+      <div class="field"><label>着信音を鳴らす</label><div><input type="checkbox" data-key="chimeEnabled" /></div></div>
+      <div class="field"><label>音のファイル</label><div class="path-row"><input type="text" data-key="chimePath" placeholder="wav・mp3・oggのファイル" /><button class="secondary" id="chimePickBtn">参照...</button><button class="secondary" id="chimeTestBtn">試しに鳴らす</button></div></div>
+      <div class="hint" id="chimeMsg"></div>
+      <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="1" step="0.01" data-key="chimeVolume" /><output></output><span></span></div></div>
+      <div class="field"><label>溜まっている時は鳴らさない<span class="help" data-help="順番待ちが溜まってターボになっている間は鳴らしません(鳴らすと、その分読むのが遅れるため)。"></span></label><div><input type="checkbox" data-key="chimeSkipTurbo" /></div></div>
     </section>
 
     <!-- ================= NGワード・読み方 ================= -->
@@ -746,6 +753,11 @@
       <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
+      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのレス一覧を別々の場所に出せます。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
+        <div class="copy-row"><span style="width:70px">掲示板</span><code id="urlCommentsBbs">http://127.0.0.1:18772/comments.html?source=bbs</code><button class="secondary" data-copy="urlCommentsBbs">コピー</button></div>
+        <div class="copy-row"><span style="width:70px">YouTube</span><code id="urlCommentsYoutube">http://127.0.0.1:18772/comments.html?source=youtube</code><button class="secondary" data-copy="urlCommentsYoutube">コピー</button></div>
+        <div class="copy-row"><span style="width:70px">Twitch</span><code id="urlCommentsTwitch">http://127.0.0.1:18772/comments.html?source=twitch</code><button class="secondary" data-copy="urlCommentsTwitch">コピー</button></div>
+      </div></div>
       <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイドを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
       <details class="adv">
         <summary>詳しい設定(見出し・色・背景・間隔・サムネイル)</summary>

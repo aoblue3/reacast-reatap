@@ -16,6 +16,7 @@
  * 混ぜたいのでこちらを使う)。
  *
  * creature: 生き物(🏩のホテルにペアで入っていく。overlay.jsのspawnHotel参照)。
+ * face: 顔(🕶️のグラサンをかけに来る。overlay.jsのspawnSunglasses参照)。
  *
  * blackChance: 0〜1。この確率で、絵文字を色のフィルターで黒くして表示する
  * (🐈をたまに黒猫にする。黒猫の絵文字はWindows 10のフォントに無いため)。
@@ -32,24 +33,24 @@
  */
 const EMOJI_SET = [
   // ==================== 表情・リアクション系(その他全般) ====================
-  { id: 'lol', char: '😂', label: '笑', anim: 'laugh' },
+  { id: 'lol', char: '😂', label: '笑', anim: 'laugh', creature: true, face: true },
   { id: 'clap', char: '👏', label: '拍手', anim: 'clap' },
   // ❤️(U+2764+VS16)がフォント環境によって黒く表示されてしまう問題があったため、
   // 単体で色付き絵文字として安定して描画される💖(スパークリングハート)に変更。
   { id: 'heart', char: '💖', label: 'ハート', anim: 'heartbeat' },
-  { id: 'shock', char: '😮', label: '驚き', anim: 'pop' },
+  { id: 'shock', char: '😮', label: '驚き', anim: 'pop', creature: true, face: true },
   { id: 'fire', char: '🔥', label: '熱い', anim: 'flicker' },
-  { id: 'cry', char: '😭', label: '泣', anim: 'sob' },
+  { id: 'cry', char: '😭', label: '泣', anim: 'sob', creature: true, face: true },
   { id: 'gg', char: '🎉', label: 'GG', anim: 'confetti' },
-  { id: 'skull', char: '💀', label: '死んだ', anim: 'faint' },
-  { id: 'please', char: '🥺', label: 'お願い', anim: 'plead' },
+  { id: 'skull', char: '💀', label: '死んだ', anim: 'faint', creature: true, face: true },
+  { id: 'please', char: '🥺', label: 'お願い', anim: 'plead', creature: true, face: true },
   { id: 'nice', char: '👍', label: 'ナイス', anim: 'thumbsup' },
-  { id: 'scary', char: '😱', label: 'ヒヤッと', anim: 'jumpscare' },
+  { id: 'scary', char: '😱', label: 'ヒヤッと', anim: 'jumpscare', creature: true, face: true },
   { id: 'ganbare', char: '💪', label: 'がんばれ', anim: 'flex' },
-  { id: 'sleepy', char: '😴', label: '眠い', anim: 'doze' },
+  { id: 'sleepy', char: '😴', label: '眠い', anim: 'doze', creature: true, face: true },
   { id: 'headshot', char: '🎯', label: '的中', anim: 'bullseye' },
-  { id: 'zany', char: '🤪', label: 'おどけ', anim: 'zany' },
-  { id: 'think', char: '🤔', label: '考え中', anim: 'think' },
+  { id: 'zany', char: '🤪', label: 'おどけ', anim: 'zany', creature: true, face: true },
+  { id: 'think', char: '🤔', label: '考え中', anim: 'think', creature: true, face: true },
   { id: 'ok', char: '🆗', label: 'OK', anim: 'ok' },
   // ⏱(U+23F1)も⬆⬇➡⬅と同じく異体字セレクタ無しだとテキスト表示(黒い文字)に
   // フォールバックしうる絵文字のため、同様にU+FE0Fを付けておく。
@@ -65,6 +66,7 @@ const EMOJI_SET = [
   { id: 'fist', char: '👊', label: '拳', anim: 'fistbump' },
   { id: 'fireworks', char: '🎆', label: '花火', anim: 'fireworks' },
   { id: 'lovehotel', char: '🏩', label: 'ホテル', anim: 'lovehotel' },
+  { id: 'sunglasses', char: '🕶️', label: 'グラサン', anim: 'sunglasses' },
 
   // ==================== 食べ物系 ====================
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },
@@ -79,11 +81,11 @@ const EMOJI_SET = [
   { id: 'cake', char: '🎂', label: 'おめでとう', anim: 'cake' },
 
   // ==================== 動物・生き物系 ====================
-  { id: 'frog', char: '🐸', label: 'カエル', anim: 'frog', creature: true },
-  { id: 'baby', char: '👶', label: '赤ちゃん', anim: 'crawl' },
+  { id: 'frog', char: '🐸', label: 'カエル', anim: 'frog', creature: true, face: true },
+  { id: 'baby', char: '👶', label: '赤ちゃん', anim: 'crawl', face: true },
   { id: 'penguin', char: '🐧', label: 'ペンギン', anim: 'waddle', creature: true },
-  { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark', creature: true },
-  { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink', creature: true },
+  { id: 'dog', char: '🐶', label: 'ワンワン', anim: 'bark', creature: true, face: true },
+  { id: 'pig', char: '🐷', label: 'ブーブー', anim: 'oink', creature: true, face: true },
   { id: 'cat', char: '🐈', label: 'ネコ', anim: 'prowl', blackChance: 0.35, creature: true },
 
   // ==================== 短文系(絵文字ではなく文字として色付き表示する。
@@ -131,8 +133,8 @@ const EMOJI_SET = [
   // ==================== マイナス系(ReaCast側の「受け付けるリアクション」
   // 設定で既定OFFにしてある。DEFAULT_DISABLED_REACTION_IDS(control.js)参照) ====================
   { id: 'poop', char: '💩', label: 'うんち', anim: 'poop' },
-  { id: 'tengu', char: '👺', label: '天狗', anim: 'tengu' },
-  { id: 'angry', char: '😡', label: '怒り', anim: 'angry' },
+  { id: 'tengu', char: '👺', label: '天狗', anim: 'tengu', creature: true, face: true },
+  { id: 'angry', char: '😡', label: '怒り', anim: 'angry', creature: true, face: true },
   { id: 'boo', char: '👎', label: 'ブーイング', anim: 'boo' },
   { id: 'provoke', char: '🖕', label: '挑発', anim: 'provoke' },
 ];
