@@ -91,6 +91,10 @@ const PASSPHRASE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$/; // 英数字で開始�
 // closeが届かないまま残った接続を掃除するため(残ったままだと、後述の
 // 「ブラウザ版は同一IPから1接続まで」の制限で本人が繋ぎ直せなくなる)。
 const HEARTBEAT_INTERVAL_MS = 30_000;
+// 1つの接続元IPから同時に繋げる数の上限(配信者アプリ・ReaTap・ReaTap Webの合計)。
+// 大量に繋いでサーバーを重くする嫌がらせを防ぐ。家族で同じネットワークから見ていても
+// 足りるくらいにしてある
+const MAX_CONNECTIONS_PER_IP = 5;
 // 配信者も視聴者も繋がっていない状態でこの時間が経った部屋は削除する
 // (部屋が消えても、配信者アプリが同じroomId/トークンで再登録すれば
 // 新しく作り直されるだけなので実害は無い)。
@@ -138,6 +142,7 @@ class RelayServer {
     staticDir = DEFAULT_STATIC_DIR,
     heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     roomIdleTtlMs = ROOM_IDLE_TTL_MS,
+    maxConnectionsPerIp = MAX_CONNECTIONS_PER_IP,
   } = {}) {
     this.port = port;
     this.logger = logger;
@@ -156,6 +161,9 @@ class RelayServer {
     this.rateByRoomIp = new Map(); // "roomId:ip" -> {timestamps:[], mutedUntil:0, lastSeenAt}
     // ブラウザ版(ReaTap Web)の接続は同一IPから1本までに制限する(exe版は対象外)。
     this.webConnByIp = new Map(); // ip -> ws
+    // 接続元IPごとの今の接続(MAX_CONNECTIONS_PER_IP)
+    this.connsByIp = new Map(); // ip -> Set<ws>
+    this.maxConnectionsPerIp = maxConnectionsPerIp;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.roomIdleTtlMs = roomIdleTtlMs;
     this.httpServer = null;
@@ -378,6 +386,8 @@ class RelayServer {
             '同じネットワークの別のタブ・端末からReaTap Webで接続されたため、こちらは切断しました',
         });
         try { existing.close(); } catch { /* noop */ }
+        // 切る方は、閉じ終わるのを待たずに数から外す(入れ替えで上限に引っかからないように)
+        this._untrackConn(existing);
         this.logger.log('[relay] web viewer: replaced an older connection from the same IP');
       }
       this.webConnByIp.set(ws._ip, ws);
@@ -386,11 +396,34 @@ class RelayServer {
       });
     }
 
+    // 1つのIPから繋げる数の上限
+    const conns = this.connsByIp.get(ws._ip) || new Set();
+    if (conns.size >= this.maxConnectionsPerIp) {
+      this._send(ws, {
+        type: 'error',
+        code: 'too_many_connections',
+        message: '同じネットワークからの接続が多すぎます。使っていないReaTap・ブラウザのタブを閉じてください',
+      });
+      try { ws.close(); } catch { /* noop */ }
+      this.logger.log(`[relay] refused a connection: too many connections from one IP (${conns.size})`);
+      return;
+    }
+    conns.add(ws);
+    this.connsByIp.set(ws._ip, conns);
+    ws.on('close', () => this._untrackConn(ws));
+
     ws.on('message', (raw) => this._handleMessage(ws, raw));
     ws.on('close', () => this._handleClose(ws));
     ws.on('error', () => {
       /* 個別接続のエラーはcloseで後始末するので握りつぶす */
     });
+  }
+
+  _untrackConn(ws) {
+    const conns = this.connsByIp.get(ws._ip);
+    if (!conns) return;
+    conns.delete(ws);
+    if (!conns.size) this.connsByIp.delete(ws._ip);
   }
 
   _send(ws, obj) {

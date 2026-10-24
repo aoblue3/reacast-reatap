@@ -25,9 +25,9 @@ function httpGet(pathname) {
 // once()を毎回付け直す方式だと取りこぼす。受信したメッセージは
 // 全てキューに貯めておき、nextMessage()はキューから取り出す/なければ待つ、
 // という方式にする。
-function connect(options) {
+function connect(options, port = PORT) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, options);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, options);
     ws._queue = [];
     ws._waiters = [];
     // disabledReactions(join直後や配信者の変更時に届く)は他のテストの
@@ -74,7 +74,8 @@ async function run() {
     process.exit(2);
   }, 10_000);
 
-  const server = new RelayServer({ port: PORT, logger: { log: (...a) => console.log(...a) } }).start();
+  // テストは全部同じIP(127.0.0.1)から繋ぐので、接続数の上限はここでは大きくしておく(上限のテストは別のサーバーで)
+  const server = new RelayServer({ port: PORT, maxConnectionsPerIp: 1000, logger: { log: (...a) => console.log(...a) } }).start();
   await new Promise((r) => setTimeout(r, 100));
 
   const roomId = crypto.randomBytes(5).toString('hex');
@@ -440,6 +441,31 @@ async function run() {
     assert.ok(!server.rooms.has(idleRoomId));
     assert.ok(!server.passphrases.has(idlePassphrase));
     console.log('OK: 誰も繋がっていない部屋は一定時間後に合言葉ごと削除される');
+
+    // --- 17. 1つのIPから繋げる数には上限がある(上限を超えた接続はエラーを送って切る) ---
+    const LIMIT_PORT = PORT + 1;
+    const limited = new RelayServer({ port: LIMIT_PORT, maxConnectionsPerIp: 2, logger: { log: () => {} } }).start();
+    try {
+      const open = () => connect({ origin: 'http://tauri.localhost' }, LIMIT_PORT);
+      await new Promise((r) => setTimeout(r, 100));
+      const a = await open();
+      const b = await open();
+      const c = await open();
+      const refused = await nextMessage(c);
+      assert.strictEqual(refused.code, 'too_many_connections');
+      await new Promise((r) => c.once('close', r));
+      // 1つ閉じれば、また繋げる
+      a.close();
+      await new Promise((r) => setTimeout(r, 100));
+      const d = await open();
+      send(d, { type: 'join', passphrase: 'nobody-here', protocolVersion: PROTOCOL_VERSION });
+      assert.strictEqual((await nextMessage(d)).code, 'room_not_found');
+      b.close();
+      d.close();
+      console.log('OK: 1つのIPから繋げる数には上限があり、閉じればまた繋げる');
+    } finally {
+      await limited.stop();
+    }
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');
     clearTimeout(watchdog);
