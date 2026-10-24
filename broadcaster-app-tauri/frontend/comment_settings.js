@@ -724,6 +724,23 @@ function renderFontPickers() {
 // ---- 右のレス一覧のプリセット ----
 // デザインに関わる項目だけを置き換える(フォント・件数・表示順などはそのまま)
 const LIST_PRESETS = {
+  // 掲示板風: 昔の2ちゃんねるのレス。「番号 ：名前：日付」の見出し(名前は緑の太字)、
+  // 本文は少し字下げ。新しいレスは黄色く光ってから灰色に戻る
+  bbs: {
+    fontFamily: 'ＭＳ Ｐゴシック',
+    headFontSize: 0, headBold: false, numberColor: '#000000', nameColor: '#228b22', dateColor: '#000000',
+    bodyColor: '#000000', bodyBold: false, outlineWidth: 0, outlineColor: '#ffffff',
+    itemBgColor: '#efefef', itemBgOpacity: 100, itemPadding: 8, itemRadius: 0,
+    customCss: [
+      '.item:not(.aa) { border-bottom: 1px solid #c4c4c4; animation: bbs-new 2000ms ease-out; }',
+      // 区切りの「：」は、後ろに名前・日付がある時だけ(見出しに出すものは各自の設定のまま)
+      ".head .no:not(:last-child)::after { content: ' ：'; }",
+      ".head .name { font-weight: bold; }",
+      ".head .name:not(:last-child)::after { content: '：'; color: #000000; font-weight: normal; }",
+      '.body { margin-left: 1.6em; }',
+      '@keyframes bbs-new { 0%, 35% { background-color: #ffffcc; } }',
+    ].join('\n'),
+  },
   default: {},
   yellowLine: {
     fontFamily: 'M PLUS 1p',
@@ -870,6 +887,16 @@ const LIST_PRESETS = {
 // ---- 下の字幕のプリセット(右のレス一覧と同じデザイン+そのデザインに合う出し方) ----
 const SUBTITLE_PRESETS = {
   default: {},
+  // 掲示板風: 昔の2ちゃんねるのレス(灰色の背景・ＭＳ Ｐゴシック・名前は緑の太字)。
+  // 回線が遅かった頃のように上から少しずつ読み込まれて、新着の黄色がすっと消える
+  bbs: {
+    fontFamily: 'ＭＳ Ｐゴシック', bold: false, italic: false, color: '#000000', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#efefef', bgOpacity: 100, padding: 10, radius: 0, appear: 'bbs-load', translationColor: '#800000',
+    customCss: [
+      '#box { border: 1px solid #a8a8a8; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3); line-height: 1.45; }',
+      '.res-head { color: #228b22; font-weight: bold; margin-bottom: 0.15em; }',
+    ].join('\n'),
+  },
   yellowLine: {
     fontFamily: 'M PLUS 1p', bold: true, color: '#ffffff', outlineWidth: 2, outlineColor: '#000000',
     bgColor: '#000000', bgOpacity: 55, padding: 8, radius: 6, appear: 'wipe-left', translationColor: '#ffe066',

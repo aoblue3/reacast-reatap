@@ -70,6 +70,14 @@
     70% { transform: var(--off) translateX(-4px) skewX(-3deg); }
     100% { opacity: 1; transform: var(--off); }
   }
+  /* 掲示板風: 回線が遅かった頃のページのように上から少しずつ読み込まれて、
+     新着レスの黄色い色がすっと消える(背景の色は設定の色に戻る) */
+  #box.appear-bbs-load.visible { animation: bbs-load 600ms steps(5, end), bbs-new 2000ms ease-out; }
+  @keyframes bbs-load {
+    from { clip-path: inset(0 0 100% 0); }
+    to { clip-path: inset(0 0 0 0); }
+  }
+  @keyframes bbs-new { 0%, 35% { background-color: #ffffcc; } }
   /* FF風: ウィンドウが上下にカクカクと開く(スーパーファミコンのRPGのウィンドウ) */
   #box.appear-ff-open.visible { transform-origin: center; animation: ff-open 240ms steps(6, end); }
   @keyframes ff-open {
@@ -223,7 +231,7 @@
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
 
-    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'oc-bolt', 'aurora-rise'];
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'oc-bolt', 'aurora-rise', 'bbs-load'];
     // 羽ペン(「インクで書かれていく」の時に、書いている先を走る)
     const QUILL_SVG =
       '<svg viewBox="0 0 40 40"><path d="M37 3 C 26 4 14 12 9 27 L 7 31 L 10 30 C 20 26 31 17 37 3 Z" fill="#f4efe2" stroke="#6b4a2a" stroke-width="1.2"/>' +
