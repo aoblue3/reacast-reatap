@@ -1730,11 +1730,11 @@ function spawnSunglasses(opts) {
  * 次のどれかが起きる(👶はいつも「大きくなる」):
  *   grow     … マリオのようにピカピカしながら大きくなる
  *   dead     … コテッと横に倒れて💀になり、👻が昇っていく
- *   tasty    … めちゃくちゃうまくて感動(✨とハートが出て「うまーい!!」)
+ *   tasty    … めちゃくちゃうまくて感動(跳ねて、😍と✨とハートが出る)
  *   spicy    … めちゃくちゃ辛くて真っ赤になり、口から🔥を吹く(💦も飛ぶ)
  *   tiny     … ちっちゃくなって、画面の端までちょこちょこ逃げていく
  *   trippy   … ワライタケ。色がぐるぐる変わりながら回って、💫が回る
- * 誰も来なければ、そのまましばらくして消える。
+ * 誰も来なければ、そのまましばらくして消える。セリフ(文字)は出さず、動きと絵文字だけで見せる。
  */
 let mushroomStyleAdded = false;
 const MUSHROOM_EFFECTS = ['grow', 'dead', 'tasty', 'spicy', 'tiny', 'trippy'];
@@ -1758,8 +1758,6 @@ function spawnMushroom(opts) {
         20% { opacity: 1; transform: translate(calc(var(--dx, 0px) * 0.2), calc(var(--dy, 0px) * 0.2)) scale(1.1); }
         100% { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(var(--end, 1)); }
       }
-      .mush-text { font-weight: 900; color: #ffe14d; -webkit-text-stroke: 0.06em #b23a00; paint-order: stroke; white-space: nowrap; animation: mush-text 1800ms cubic-bezier(.2, 1.4, .4, 1) forwards; }
-      @keyframes mush-text { 0% { opacity: 0; transform: scale(0.3); } 15% { opacity: 1; transform: scale(1.15); } 25% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-40%); } }
     `;
     document.head.appendChild(st);
   }
@@ -1860,7 +1858,8 @@ function spawnMushroom(opts) {
       mush.style.transition = 'transform 150ms steps(1, end), opacity 200ms ease-in';
       [0, 260, 520].forEach((t, i) => setTimeout(() => (mush.style.transform = `scale(${[0.72, 0.45, 0.2][i]})`), t));
       setTimeout(() => (mush.style.opacity = '0'), 700);
-      fx('もぐもぐ', s * 0.32, tx + s / 2, ty - s * 0.15, 0, -s * 0.4, 0, 1, 'mush-text');
+      // 食べかすがぽろぽろ落ちる
+      for (let i = 0; i < 3; i++) fx('🟤', s * 0.12, mx + mSize / 2, my + mSize * 0.6, (Math.random() - 0.5) * s * 0.4, s * 0.35, 150 + i * 260, 0.6);
     }, eatAt);
     const effect = isBaby ? 'grow' : MUSHROOM_EFFECTS[Math.floor(Math.random() * MUSHROOM_EFFECTS.length)];
     const at = eatAt + 900;
@@ -1889,7 +1888,8 @@ function spawnMushroom(opts) {
       } else if (effect === 'tasty') {
         // めちゃくちゃうまい: 跳ねて、キラキラとハートが出て「うまーい!!」
         w.glyph.classList.add('mush-joy');
-        fx('うまーい!!', s * 0.55, cx, ty - s * 0.55, 0, -s * 0.2, 0, 1, 'mush-text');
+        // 目がハートになったように、顔の前に😍がぽんっと出る
+        fx('😍', s * 0.5, cx, ty - s * 0.25, 0, -s * 0.5, 0, 1.2);
         const parts = ['✨', '💖', '✨', '💕', '✨', '💖', '🌟'];
         parts.forEach((c, i) => {
           const a = (i / parts.length) * Math.PI * 2;
@@ -1901,7 +1901,6 @@ function spawnMushroom(opts) {
         // めちゃくちゃ辛い: 真っ赤になって震えて、口から火を吹く
         w.el.style.filter = 'sepia(1) saturate(7) hue-rotate(-28deg) brightness(0.95)';
         w.glyph.classList.add('mush-shake');
-        fx('からっ!!', s * 0.5, cx, ty - s * 0.55, 0, -s * 0.2, 0, 1, 'mush-text');
         const dir = fromLeft ? 1 : -1;
         for (let i = 0; i < 8; i++) {
           fx('🔥', s * (0.45 + i * 0.05), cx + dir * s * 0.45, cy + s * 0.1, dir * s * (1.8 + Math.random() * 0.8), (Math.random() - 0.5) * s * 0.6, 200 + i * 130, 1.5);
@@ -1912,7 +1911,8 @@ function spawnMushroom(opts) {
         // ちっちゃくなって、近い方の画面の端までちょこちょこ逃げていく
         w.el.style.transition = 'transform 300ms steps(3, end)';
         w.el.style.transform = `${flip}scale(0.38)`;
-        fx('ちっちゃ…', s * 0.38, cx, ty - s * 0.3, 0, -s * 0.2, 200, 1, 'mush-text');
+        // 縮んだ瞬間に、あせった💦が飛ぶ
+        fx('💦', s * 0.3, cx + s * 0.2, cy, s * 0.4, -s * 0.4, 250);
         setTimeout(() => {
           const toRight = cx > vw / 2;
           w.glyph.classList.add('hotel-hop');
@@ -1924,7 +1924,6 @@ function spawnMushroom(opts) {
       } else {
         // ワライタケ: 色がぐるぐる変わりながら回って、頭の周りを💫が回る
         w.glyph.classList.add('mush-trippy');
-        fx('ｹﾗｹﾗｹﾗ', s * 0.4, cx, ty - s * 0.5, 0, -s * 0.2, 0, 1, 'mush-text');
         for (let i = 0; i < 6; i++) {
           const a = (i / 6) * Math.PI * 2;
           fx('💫', s * 0.4, cx + Math.cos(a) * s * 0.7, ty + Math.sin(a) * s * 0.25, -Math.sin(a) * s * 0.5, Math.cos(a) * s * 0.2, i * 160);
