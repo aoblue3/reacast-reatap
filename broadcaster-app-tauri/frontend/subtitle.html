@@ -70,6 +70,9 @@
     70% { transform: var(--off) translateX(-4px) skewX(-3deg); }
     100% { opacity: 1; transform: var(--off); }
   }
+  /* 今読んでいるスレッドのタイトル(設定でONの時だけ。位置は四隅・上下の真ん中から選ぶ) */
+  #threadTitle { position: fixed; display: none; max-width: calc(100% - 16px); padding: 3px 9px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; line-height: 1.35; }
+  #threadTitle.show { display: block; }
   /* 掲示板風: 回線が遅かった頃のページのように上から少しずつ読み込まれて、
      新着レスの黄色い色がすっと消える(背景の色は設定の色に戻る) */
   #box.appear-bbs-load.visible { animation: bbs-load 600ms steps(5, end), bbs-new 2000ms ease-out; }
@@ -209,6 +212,7 @@
 </head>
 <body>
   <div id="stage"><div id="box"></div></div>
+  <div id="threadTitle"></div>
   <div id="adjust">
     <div class="msg">ドラッグで移動 / 右下の角をドラッグで大きさを変更</div>
     <button id="adjustDone">完了</button>
@@ -484,9 +488,47 @@
       tauri.core.invoke('comments_desktop_adjusting').then(setAdjusting).catch(() => {});
     }
 
+    // ---- 今読んでいるスレッドのタイトル ----
+    const titleEl = document.getElementById('threadTitle');
+    let threadTitle = PREVIEW ? '配信スレ Part12' : '';
+    function renderThreadTitle() {
+      const s = style.subtitle;
+      const desktop = !PREVIEW && !!(window.__TAURI__ && window.__TAURI__.core);
+      // デスクトップ字幕には出さない(字幕の枠だけの小さな窓なので、重なって読みにくい)
+      const on = !!s.threadTitleShow && !!threadTitle && !desktop;
+      titleEl.classList.toggle('show', on);
+      if (!on) return;
+      titleEl.textContent = threadTitle;
+      titleEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      titleEl.style.fontSize = `${Number(s.threadTitleSize) || 18}px`;
+      titleEl.style.color = s.threadTitleColor || '#ffffff';
+      titleEl.style.background = C.rgba(s.threadTitleBgColor, Number(s.threadTitleBgOpacity));
+      titleEl.style.textShadow = Number(s.threadTitleBgOpacity) > 30 ? 'none' : C.outlineShadow(2, '#000000');
+      const pos = String(s.threadTitlePos || 'top-left');
+      const x = Number(s.threadTitleOffsetX) || 0;
+      const y = Number(s.threadTitleOffsetY) || 0;
+      const m = 8;
+      titleEl.style.left = titleEl.style.right = titleEl.style.top = titleEl.style.bottom = '';
+      titleEl.style.transform = '';
+      if (pos.startsWith('top')) titleEl.style.top = `${m + y}px`;
+      else titleEl.style.bottom = `${m - y}px`;
+      if (pos.endsWith('left')) titleEl.style.left = `${m + x}px`;
+      else if (pos.endsWith('right')) titleEl.style.right = `${m - x}px`;
+      else {
+        titleEl.style.left = `calc(50% + ${x}px)`;
+        titleEl.style.transform = 'translateX(-50%)';
+      }
+    }
+
     function handle(msg) {
+      if (msg.type === 'threadTitle') {
+        threadTitle = typeof msg.title === 'string' ? msg.title : '';
+        renderThreadTitle();
+        return;
+      }
       if (msg.type === 'commentStyle') {
         setStyle(msg.style);
+        renderThreadTitle();
         if (current) {
           applyBoxStyle(current.aa);
           setContent(current, String(current.body || ''));

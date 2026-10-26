@@ -542,6 +542,14 @@
         <option value="bbs-load">上から少しずつ読み込まれる(掲示板風)</option>
       </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
       <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
+      <div class="field"><label>スレッドのタイトルを出す<span class="help" data-help="今読んでいる掲示板のスレッドのタイトルを、OBSの下の字幕の画面の隅に小さく出します(取得中だけ。デスクトップ字幕には出しません)。位置・大きさ・色は「詳しい設定」で変えられます。"></span></label><div class="inline"><input type="checkbox" data-key="style.subtitle.threadTitleShow" /><select data-key="style.subtitle.threadTitlePos">
+        <option value="top-left">左上</option>
+        <option value="top-center">上の真ん中</option>
+        <option value="top-right">右上</option>
+        <option value="bottom-left">左下</option>
+        <option value="bottom-center">下の真ん中</option>
+        <option value="bottom-right">右下</option>
+      </select></div></div>
       <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。"></span></label><div class="inline">
         <input type="checkbox" data-key="subtitleTranslate" />
         <span class="unit">翻訳先</span>
@@ -591,6 +599,9 @@
         <div class="field"><label>字幕を出し終わるまで次のレスを待つ<span class="help" data-help="長いレスの途中で次のレスに切り替わらないようにします(順番待ちが溜まってターボになっている間は待ちません)。"></span></label><div><input type="checkbox" data-key="waitForDisplay" /></div></div>
         <div class="field"><label>アンカー先の表示時間 / 色</label><div class="inline"><input type="number" min="300" step="100" data-key="anchorPreviewMs" /><span class="unit">ミリ秒</span><input type="color" data-key="style.subtitle.quoteColor" /></div></div>
         <div class="field"><label>翻訳の色 / 大きさ</label><div class="inline"><input type="color" data-key="style.subtitle.translationColor" /><input type="number" min="30" max="150" step="5" data-percent data-key="style.subtitle.translationScale" /><span class="unit">%(本文に対して)</span></div></div>
+        <div class="field"><label>スレッドのタイトルの大きさ / 色</label><div class="inline"><input type="number" min="8" max="80" data-key="style.subtitle.threadTitleSize" /><span class="unit">px</span><input type="color" data-key="style.subtitle.threadTitleColor" /></div></div>
+        <div class="field"><label>スレッドのタイトルの背景 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.threadTitleBgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.threadTitleBgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
+        <div class="field"><label>スレッドのタイトルの位置の微調整</label><div class="inline"><span class="unit">X</span><input type="number" data-key="style.subtitle.threadTitleOffsetX" /><span class="unit">Y</span><input type="number" data-key="style.subtitle.threadTitleOffsetY" /><span class="unit">px(右・下がプラス)</span></div></div>
         <div class="field"><label>デスクトップ字幕もプリセットの見た目にする<span class="help" data-help="OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします。"></span></label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>

@@ -1724,6 +1724,241 @@ function spawnSunglasses(opts) {
   setTimeout(look, 450);
 }
 
+/**
+ * 🍄 キノコ: 画面のどこかにキノコが生える(動かない)。生き物のリアクション(creature:true。
+ * 🐶🐸😂👺💀など)と👶が画面にいれば、近い子が寄ってきて食べる。食べるとランダムで
+ * 次のどれかが起きる(👶はいつも「大きくなる」):
+ *   grow     … マリオのようにピカピカしながら大きくなる
+ *   dead     … コテッと横に倒れて💀になり、👻が昇っていく
+ *   tasty    … めちゃくちゃうまくて感動(✨とハートが出て「うまーい!!」)
+ *   spicy    … めちゃくちゃ辛くて真っ赤になり、口から🔥を吹く(💦も飛ぶ)
+ *   tiny     … ちっちゃくなって、画面の端までちょこちょこ逃げていく
+ *   trippy   … ワライタケ。色がぐるぐる変わりながら回って、💫が回る
+ * 誰も来なければ、そのまましばらくして消える。
+ */
+let mushroomStyleAdded = false;
+const MUSHROOM_EFFECTS = ['grow', 'dead', 'tasty', 'spicy', 'tiny', 'trippy'];
+function spawnMushroom(opts) {
+  addHotelStyle();
+  if (!mushroomStyleAdded) {
+    mushroomStyleAdded = true;
+    const st = document.createElement('style');
+    st.textContent = `
+      .mush-chew { animation: mush-chew 160ms ease-in-out 5 alternate; }
+      @keyframes mush-chew { from { transform: translateY(0) scale(1, 1); } to { transform: translateY(4%) scale(1.06, 0.94); } }
+      .mush-shake { animation: mush-shake 90ms linear infinite alternate; }
+      @keyframes mush-shake { from { transform: translateX(-5%) rotate(-4deg); } to { transform: translateX(5%) rotate(4deg); } }
+      .mush-joy { animation: mush-joy 300ms ease-in-out infinite alternate; }
+      @keyframes mush-joy { from { transform: translateY(0) scale(1); } to { transform: translateY(-18%) scale(1.08); } }
+      .mush-trippy { animation: mush-trippy 1100ms linear infinite; }
+      @keyframes mush-trippy { from { filter: hue-rotate(0deg) saturate(2); transform: rotate(0deg); } to { filter: hue-rotate(360deg) saturate(2); transform: rotate(360deg); } }
+      .mush-fx { animation: mush-fx 1300ms ease-out forwards; }
+      @keyframes mush-fx {
+        0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+        20% { opacity: 1; transform: translate(calc(var(--dx, 0px) * 0.2), calc(var(--dy, 0px) * 0.2)) scale(1.1); }
+        100% { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(var(--end, 1)); }
+      }
+      .mush-text { font-weight: 900; color: #ffe14d; -webkit-text-stroke: 0.06em #b23a00; paint-order: stroke; white-space: nowrap; animation: mush-text 1800ms cubic-bezier(.2, 1.4, .4, 1) forwards; }
+      @keyframes mush-text { 0% { opacity: 0; transform: scale(0.3); } 15% { opacity: 1; transform: scale(1.15); } 25% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-40%); } }
+    `;
+    document.head.appendChild(st);
+  }
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const base = settings.baseSizePx;
+  const mSize = base * 0.9;
+  // 大きくなる・火を吹く効果が画面からはみ出しにくいよう、端から少し離して生やす
+  const margin = Math.min(base * 2.2, Math.min(vw, vh) * 0.3);
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item mushroom-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 600ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+
+  // 効果の文字や絵文字を出す(cx, cyが真ん中。dx, dyだけ動いて消える)
+  const fx = (char, size, cx, cy, dx, dy, delay = 0, end = 1, cls = 'mush-fx') => {
+    setTimeout(() => {
+      const p = document.createElement('span');
+      p.className = 'hotel-part';
+      p.style.left = `${cx - size / 2}px`;
+      p.style.top = `${cy - size / 2}px`;
+      p.style.fontSize = `${size}px`;
+      p.style.zIndex = '2';
+      const g = document.createElement('span');
+      g.className = `reaction-glyph ${cls}`;
+      g.textContent = char;
+      g.style.setProperty('--dx', `${dx}px`);
+      g.style.setProperty('--dy', `${dy}px`);
+      g.style.setProperty('--end', String(end));
+      p.appendChild(g);
+      box.appendChild(p);
+    }, delay);
+  };
+
+  // キノコ(ぽんっと生える)
+  const mx = margin + Math.random() * Math.max(0, vw - mSize - margin * 2);
+  const my = margin + Math.random() * Math.max(0, vh - mSize - margin * 2);
+  const mush = document.createElement('span');
+  mush.className = 'hotel-part';
+  mush.style.left = `${mx}px`;
+  mush.style.top = `${my}px`;
+  mush.style.fontSize = `${mSize}px`;
+  mush.style.transformOrigin = '50% 100%';
+  mush.style.transform = 'scale(0)';
+  mush.style.transition = 'transform 420ms cubic-bezier(.2, 1.6, .4, 1)';
+  mush.innerHTML = '<span class="reaction-glyph">🍄</span>';
+  box.appendChild(mush);
+  requestAnimationFrame(() => requestAnimationFrame(() => (mush.style.transform = 'scale(1)')));
+
+  const born = Date.now();
+  const waitUntil = born + Math.max(6000, settings.animationDurationMs * 2);
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 650);
+  };
+
+  const eat = (item) => {
+    const isBaby = item.dataset.emojiId === 'baby';
+    const w = takeOver(item, box);
+    const s = w.size;
+    // キノコの横(来た側)に、足元をそろえて立つ
+    const fromLeft = w.x + s / 2 < mx + mSize / 2;
+    const tx = fromLeft ? mx - s * 0.85 : mx + mSize - s * 0.15;
+    const ty = my + mSize - s;
+    // 🐈は左向きの絵文字なので、右を向く時は左右反転する
+    const flip = w.glyph.textContent === '🐈' && fromLeft ? 'scaleX(-1) ' : '';
+    w.el.style.transformOrigin = '50% 100%';
+    if (flip) w.el.style.transform = flip;
+    w.glyph.classList.add('hotel-hop');
+    const dist = Math.hypot(tx - w.x, ty - w.y);
+    const walkMs = Math.round(Math.min(1800, Math.max(500, dist * 1.8)));
+    w.el.style.transition = `left ${walkMs}ms ease-out, top ${walkMs}ms ease-out`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      w.el.style.left = `${tx}px`;
+      w.el.style.top = `${ty}px`;
+    }));
+    // もぐもぐ食べる(キノコが3口で小さくなって消える)
+    const eatAt = walkMs + 80;
+    setTimeout(() => {
+      w.glyph.classList.remove('hotel-hop');
+      w.glyph.classList.add('mush-chew');
+      mush.style.transition = 'transform 150ms steps(1, end), opacity 200ms ease-in';
+      [0, 260, 520].forEach((t, i) => setTimeout(() => (mush.style.transform = `scale(${[0.72, 0.45, 0.2][i]})`), t));
+      setTimeout(() => (mush.style.opacity = '0'), 700);
+      fx('もぐもぐ', s * 0.32, tx + s / 2, ty - s * 0.15, 0, -s * 0.4, 0, 1, 'mush-text');
+    }, eatAt);
+    const effect = isBaby ? 'grow' : MUSHROOM_EFFECTS[Math.floor(Math.random() * MUSHROOM_EFFECTS.length)];
+    const at = eatAt + 900;
+    const cx = tx + s / 2;
+    const cy = ty + s / 2;
+    setTimeout(() => {
+      w.glyph.classList.remove('mush-chew');
+      w.el.style.transition = 'transform 120ms steps(1, end)';
+      if (effect === 'grow') {
+        // パワーアップ: 大・小・大・小…とピカピカ切り替わって、最後に大きくなる
+        const big = 2.1;
+        [1.5, 1, 1.5, 1, 1.8, 1.2, big].forEach((k, i) => setTimeout(() => (w.el.style.transform = `${flip}scale(${k})`), i * 110));
+        for (let i = 0; i < 6; i++) fx('✨', s * 0.5, cx + (Math.random() - 0.5) * s * 2.4, cy - s * (0.4 + Math.random() * 1.6), 0, -s * 0.3, 800 + i * 120);
+        finish(2400);
+      } else if (effect === 'dead') {
+        // コテッと横に倒れて、💀になって、👻が昇っていく
+        w.el.style.transition = 'transform 380ms cubic-bezier(.5, 0, .8, .6)';
+        w.el.style.transform = `${flip}rotate(${fromLeft ? -90 : 90}deg)`;
+        setTimeout(() => {
+          fx('💨', s * 0.7, cx, cy, 0, -s * 0.2, 0, 1.4);
+          w.glyph.textContent = '💀';
+          w.el.style.filter = '';
+        }, 900);
+        fx('👻', s * 0.8, cx, cy - s * 0.4, 0, -s * 2.2, 1300, 1.2);
+        finish(3000);
+      } else if (effect === 'tasty') {
+        // めちゃくちゃうまい: 跳ねて、キラキラとハートが出て「うまーい!!」
+        w.glyph.classList.add('mush-joy');
+        fx('うまーい!!', s * 0.55, cx, ty - s * 0.55, 0, -s * 0.2, 0, 1, 'mush-text');
+        const parts = ['✨', '💖', '✨', '💕', '✨', '💖', '🌟'];
+        parts.forEach((c, i) => {
+          const a = (i / parts.length) * Math.PI * 2;
+          fx(c, s * 0.45, cx, cy, Math.cos(a) * s * 1.4, Math.sin(a) * s * 1.2, 150 + i * 70);
+        });
+        fx('😭', s * 0.45, cx + s * 0.55, cy - s * 0.2, s * 0.3, s * 0.2, 500);
+        finish(2600);
+      } else if (effect === 'spicy') {
+        // めちゃくちゃ辛い: 真っ赤になって震えて、口から火を吹く
+        w.el.style.filter = 'sepia(1) saturate(7) hue-rotate(-28deg) brightness(0.95)';
+        w.glyph.classList.add('mush-shake');
+        fx('からっ!!', s * 0.5, cx, ty - s * 0.55, 0, -s * 0.2, 0, 1, 'mush-text');
+        const dir = fromLeft ? 1 : -1;
+        for (let i = 0; i < 8; i++) {
+          fx('🔥', s * (0.45 + i * 0.05), cx + dir * s * 0.45, cy + s * 0.1, dir * s * (1.8 + Math.random() * 0.8), (Math.random() - 0.5) * s * 0.6, 200 + i * 130, 1.5);
+        }
+        for (let i = 0; i < 3; i++) fx('💦', s * 0.35, cx - dir * s * 0.4, cy - s * 0.4, -dir * s * 0.6, -s * 0.5, 300 + i * 300);
+        finish(2600);
+      } else if (effect === 'tiny') {
+        // ちっちゃくなって、近い方の画面の端までちょこちょこ逃げていく
+        w.el.style.transition = 'transform 300ms steps(3, end)';
+        w.el.style.transform = `${flip}scale(0.38)`;
+        fx('ちっちゃ…', s * 0.38, cx, ty - s * 0.3, 0, -s * 0.2, 200, 1, 'mush-text');
+        setTimeout(() => {
+          const toRight = cx > vw / 2;
+          w.glyph.classList.add('hotel-hop');
+          w.el.style.transition = 'left 1300ms linear, transform 1ms';
+          w.el.style.left = `${toRight ? vw + s : -s * 2}px`;
+          if (w.glyph.textContent === '🐈') w.el.style.transform = `${toRight ? 'scaleX(-1) ' : ''}scale(0.38)`;
+        }, 650);
+        finish(2200);
+      } else {
+        // ワライタケ: 色がぐるぐる変わりながら回って、頭の周りを💫が回る
+        w.glyph.classList.add('mush-trippy');
+        fx('ｹﾗｹﾗｹﾗ', s * 0.4, cx, ty - s * 0.5, 0, -s * 0.2, 0, 1, 'mush-text');
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          fx('💫', s * 0.4, cx + Math.cos(a) * s * 0.7, ty + Math.sin(a) * s * 0.25, -Math.sin(a) * s * 0.5, Math.cos(a) * s * 0.2, i * 160);
+        }
+        finish(2800);
+      }
+    }, at);
+  };
+
+  // 生き物が来るのを待つ(0.3秒おきに見る)
+  const look = () => {
+    if (finished) return;
+    const now = Date.now();
+    if (now > waitUntil) {
+      finish(0);
+      return;
+    }
+    const cx = mx + mSize / 2;
+    const cy = my + mSize / 2;
+    const eater = activeItems
+      .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
+      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .filter((c) => c.r.width > 0)
+      .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
+    if (eater && now - born > 450) {
+      eater.o.dataset.dating = '1';
+      eat(eater.o);
+      return;
+    }
+    setTimeout(look, 300);
+  };
+  setTimeout(look, 450);
+}
+
 function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
@@ -1737,6 +1972,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'sunglasses') {
     spawnSunglasses(opts);
+    return;
+  }
+  if (emojiId === 'mushroom') {
+    spawnMushroom(opts);
     return;
   }
 
@@ -1766,6 +2005,8 @@ function spawnReaction(emojiId, opts) {
   el.className = 'reaction-item';
   // 🏩が画面の生き物を見つけてホテルに連れていくための印
   if (emoji.creature) el.dataset.creature = '1';
+  // 🍄が👶を見分ける(👶はいつも大きくなる)ため
+  el.dataset.emojiId = emojiId;
   // 🕶️が画面の顔を見つけてグラサンをかけさせるための印
   if (emoji.face) el.dataset.face = '1';
 

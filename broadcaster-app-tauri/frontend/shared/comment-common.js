@@ -44,6 +44,16 @@
       bgOpacity: 0,
       padding: 0,
       radius: 0,
+      // 今読んでいるスレッドのタイトルを小さく出す(OBSの下の字幕だけ。既定OFF)。
+      // 位置は表示範囲の四隅・上下の真ん中(top-left等)と、そこからのずらし(px)
+      threadTitleShow: false,
+      threadTitlePos: 'top-left',
+      threadTitleOffsetX: 0,
+      threadTitleOffsetY: 0,
+      threadTitleSize: 18,
+      threadTitleColor: '#ffffff',
+      threadTitleBgColor: '#000000',
+      threadTitleBgOpacity: 55,
       // デスクトップ字幕にもプリセットの見た目を使う(OFFなら、デスクトップ字幕は
       // 文字の大きさ・位置などはそのままで、プリセットの部分だけ既定の見た目にする)
       desktopUsePreset: true,

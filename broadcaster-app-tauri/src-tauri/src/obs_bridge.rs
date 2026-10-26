@@ -110,6 +110,8 @@ struct CommentBridgeState {
     subtitle: Option<(serde_json::Value, Instant)>,
     /// 視聴者アンケートの今の状態(OBSを後から開いた時にも出すため)
     poll: Option<serde_json::Value>,
+    /// 今読んでいる掲示板のスレッドのタイトル(下の字幕に小さく出す。取得していなければNone)
+    thread_title: Option<String>,
 }
 
 impl CommentBridgeState {
@@ -118,6 +120,9 @@ impl CommentBridgeState {
         let mut out = Vec::new();
         if let Some(style) = &self.style {
             out.push(serde_json::json!({ "type": "commentStyle", "style": style }).to_string());
+        }
+        if let Some(title) = &self.thread_title {
+            out.push(serde_json::json!({ "type": "threadTitle", "title": title }).to_string());
         }
         if let Some(poll) = &self.poll {
             out.push(serde_json::json!({ "type": "poll", "state": poll }).to_string());
@@ -258,6 +263,18 @@ impl ObsBridge {
     pub fn set_poll(&self, state: Option<serde_json::Value>) {
         self.comments.lock().unwrap().poll = state.clone();
         let _ = self.tx.send(serde_json::json!({ "type": "poll", "state": state }).to_string());
+    }
+
+    /// 下の字幕に出すスレッドのタイトル(Noneで消す)。変わった時だけ送る
+    pub fn set_thread_title(&self, title: Option<String>) {
+        {
+            let mut c = self.comments.lock().unwrap();
+            if c.thread_title == title {
+                return;
+            }
+            c.thread_title = title.clone();
+        }
+        let _ = self.tx.send(serde_json::json!({ "type": "threadTitle", "title": title }).to_string());
     }
 
     pub fn clear_subtitle(&self) {

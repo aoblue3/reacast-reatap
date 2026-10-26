@@ -196,6 +196,9 @@ pub struct CommentSettings {
     /// v1.7.0で🕶️を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v6: bool,
+    /// v1.7.3で🍄を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v7: bool,
     pub ng_words: String,
     // ---- レス着信音 ----
     /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
@@ -363,6 +366,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "おにぎり|おむすび|オニギリ|🍙/onigiri",
     "ラブホ|🏩/lovehotel",
     "グラサン|サングラス|🕶/sunglasses",
+    "キノコ|きのこ|🍄/mushroom",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -472,6 +476,7 @@ impl Default for CommentSettings {
             reaction_presets_v4: true,
             reaction_presets_v5: true,
             reaction_presets_v6: true,
+            reaction_presets_v7: true,
             ng_words: String::new(),
             chime_enabled: false,
             chime_path: String::new(),
@@ -1377,6 +1382,9 @@ impl CommentEngine {
 
     fn emit_status(&self) {
         let status = self.status();
+        // 下の字幕に出すスレッドのタイトル(取得中だけ。出すかどうかは字幕の画面の設定で決める)
+        let title = if status.running { status.thread_title.clone().filter(|t| !t.trim().is_empty()) } else { None };
+        self.bridge().set_thread_title(title);
         let _ = self.app.emit("comments:status", status);
     }
 
@@ -2162,7 +2170,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2214,6 +2222,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v4 = true;
     s.reaction_presets_v5 = true;
     s.reaction_presets_v6 = true;
+    s.reaction_presets_v7 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
