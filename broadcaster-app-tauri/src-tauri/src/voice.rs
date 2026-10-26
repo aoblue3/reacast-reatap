@@ -319,7 +319,14 @@ pub fn sync(app: &AppHandle) {
     }
     drop(edge);
     match want {
-        Some(url) => match launch(app, &url, &settings.voice_browser) {
+        // マイクを止めている時は、画面を最初から止めた状態で開く(開いた瞬間に一瞬だけ
+        // 聞き取ってしまわないように)。開いている窓と比べるURLには入れない(マイクを
+        // 止める・再開するたびに窓を開き直さないように)
+        Some(url) => match launch(
+            app,
+            &if manager.muted.load(Ordering::SeqCst) { format!("{url}&muted=1") } else { url.clone() },
+            &settings.voice_browser,
+        ) {
             Ok(child) => {
                 log::info!("話した字幕: 音声認識の窓を開きました");
                 set_status(app, "wait", "音声認識の窓を開いています…");
@@ -331,6 +338,24 @@ pub fn sync(app: &AppHandle) {
             }
         },
         None => set_status(app, "off", "使っていません"),
+    }
+}
+
+/// マイクを止めているか(設定ファイルに覚えておく)
+const MUTED_KEY: &str = "voiceMuted";
+
+/// 起動した時に、前回マイクを止めたまま終わっていたら、止めた状態から始める
+/// (音声認識の窓を開く前に呼ぶ)
+pub fn restore_muted(app: &AppHandle) {
+    let muted = app
+        .state::<crate::config_store::ConfigStore>()
+        .get(MUTED_KEY)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if muted {
+        log::info!("話した字幕: 前回マイクを止めたまま終わったので、止めた状態から始めます");
+        app.state::<VoiceManager>().muted.store(true, Ordering::SeqCst);
+        set_status(app, "muted", "マイクを止めています(聞き取っていません)");
     }
 }
 
@@ -355,6 +380,8 @@ pub fn set_muted(app: &AppHandle, muted: bool) -> bool {
         return muted;
     }
     log::info!("話した字幕: マイクを{}", if muted { "止めました" } else { "再開しました" });
+    // 次にReaCastを起動した時も同じ状態にする(止めたまま終わったら、止めたまま始まる)
+    let _ = app.state::<crate::config_store::ConfigStore>().set(MUTED_KEY.into(), serde_json::json!(muted));
     send_control(app, muted);
     if muted {
         // 表示中の字幕も消す

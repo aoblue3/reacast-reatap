@@ -50,7 +50,8 @@
     }
 
     // マイクを止めている(ReaCastのホットキー・ボタンから届く voiceControl)
-    let muted = false;
+    // ReaCastが「マイクを止めている」状態で開いた時は、止めた状態から始める(聞き取りを始めない)
+    let muted = new URLSearchParams(location.search).get('muted') === '1';
     let rec = null;
     // 聞き取り途中(まだ確定していない)の言葉。区切られた時に捨てずに確定として送る
     let pendingInterim = '';
@@ -196,10 +197,14 @@
           startRec();
         }
       }, 2000);
-      try {
-        rec.start();
-      } catch (err) {
-        setState('error', `音声認識を始められませんでした: ${err.message || err}`);
+      if (muted) {
+        setState('muted', 'マイクを止めています');
+      } else {
+        try {
+          rec.start();
+        } catch (err) {
+          setState('error', `音声認識を始められませんでした: ${err.message || err}`);
+        }
       }
     }
   </script>

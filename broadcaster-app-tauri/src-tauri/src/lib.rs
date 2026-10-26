@@ -1121,6 +1121,7 @@ pub fn run() {
             // 話した字幕: 音声認識の画面からのメッセージを受け取り、ONならEdgeの窓を開く
             app.manage(voice::VoiceManager::default());
             voice::start_listener(app.handle().clone());
+            voice::restore_muted(app.handle());
             voice::sync(app.handle());
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
