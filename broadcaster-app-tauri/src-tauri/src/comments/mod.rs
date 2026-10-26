@@ -78,6 +78,8 @@ pub struct CommentSettings {
     /// スレッドの>>1(テンプレート)は字幕・読み上げ・右のレス一覧に出さない
     /// (長いと字幕の文字が小さくなり、読み終わるまで次のレスが待たされるため)
     pub skip_first_post: bool,
+    /// 「スレッドのレス」を開いた時に、一番下(最新のレス)を表示する(既定OFF)
+    pub thread_open_at_bottom: bool,
     /// 「スレッドのレス」タブから書き込む時の名前・メール欄
     pub post_name: String,
     pub post_mail: String,
@@ -413,6 +415,7 @@ impl Default for CommentSettings {
             start_on_launch: false,
             jpnkn_fast: true,
             skip_first_post: true,
+            thread_open_at_bottom: false,
             post_name: String::new(),
             post_mail: String::new(),
             start_res_no: 0,

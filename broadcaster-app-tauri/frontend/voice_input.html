@@ -52,6 +52,27 @@
     // マイクを止めている(ReaCastのホットキー・ボタンから届く voiceControl)
     let muted = false;
     let rec = null;
+    // 聞き取り途中(まだ確定していない)の言葉。区切られた時に捨てずに確定として送る
+    let pendingInterim = '';
+    // 聞き取りが動いているか・始めた時刻・最後に声を聞き取った時刻(止まった時の見張り用)
+    let running = false;
+    let startedAt = 0;
+    let lastHeardAt = 0;
+    let endedAt = 0;
+
+    /** 聞き取りを始める(既に始まっている時の例外は無視。すぐ始められなければ少し後にもう一度) */
+    function startRec() {
+      if (!rec || muted) return;
+      try {
+        rec.start();
+      } catch (_) {
+        setTimeout(() => {
+          if (!running && !muted) {
+            try { rec.start(); } catch (_) {}
+          }
+        }, 150);
+      }
+    }
 
     function connect() {
       ws = new WebSocket(WS_URL);
@@ -71,11 +92,12 @@
         muted = nextMuted;
         if (muted) {
           // 聞き取り自体を止める(声がサーバーに送られないように)
+          pendingInterim = '';
           try { rec.abort(); } catch (_) {}
           textEl.textContent = '';
           setState('muted', 'マイクを止めています');
         } else {
-          try { rec.start(); } catch (_) {}
+          startRec();
         }
       };
     }
@@ -91,10 +113,15 @@
       rec.interimResults = true;
       let fatal = false;
 
-      rec.onstart = () => setState('listening', `聞き取り中(${lang})`);
+      rec.onstart = () => {
+        running = true;
+        startedAt = Date.now();
+        setState('listening', `聞き取り中(${lang})`);
+      };
       rec.onresult = (e) => {
         // 聞き取れているなら、通信は大丈夫
         networkErrors = [];
+        lastHeardAt = Date.now();
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i];
@@ -102,12 +129,14 @@
           if (!text) continue;
           if (r.isFinal) {
             textEl.textContent = text;
+            pendingInterim = '';
             send({ type: 'voiceInput', text, final: true });
           } else {
             interim += text;
           }
         }
         if (interim) {
+          pendingInterim = interim;
           textEl.textContent = interim;
           send({ type: 'voiceInput', text: interim, final: false });
         }
@@ -136,10 +165,37 @@
           setState('error', `音声認識のエラー: ${e.error}`);
         }
       };
-      // ブラウザは一定時間で聞き取りを終えてしまうので、終わったらすぐ聞き直す
+      // ブラウザは一定時間で聞き取りを区切ってしまう。区切られた時に聞き取り途中の言葉が
+      // 残っていたら、捨てずに確定として送る(話している途中で区切られると、その言葉が
+      // 丸ごと消えて「話したのに字幕が出ない」ことがあったため)。待たずにすぐ聞き直す
       rec.onend = () => {
-        if (!fatal && !muted) setTimeout(() => { if (!muted) { try { rec.start(); } catch (_) {} } }, 300);
+        running = false;
+        endedAt = Date.now();
+        if (pendingInterim && !muted) {
+          send({ type: 'voiceInput', text: pendingInterim, final: true });
+          pendingInterim = '';
+        }
+        if (!fatal && !muted) startRec();
       };
+      // 見張り(2秒おき):
+      // ・長く聞き続けると、聞き取り中のまま結果を返さなくなることがある(Chromeでよく
+      //   知られている問題)。黙っている間に、45秒ごとに聞き取りを新しくする
+      // ・聞き取り途中の言葉のまま固まっていたら、区切る(途中の言葉は確定として送られる)
+      // ・止まったまま始め直せていなければ、始め直す
+      setInterval(() => {
+        if (fatal || muted) return;
+        const now = Date.now();
+        if (running) {
+          const quiet = !pendingInterim && now - lastHeardAt > 3000;
+          // 聞き取り途中の言葉が8秒以上変わらないのは、固まっている(区切ると確定として送られる)
+          const stuck = !!pendingInterim && now - lastHeardAt > 8000;
+          if ((quiet && now - startedAt > 45000) || stuck) {
+            try { rec.stop(); } catch (_) {}
+          }
+        } else if (now - endedAt > 2000) {
+          startRec();
+        }
+      }, 2000);
       try {
         rec.start();
       } catch (err) {

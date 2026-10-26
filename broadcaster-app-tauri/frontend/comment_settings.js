@@ -185,6 +185,13 @@ function showTab(name) {
   for (const s of document.querySelectorAll('main section')) s.classList.toggle('active', s.dataset.tab === name);
   document.querySelector('main').scrollTop = 0;
   if (window.HelpTips) window.HelpTips.close();
+  // 「スレッドのレス」を開いた時に、一番下(最新のレス)を表示する(設定でONの時)
+  if (name === 'thread' && settings && settings.threadOpenAtBottom) {
+    requestAnimationFrame(() => {
+      const list = document.getElementById('threadList');
+      list.scrollTop = list.scrollHeight;
+    });
+  }
 }
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-tab]');
