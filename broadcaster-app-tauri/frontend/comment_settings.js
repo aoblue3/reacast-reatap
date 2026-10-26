@@ -1552,6 +1552,34 @@ document.getElementById('voiceReopenBtn').addEventListener('click', async () => 
   invoke('voice_reopen').catch(() => {});
 });
 
+// Edgeの音声認識の使用時間(Edgeが記録している分を読むだけ。「話した字幕」タブを開いた時と、開いている間は30秒おき)
+const voiceEdgeUsageEl = document.getElementById('voiceEdgeUsage');
+function hm(secs) {
+  const m = Math.max(0, Math.round(secs / 60));
+  return m >= 60 ? `${Math.floor(m / 60)}時間${m % 60}分` : `${m}分`;
+}
+async function renderEdgeUsage() {
+  const u = await invoke('voice_edge_usage').catch(() => null);
+  if (!u) {
+    voiceEdgeUsageEl.textContent = 'まだ記録がありません(ReaCastからEdgeで聞き取ると記録されます)';
+    voiceEdgeUsageEl.style.color = '';
+    return;
+  }
+  const left = u.limitSecs - u.usedSecs;
+  let text = `約${hm(u.usedSecs)} / 約${hm(u.limitSecs)}(残り約${hm(left)})`;
+  if (u.checkpointMs) {
+    const d = new Date(u.checkpointMs);
+    text += ` 最後の記録: ${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  voiceEdgeUsageEl.textContent = left <= 0 ? `上限に達しています(${text})` : text;
+  voiceEdgeUsageEl.style.color = left < 3600 ? 'var(--c-ffd36b)' : '';
+}
+document.querySelector('nav button[data-tab="voice"]').addEventListener('click', renderEdgeUsage);
+setInterval(() => {
+  if (document.querySelector('main section[data-tab="voice"].active')) renderEdgeUsage();
+}, 30000);
+renderEdgeUsage();
+
 // ---- コメントとリアクションの連動 ----
 const reactionRulesMsgEl = document.getElementById('reactionRulesMsg');
 document.getElementById('reactionRulesResetBtn').addEventListener('click', async () => {

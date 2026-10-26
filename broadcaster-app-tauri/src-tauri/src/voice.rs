@@ -24,6 +24,49 @@ pub struct VoiceManager {
     status: Mutex<serde_json::Value>,
     /// マイクを止めている(ホットキー・ボタン)。止めている間はEdgeの聞き取りも止める
     muted: std::sync::atomic::AtomicBool,
+    /// 「Edge優先」で、Edgeの音声認識が使えなくなった(上限に達した等)。ReaCastを
+    /// 起動し直すか「開き直す」まではChromeを使う
+    edge_failed: std::sync::atomic::AtomicBool,
+    /// 今開いているブラウザの名前("Edge"/"Chrome"。状態の表示用)
+    browser_name: Mutex<String>,
+}
+
+/// Edgeの音声認識の使用時間の上限(秒)。Edgeはプロフィールの「Local State」の
+/// speech_recognition_limiter.amount_usedに使った秒数を記録していて、約10時間(36000秒)で
+/// 止める(2026-10-18に本人のPCで36020秒で止まった)。記録は一定の期間で戻る
+/// (2026-10-27には8471秒に戻っていた。戻るまでの期間は分かっていない)。
+/// ここは記録を読むだけで、書き換えはしない(上限をすり抜けることになるため)
+const EDGE_LIMIT_SECS: f64 = 36000.0;
+/// 「Edge優先」で、残りがこれより少なければ最初からChromeで開く
+const EDGE_MARGIN_SECS: f64 = 120.0;
+
+/// Edgeの音声認識の使用時間(秒)と、最後に記録された時刻(UNIXミリ秒)。読めなければNone
+fn edge_usage(app: &AppHandle) -> Option<(f64, Option<u64>)> {
+    let path = app.path().app_local_data_dir().ok()?.join("voice-edge").join("Local State");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let lim = v.get("speech_recognition_limiter")?;
+    let used = lim.get("amount_used")?.as_f64()?;
+    // Chromium系の時刻(1601年からのマイクロ秒。文字列で入っている)をUNIXミリ秒に直す
+    let checkpoint = lim
+        .get("last_checkpoint")
+        .and_then(|c| c.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| c.as_u64()))
+        .and_then(|us| (us / 1000).checked_sub(11_644_473_600_000));
+    Some((used, checkpoint))
+}
+
+/// 設定の「音声認識に使うブラウザ」から、実際に開くブラウザを決める。
+/// "edge-first"(Edge優先)は、Edgeが使えなくなっている時・上限ぎりぎりの時だけChrome
+fn effective_browser(app: &AppHandle, choice: &str) -> String {
+    if choice != "edge-first" {
+        return choice.to_string();
+    }
+    let failed = app.state::<VoiceManager>().edge_failed.load(Ordering::SeqCst);
+    let near_limit = edge_usage(app).is_some_and(|(used, _)| used >= EDGE_LIMIT_SECS - EDGE_MARGIN_SECS);
+    if failed || near_limit {
+        "chrome".into()
+    } else {
+        "edge".into()
+    }
 }
 
 /// 起動したEdge。Windowsでは、起動するたびに専用のJobを作ってその中で動かし、
@@ -281,6 +324,7 @@ fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
 fn launch(app: &AppHandle, url: &str, choice: &str) -> Result<EdgeProcess, String> {
     let (exe, name, profile) = browser_path(choice).ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
     log::info!("話した字幕: {name}で開きます");
+    *app.state::<VoiceManager>().browser_name.lock().unwrap() = name.to_string();
     let profile = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join(profile);
     let args: Vec<String> = [
         format!("--app={url}"),
@@ -308,8 +352,10 @@ pub fn sync(app: &AppHandle) {
     if edge.as_ref().is_some_and(|(p, _)| !p.is_running()) {
         *edge = None;
     }
-    // ブラウザの選択もURLに入れておく(変えたら開き直す。画面側は使わない)
-    let want = settings.voice_enabled.then(|| format!("{}&browser={}", input_url(&settings), settings.voice_browser));
+    // ブラウザの選択もURLに入れておく(変えたら開き直す。画面側は使わない)。
+    // 「Edge優先」は、実際に開くブラウザ(Edge/Chrome)を入れる(切り替わったら開き直す)
+    let browser = effective_browser(app, &settings.voice_browser);
+    let want = settings.voice_enabled.then(|| format!("{}&browser={}", input_url(&settings), browser));
     // 同じ設定で開いているなら何もしない
     if matches!((&*edge, &want), (Some((_, url)), Some(w)) if url == w) {
         return;
@@ -325,7 +371,7 @@ pub fn sync(app: &AppHandle) {
         Some(url) => match launch(
             app,
             &if manager.muted.load(Ordering::SeqCst) { format!("{url}&muted=1") } else { url.clone() },
-            &settings.voice_browser,
+            &browser,
         ) {
             Ok(child) => {
                 log::info!("話した字幕: 音声認識の窓を開きました");
@@ -472,7 +518,27 @@ pub fn start_listener(app: AppHandle) {
                     send_control(&app, true);
                     continue;
                 }
-                set_status(&app, state, msg["message"].as_str().unwrap_or_default());
+                let manager = app.state::<VoiceManager>();
+                let browser = manager.browser_name.lock().unwrap().clone();
+                // 「Edge優先」で、Edgeの音声認識が使えなくなった(上限に達すると、聞き取りを
+                // 始めるたびに「network」になる)→Chromeに切り替える
+                if state == "error"
+                    && browser == "Edge"
+                    && app.state::<Arc<CommentEngine>>().settings().voice_browser == "edge-first"
+                    && !manager.edge_failed.swap(true, Ordering::SeqCst)
+                {
+                    log::info!("話した字幕: Edgeの音声認識が使えないので、Chromeに切り替えます({})", msg["message"].as_str().unwrap_or_default());
+                    set_status(&app, "wait", "Edgeの音声認識が使えなくなったので、Chromeに切り替えています…");
+                    sync(&app);
+                    continue;
+                }
+                let message = msg["message"].as_str().unwrap_or_default();
+                // 聞き取り中は、どちらのブラウザで聞き取っているかも出す
+                if state == "listening" && !browser.is_empty() {
+                    set_status(&app, state, format!("{message}・{browser}"));
+                } else {
+                    set_status(&app, state, message);
+                }
                 continue;
             }
             if muted {
@@ -530,7 +596,16 @@ pub fn voice_toggle_mute(app: AppHandle) -> bool {
 
 #[tauri::command(async)]
 pub fn voice_reopen(app: AppHandle) {
+    // 開き直す時は、「Edge優先」ならもう一度Edgeを試す
+    app.state::<VoiceManager>().edge_failed.store(false, Ordering::SeqCst);
     reopen(&app);
+}
+
+/// Edgeの音声認識の使用時間(設定画面に出す)。{usedSecs, limitSecs, checkpointMs}。読めなければnull
+#[tauri::command(async)]
+pub fn voice_edge_usage(app: AppHandle) -> Option<serde_json::Value> {
+    let (used, checkpoint) = edge_usage(&app)?;
+    Some(serde_json::json!({ "usedSecs": used, "limitSecs": EDGE_LIMIT_SECS, "checkpointMs": checkpoint }))
 }
 
 #[cfg(test)]

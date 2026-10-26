@@ -709,9 +709,11 @@
       <div class="field"><label>話した言葉のリアクションに印を付ける<span class="help" data-help="自分の話した言葉で飛んだリアクションの周りを水色に光らせて、リスナーが送ったリアクションと見分けられるようにします。"></span></label><div><input type="checkbox" data-key="voiceReactionMark" /></div></div>
       <div class="field"><label>音声認識に使うブラウザ<span class="help" data-help="Edge(Microsoftの音声認識)は日本語の精度が高めですが、合計で約10時間使うと使えなくなることがあります。Chrome(Googleの音声認識)はその制限が見当たらないので、Chromeを入れておくのがおすすめです。選んだブラウザが入っていない時は、もう一方を使います。"></span></label><div><select data-key="voiceBrowser">
         <option value="auto">自動(Chromeがあれば Chrome)</option>
+        <option value="edge-first">Edge優先(使えなくなったら自動でChrome)</option>
         <option value="chrome">Google Chrome</option>
         <option value="edge">Microsoft Edge</option>
       </select></div></div>
+      <div class="field"><label>Edgeの音声認識の使用時間<span class="help" data-help="Edgeの音声認識は、使った時間をEdgeが記録していて、合計で約10時間になると使えなくなります。記録は一定の期間で戻るようです(戻るまでの期間は分かっていません)。「Edge優先」にしておくと、使えなくなった時に自動でChromeに切り替わります。"></span></label><div class="inline"><span id="voiceEdgeUsage" class="unit" style="margin-left:0">-</span></div></div>
       <h3>OBSに出す</h3>
       <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice">コピー</button></div>
       <div class="field"><label>出すもの</label><div><select data-key="style.voice.show">

@@ -1277,6 +1277,7 @@ pub fn run() {
             preflight::preflight_check,
             voice::voice_status,
             voice::voice_reopen,
+            voice::voice_edge_usage,
             voice::voice_toggle_mute,
             tts::tts_list_speakers,
             tts::tts_list_devices,
