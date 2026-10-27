@@ -77,6 +77,8 @@
     let startedAt = 0;
     let lastHeardAt = 0;
     let endedAt = 0;
+    // 1文確定して、聞き取りを新しくしている途中
+    let renewing = false;
 
     // ---- マイクの音(音量メーター。Chromeの時は音声認識にもこの音を渡す) ----
     let audio = null;
@@ -251,6 +253,13 @@
             textEl.textContent = text;
             pendingInterim = '';
             send({ type: 'voiceInput', text, final: true });
+            // 1文確定したら、聞き取りを新しくする(onendですぐ聞き直す)。同じ聞き取りのまま
+            // 同じ言葉を繰り返すと(「こんにちは」を続けて言う等)、Chromeは2回目以降を空の
+            // 結果で返して、字幕が出なかった(2026-10-28に確認。新しくすると全部聞き取れた)
+            if (!renewing) {
+              renewing = true;
+              try { rec.stop(); } catch (_) {}
+            }
           } else {
             interim += text;
           }
@@ -290,6 +299,7 @@
       // 丸ごと消えて「話したのに字幕が出ない」ことがあったため)。待たずにすぐ聞き直す
       rec.onend = () => {
         running = false;
+        renewing = false;
         endedAt = Date.now();
         if (pendingInterim && !muted) {
           send({ type: 'voiceInput', text: pendingInterim, final: true });
