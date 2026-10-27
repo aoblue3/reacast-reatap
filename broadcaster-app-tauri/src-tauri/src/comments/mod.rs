@@ -248,6 +248,12 @@ pub struct CommentSettings {
     /// 音声認識に使うブラウザ: "auto"(Chromeがあれば優先) / "chrome" / "edge"。
     /// Edge(Microsoftの音声認識)は精度が高めだが、約10時間で使えなくなることがある
     pub voice_browser: String,
+    /// 聞き取りに使うマイク(デバイスの名前。空ならWindowsの既定のマイク)。Chromeの時だけ効く
+    pub voice_mic: String,
+    /// 聞き取る前に声を大きくする倍率(1〜4。1なら今まで通り)。Chromeの時だけ効く
+    pub voice_gain: f64,
+    /// 声の大きさを自動でそろえる(ブラウザの自動音量調整)。Chromeの時だけ効く
+    pub voice_agc: bool,
     /// 話した言葉を翻訳する / 翻訳先の言語(Google翻訳の言語コード。例: "en")
     pub voice_translate: bool,
     pub voice_target_lang: String,
@@ -506,6 +512,9 @@ impl Default for CommentSettings {
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
             voice_browser: "auto".into(),
+            voice_mic: String::new(),
+            voice_gain: 1.0,
+            voice_agc: true,
             voice_translate: true,
             voice_target_lang: "en".into(),
             voice_reaction_link: false,

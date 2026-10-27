@@ -555,7 +555,12 @@ async fn handle_ws_connection(
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                             if matches!(
                                 v["type"].as_str(),
-                                Some("voiceInput") | Some("voiceStatus") | Some("translateResult") | Some("translatorStatus")
+                                Some("voiceInput")
+                                    | Some("voiceStatus")
+                                    | Some("voiceDevices")
+                                    | Some("voiceLevel")
+                                    | Some("translateResult")
+                                    | Some("translatorStatus")
                             ) {
                                 let _ = voice_tx.send(v);
                             }

@@ -687,6 +687,12 @@
       <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
       <div class="field"><label>マイク<span class="help" data-help="電話や離席の時に。止めている間は聞き取り自体を止めて、表示中の字幕も消します。ホットキーは「ホットキー」タブで割り当てられます。"></span></label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button></div></div>
+      <div class="field"><label>声の大きさ<span class="help" data-help="マイクが拾っている声の大きさです(緑の棒)。話しているのに棒がほとんど伸びない時は、声が小さく届いています。下の「声を大きくする」を上げるか、Windowsのマイクの音量を上げてください。棒が伸びているのに字幕が出ない時は、音声認識の側の問題です。赤くなる時は大きすぎます。"></span></label><div class="inline"><div id="voiceMeter" style="width:180px;height:10px;border-radius:5px;background:var(--c-15161a, #15161a);overflow:hidden;border:1px solid var(--c-3a3d47, #3a3d47)"><div id="voiceMeterBar" style="height:100%;width:0;background:var(--c-7dff9a);transition:width .15s"></div></div></div></div>
+      <div class="field"><label>使うマイク<span class="help" data-help="聞き取りに使うマイクです。「Windowsの既定のマイク」が、Webカメラのマイクなど配信用ではないものになっていると、声を拾いにくくなります。一覧は、音声認識の窓が開いている時に出ます。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><select data-key="voiceMic" data-keep-unknown id="voiceMicSelect">
+        <option value="">Windowsの既定のマイク</option>
+      </select></div></div>
+      <div class="field"><label>声を大きくする<span class="help" data-help="聞き取る前に声を大きくします(1倍で今まで通り)。小さい声やマイクから離れた時に拾いやすくなりますが、上げすぎると周りの音も拾いやすくなります。上の「声の大きさ」を見ながら、話した時に棒が半分〜8割くらいになるのが目安です。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><input type="number" min="1" max="4" step="0.5" data-key="voiceGain" /><span class="unit">倍</span></div></div>
+      <div class="field"><label>声の大きさを自動でそろえる<span class="help" data-help="ブラウザの自動音量調整です(ONで今まで通り)。声の大きさのばらつきをならします。「声を大きくする」で調整したい時や、自動調整で声が小さくなる時はOFFにしてください。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><input type="checkbox" data-key="voiceAgc" /></div></div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
         <option value="en-US">英語</option>

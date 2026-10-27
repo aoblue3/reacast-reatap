@@ -29,6 +29,8 @@ pub struct VoiceManager {
     edge_failed: std::sync::atomic::AtomicBool,
     /// 今開いているブラウザの名前("Edge"/"Chrome"。状態の表示用)
     browser_name: Mutex<String>,
+    /// 音声認識の画面が見つけたマイクの名前の一覧(設定画面の「マイク」に出す)
+    devices: Mutex<Vec<String>>,
 }
 
 /// Edgeの音声認識の使用時間の上限(秒)。Edgeはプロフィールの「Local State」の
@@ -325,7 +327,23 @@ fn browser_path(choice: &str) -> Option<(PathBuf, &'static str, &'static str)> {
 
 fn input_url(s: &CommentSettings) -> String {
     let lang: String = s.voice_lang.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
-    format!("http://127.0.0.1:{OBS_HTTP_PORT}/voice_input.html?lang={lang}")
+    // マイク・声の増幅・自動音量調整(音声認識の画面がChromeの時だけ使う)
+    let gain = if s.voice_gain.is_finite() { s.voice_gain.clamp(1.0, 4.0) } else { 1.0 };
+    format!(
+        "http://127.0.0.1:{OBS_HTTP_PORT}/voice_input.html?lang={lang}&mic={}&gain={gain}&agc={}",
+        encode_query(s.voice_mic.trim()),
+        u8::from(s.voice_agc),
+    )
+}
+
+/// URLの「?」の後ろに入れられるようにする(マイクの名前には空白・括弧・日本語が入る)
+fn encode_query(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
@@ -347,8 +365,9 @@ fn launch(app: &AppHandle, url: &str, choice: &str) -> Result<EdgeProcess, Strin
         url,
         choice,
         "voice",
-        // このプロフィールの中だけ、マイクの許可を自動で出す(開くのはReaCastの画面だけ)
-        &["--use-fake-ui-for-media-stream"],
+        // このプロフィールの中だけ、マイクの許可を自動で出す(開くのはReaCastの画面だけ)。
+        // 声を大きくする処理(Web Audio)を、ボタンを押さなくても動かせるようにする
+        &["--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"],
     )?;
     log::info!("話した字幕: {name}で開きました");
     *app.state::<VoiceManager>().browser_name.lock().unwrap() = name.to_string();
@@ -649,6 +668,22 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
             let muted = app.state::<VoiceManager>().muted.load(Ordering::SeqCst);
+            // 音声認識の画面からの、マイクの一覧と、今の声の大きさ(設定画面のメーター)
+            if msg["type"] == "voiceDevices" {
+                let list: Vec<String> = msg["devices"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|d| d.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default();
+                *app.state::<VoiceManager>().devices.lock().unwrap() = list.clone();
+                let _ = app.emit("voice:devices", list);
+                continue;
+            }
+            if msg["type"] == "voiceLevel" {
+                if !muted {
+                    let _ = app.emit("voice:level", msg["level"].as_f64().unwrap_or(0.0));
+                }
+                continue;
+            }
             if msg["type"] == "voiceStatus" {
                 let state = msg["state"].as_str().unwrap_or("wait");
                 // 止めている間に画面が繋ぎ直してきたら(Edgeの再起動など)、改めて止めてもらう
@@ -727,6 +762,7 @@ pub fn start_listener(app: AppHandle) {
 pub fn voice_status(manager: tauri::State<VoiceManager>) -> serde_json::Value {
     let mut v = manager.status.lock().unwrap().clone();
     v["muted"] = serde_json::json!(manager.muted.load(Ordering::SeqCst));
+    v["devices"] = serde_json::json!(*manager.devices.lock().unwrap());
     v
 }
 
@@ -752,6 +788,12 @@ pub fn voice_edge_usage(app: AppHandle) -> Option<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encodes_mic_name_for_url() {
+        assert_eq!(encode_query("マイク (USB) A&B"), "%E3%83%9E%E3%82%A4%E3%82%AF%20%28USB%29%20A%26B");
+        assert_eq!(encode_query(""), "");
+    }
 
     #[test]
     fn skips_short_slang() {

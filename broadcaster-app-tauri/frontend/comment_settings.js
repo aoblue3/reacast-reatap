@@ -1540,11 +1540,38 @@ invoke('voice_status')
   .then((v) => {
     renderVoiceStatus(v);
     renderVoiceMuted(v && v.muted);
+    renderVoiceDevices(v && v.devices);
   })
   .catch(() => {});
 listen('voice:status', (e) => renderVoiceStatus(e.payload));
 // ホットキーで切り替えた時もボタンの表示を合わせる
 listen('voice:muted', (e) => renderVoiceMuted(e.payload));
+
+// 声の大きさのメーター・マイクの一覧(音声認識の窓から届く)
+const voiceMeterBar = document.getElementById('voiceMeterBar');
+let voiceMeterTimer = null;
+listen('voice:level', (e) => {
+  const level = Math.max(0, Math.min(1, Number(e.payload) || 0));
+  voiceMeterBar.style.width = `${Math.round(level * 100)}%`;
+  voiceMeterBar.style.background = level > 0.9 ? 'var(--c-ff8a8a)' : 'var(--c-7dff9a)';
+  // 届かなくなったら(マイクを止めた・窓を閉じた)0に戻す
+  clearTimeout(voiceMeterTimer);
+  voiceMeterTimer = setTimeout(() => (voiceMeterBar.style.width = '0'), 1500);
+});
+const voiceMicSelect = document.getElementById('voiceMicSelect');
+function renderVoiceDevices(list) {
+  if (!Array.isArray(list)) return;
+  const current = settings ? settings.voiceMic || '' : voiceMicSelect.value;
+  for (const o of Array.from(voiceMicSelect.options)) if (o.value) o.remove();
+  for (const name of list) {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = name;
+    voiceMicSelect.appendChild(o);
+  }
+  writeField(voiceMicSelect, current);
+}
+listen('voice:devices', (e) => renderVoiceDevices(e.payload));
 
 // ---- PCの中で翻訳(Chrome/Edgeの翻訳の窓。src-tauri/src/local_translate.rs) ----
 function renderTranslateStatus(v) {

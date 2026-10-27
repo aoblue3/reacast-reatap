@@ -17,12 +17,17 @@
   #state.ng { color: #ff8a8a; }
   #state.wait { color: #ffd36b; }
   #text { margin-top: 10px; min-height: 3em; padding: 8px; border-radius: 6px; background: #15161a; white-space: pre-wrap; }
+  #meter { margin-top: 8px; height: 8px; border-radius: 4px; background: #15161a; overflow: hidden; }
+  #meterBar { height: 100%; width: 0; background: #7dff9a; transition: width 0.15s; }
+  #mic { color: #8d909c; font-size: 12px; margin-top: 4px; }
   .hint { color: #8d909c; font-size: 12px; margin-top: 10px; line-height: 1.5; }
 </style>
 </head>
 <body>
   <h1>ReaCast 話した字幕</h1>
   <div>状態: <span id="state" class="wait">準備中…</span></div>
+  <div id="meter"><div id="meterBar"></div></div>
+  <div id="mic"></div>
   <div id="text"></div>
   <div class="hint">この窓は最小化しておいて大丈夫です(閉じると字幕が止まります)。止める時はReaCastの「話した字幕を使う」をOFFにしてください。</div>
   <script>
@@ -31,6 +36,18 @@
     const lang = new URLSearchParams(location.search).get('lang') || 'ja-JP';
     const stateEl = document.getElementById('state');
     const textEl = document.getElementById('text');
+    const meterBar = document.getElementById('meterBar');
+    const micEl = document.getElementById('mic');
+    const params = new URLSearchParams(location.search);
+    // マイク・声の増幅・自動音量調整(ReaCastの設定)
+    const micName = params.get('mic') || '';
+    const gain = Math.min(4, Math.max(1, Number(params.get('gain')) || 1));
+    const agc = params.get('agc') !== '0';
+    // Chromeの時だけ、マイクの音をこの画面で受け取って加工してから音声認識に渡す
+    // (Edgeは渡すと「network」のエラーになって聞き取れなかった。2026-10-28に確認)。
+    // 設定が今まで通り(既定のマイク・1倍・自動音量調整ON)なら、ブラウザに任せる
+    const isEdge = /Edg\//.test(navigator.userAgent);
+    const useTrack = !isEdge && (micName !== '' || gain !== 1 || !agc);
     let ws = null;
     let lastState = null;
 
@@ -61,18 +78,118 @@
     let lastHeardAt = 0;
     let endedAt = 0;
 
+    // ---- マイクの音(音量メーター。Chromeの時は音声認識にもこの音を渡す) ----
+    let audio = null;
+    let audioOpening = null;
+
+    /** マイクの一覧(名前)をReaCastに知らせる(設定画面の「マイク」に出す) */
+    async function sendDevices() {
+      try {
+        const list = (await navigator.mediaDevices.enumerateDevices())
+          .filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications' && d.label)
+          .map((d) => d.label);
+        send({ type: 'voiceDevices', devices: [...new Set(list)] });
+      } catch (_) {}
+    }
+
+    /** マイクを開く(メーター・音声認識に渡す音)。開いていれば何もしない */
+    function openAudio() {
+      if (audio && audio.track.readyState === 'live') return Promise.resolve(audio);
+      if (audioOpening) return audioOpening;
+      audioOpening = (async () => {
+        closeAudio();
+        let deviceId;
+        let note = '';
+        if (micName) {
+          // 名前は、許可をもらった後でないと分からない(この窓は自動で許可される)
+          const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+          probe.getTracks().forEach((t) => t.stop());
+          const found = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === 'audioinput' && d.label === micName);
+          if (found) deviceId = found.deviceId;
+          else note = '(選んだマイクが見つからないので、既定のマイク)';
+        }
+        const constraints = useTrack
+          ? { deviceId: deviceId ? { exact: deviceId } : undefined, autoGainControl: agc, noiseSuppression: true, echoCancellation: true }
+          : true;
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+        const track = stream.getAudioTracks()[0];
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+        const src = ctx.createMediaStreamSource(stream);
+        const amp = ctx.createGain();
+        amp.gain.value = useTrack ? gain : 1;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        src.connect(amp);
+        amp.connect(analyser);
+        let out = null;
+        if (useTrack) {
+          const dest = ctx.createMediaStreamDestination();
+          amp.connect(dest);
+          out = dest.stream.getAudioTracks()[0];
+        }
+        audio = { stream, ctx, track, analyser, out };
+        // マイクが抜かれた時は、聞き取りを区切って開き直す
+        track.onended = () => {
+          closeAudio();
+          try { rec && rec.abort(); } catch (_) {}
+        };
+        micEl.textContent = `マイク: ${track.label || '既定のマイク'}${note}${useTrack ? `・${gain}倍${agc ? '' : '・自動音量調整OFF'}` : ''}`;
+        sendDevices();
+        return audio;
+      })().finally(() => (audioOpening = null));
+      return audioOpening;
+    }
+
+    function closeAudio() {
+      if (!audio) return;
+      audio.stream.getTracks().forEach((t) => t.stop());
+      audio.ctx.close().catch(() => {});
+      audio = null;
+      meterBar.style.width = '0';
+    }
+
+    // 声の大きさ(0〜1)。-60dB〜0dBを0〜1にする。4回/秒ReaCastに送る(設定画面のメーター)
+    const meterBuf = new Float32Array(1024);
+    setInterval(() => {
+      if (!audio || muted) return;
+      audio.analyser.getFloatTimeDomainData(meterBuf);
+      let sum = 0;
+      for (const v of meterBuf) sum += v * v;
+      const rms = Math.sqrt(sum / meterBuf.length);
+      const level = rms > 0 ? Math.min(1, Math.max(0, (20 * Math.log10(rms) + 60) / 60)) : 0;
+      meterBar.style.width = `${Math.round(level * 100)}%`;
+      meterBar.style.background = level > 0.9 ? '#ff8a8a' : '#7dff9a';
+      send({ type: 'voiceLevel', level: Math.round(level * 100) / 100 });
+    }, 250);
+    navigator.mediaDevices && navigator.mediaDevices.addEventListener('devicechange', sendDevices);
+
     /** 聞き取りを始める(既に始まっている時の例外は無視。すぐ始められなければ少し後にもう一度) */
     function startRec() {
       if (!rec || muted) return;
-      try {
-        rec.start();
-      } catch (_) {
-        setTimeout(() => {
-          if (!running && !muted) {
+      openAudio().then(
+        (a) => {
+          if (muted) return;
+          const begin = () => (useTrack && a.out ? rec.start(a.out) : rec.start());
+          try {
+            begin();
+          } catch (_) {
+            setTimeout(() => {
+              if (!running && !muted) {
+                try { begin(); } catch (_) {}
+              }
+            }, 150);
+          }
+        },
+        (err) => {
+          // マイクを開けない時は、ブラウザに任せて聞き取る(メーターは出ない)
+          micEl.textContent = `マイクを開けませんでした: ${(err && err.name) || err}`;
+          if (useTrack) setState('error', `マイクを開けませんでした(${(err && err.name) || err})。「マイク」の設定を確認してください`);
+          else {
             try { rec.start(); } catch (_) {}
           }
-        }, 150);
-      }
+        },
+      );
     }
 
     function connect() {
@@ -95,6 +212,8 @@
           // 聞き取り自体を止める(声がサーバーに送られないように)
           pendingInterim = '';
           try { rec.abort(); } catch (_) {}
+          // マイク自体も閉じる(メーターも止まる)
+          closeAudio();
           textEl.textContent = '';
           setState('muted', 'マイクを止めています');
         } else {
@@ -200,11 +319,7 @@
       if (muted) {
         setState('muted', 'マイクを止めています');
       } else {
-        try {
-          rec.start();
-        } catch (err) {
-          setState('error', `音声認識を始められませんでした: ${err.message || err}`);
-        }
+        startRec();
       }
     }
   </script>
