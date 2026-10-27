@@ -237,6 +237,9 @@ pub struct CommentSettings {
     pub subtitle_translate: bool,
     /// 日本語のレスの翻訳先(Google翻訳の言語コード。既定は英語)。日本語以外のレスは日本語に訳す
     pub subtitle_translate_target: String,
+    /// 翻訳のしかた(下の字幕のレス・話した字幕の共通): "local"(PCの中で。Chrome/Edgeの
+    /// 翻訳の機能。使えない時はGoogle翻訳) / "google"(Google翻訳(非公式の方法)だけ)
+    pub translate_engine: String,
     // ---- 話した字幕(voice.rs) ----
     /// 話した字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
     pub voice_enabled: bool,
@@ -499,6 +502,7 @@ impl Default for CommentSettings {
             reaction_link_max: 2,
             subtitle_translate: false,
             subtitle_translate_target: "en".into(),
+            translate_engine: "local".into(),
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
             voice_browser: "auto".into(),
@@ -1947,11 +1951,11 @@ impl CommentEngine {
                 tauri::async_runtime::spawn(async move {
                     // 日本語なら設定の言語(既定は英語)に、それ以外なら日本語に
                     let target = if text::has_japanese(&body) { ja_target.as_str() } else { "ja" };
-                    match crate::voice::translate_detect(&source::http_client(), &body, target).await {
+                    match crate::voice::translate_detect(&source::http_client(), &body, None, target).await {
                         // 翻訳先と同じ言語だった・訳しても同じだった時は出さない
                         Ok((t, src)) if src != target && t.trim() != body.trim() => bridge.push_subtitle_translation(tid, &t),
                         Ok(_) => {}
-                        Err(e) if e == crate::voice::TRANSLATE_PAUSED => {}
+                        Err(e) if crate::voice::is_quiet_translate_error(&e) => {}
                         Err(e) => log::warn!("字幕の翻訳: {e}"),
                     }
                 });
@@ -2265,6 +2269,8 @@ pub fn comments_save_settings(
     crate::sync_subtitle_window(&app);
     // 話した字幕のON/OFF・聞き取る言葉が変わっていれば、Edgeの窓を開く・閉じる・開き直す
     crate::voice::sync(&app);
+    // 翻訳を使う設定・翻訳のしかたが変わっていれば、翻訳の窓を開く・閉じる
+    crate::local_translate::sync(&app);
     Ok(())
 }
 

@@ -1545,6 +1545,22 @@ invoke('voice_status')
 listen('voice:status', (e) => renderVoiceStatus(e.payload));
 // ホットキーで切り替えた時もボタンの表示を合わせる
 listen('voice:muted', (e) => renderVoiceMuted(e.payload));
+
+// ---- PCの中で翻訳(Chrome/Edgeの翻訳の窓。src-tauri/src/local_translate.rs) ----
+function renderTranslateStatus(v) {
+  if (!v || !v.state) return;
+  for (const el of document.querySelectorAll('.translate-status')) {
+    el.textContent = v.message || '';
+    el.style.color =
+      v.state === 'ready' ? 'var(--c-7dff9a)' : v.state === 'error' || v.state === 'unsupported' ? 'var(--c-ff8a8a)' : v.state === 'needs-click' ? 'var(--c-ffd36b)' : '';
+  }
+  for (const btn of document.querySelectorAll('.translate-show-btn')) btn.hidden = v.state === 'off' || v.state === 'error';
+}
+invoke('translate_status').then(renderTranslateStatus).catch(() => {});
+listen('translate:status', (e) => renderTranslateStatus(e.payload));
+for (const btn of document.querySelectorAll('.translate-show-btn')) {
+  btn.addEventListener('click', () => invoke('translate_show_window').catch(() => {}));
+}
 document.getElementById('voiceReopenBtn').addEventListener('click', async () => {
   // 入力途中の設定(言語など)も反映してから開き直す
   clearTimeout(saveTimer);

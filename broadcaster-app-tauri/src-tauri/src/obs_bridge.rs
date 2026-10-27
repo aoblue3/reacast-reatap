@@ -53,6 +53,8 @@ const ERROR_LOG_JS: &str = include_str!("../../frontend/shared/error-log.js");
 // 話した字幕: OBSに表示する画面と、Edgeで開く音声認識の画面(voice.rs)
 const VOICE_HTML: &str = include_str!("../../frontend/voice.html");
 const VOICE_INPUT_HTML: &str = include_str!("../../frontend/voice_input.html");
+// PCの中で翻訳する窓(local_translate.rs)
+const TRANSLATE_WORKER_HTML: &str = include_str!("../../frontend/translate_worker.html");
 // 視聴者アンケートの結果(配信画面に出す)
 const POLL_HTML: &str = include_str!("../../frontend/poll.html");
 
@@ -422,6 +424,7 @@ Connection: close
         "/shared/error-log.js" => ("text/javascript; charset=utf-8", ERROR_LOG_JS),
         "/voice.html" => ("text/html; charset=utf-8", VOICE_HTML),
         "/voice_input.html" => ("text/html; charset=utf-8", VOICE_INPUT_HTML),
+        "/translate_worker.html" => ("text/html; charset=utf-8", TRANSLATE_WORKER_HTML),
         "/poll.html" => ("text/html; charset=utf-8", POLL_HTML),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
@@ -546,10 +549,14 @@ async fn handle_ws_connection(
             },
             incoming = futures_util::StreamExt::next(&mut read) => match incoming {
                 Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
-                    // 音声認識の画面からの「聞き取った文字」「状態」だけを受け取る
+                    // 音声認識の画面からの「聞き取った文字」「状態」と、翻訳の窓からの
+                    // 「翻訳の結果」「状態」だけを受け取る
                     if trusted {
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if matches!(v["type"].as_str(), Some("voiceInput") | Some("voiceStatus")) {
+                            if matches!(
+                                v["type"].as_str(),
+                                Some("voiceInput") | Some("voiceStatus") | Some("translateResult") | Some("translatorStatus")
+                            ) {
                                 let _ = voice_tx.send(v);
                             }
                         }

@@ -551,7 +551,7 @@
         <option value="bottom-center">下の真ん中</option>
         <option value="bottom-right">右下</option>
       </select></div></div>
-      <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAは翻訳しません)。Google翻訳(非公式の方法)を使うので、仕様変更で使えなくなることがあります。"></span></label><div class="inline">
+      <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAや「草」「w」のような短いレスは翻訳しません)。翻訳のしかたは下の「翻訳のしかた」で選べます。"></span></label><div class="inline">
         <input type="checkbox" data-key="subtitleTranslate" />
         <span class="unit">翻訳先</span>
         <select data-key="subtitleTranslateTarget">
@@ -570,6 +570,11 @@
           <option value="id">インドネシア語</option>
         </select>
       </div></div>
+      <div class="field"><label>翻訳のしかた<span class="help" data-help="「PCの中で翻訳」は、Google Chrome(入っていなければMicrosoft Edge)に入っている翻訳の機能で、PCの中だけで翻訳します。回数の上限が無いので、長時間の配信でも止まりません(翻訳用の小さな窓が開きます。最小化しておいて大丈夫です)。最初の1回だけ、その窓の「翻訳の準備をする」を押して翻訳データをダウンロードします。ネットスラングは少し苦手です。「Google翻訳(ネット)」は非公式の方法なので、使いすぎると一時的に断られて翻訳が出なくなったり、仕様変更で使えなくなる場合があります。PCの中で翻訳できない時(準備前・対応していない言語など)も、代わりにGoogle翻訳(ネット)を使います。"></span></label><div class="inline"><select data-key="translateEngine">
+        <option value="local">PCの中で翻訳(おすすめ)</option>
+        <option value="google">Google翻訳(ネット・使えない場合があります)</option>
+      </select><button class="secondary translate-show-btn">翻訳の窓を出す</button></div></div>
+      <div class="field"><label>翻訳の状態</label><div class="inline"><span class="unit translate-status" style="margin-left:0">-</span></div></div>
       <div class="field"><label>アンカー先のレスを先に表示する<span class="help" data-help="新しいレスに「>>12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。"></span></label><div><input type="checkbox" data-key="anchorPreview" /></div></div>
       <details class="adv">
         <summary>詳しい設定(縁・背景・位置・表示時間・翻訳の見た目)</summary>
@@ -678,7 +683,7 @@
 
     <!-- ================= 話した字幕 ================= -->
     <section data-tab="voice">
-      <p class="lead">配信者が話した言葉を字幕にして、自動で翻訳します。<span class="help" data-help="ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはGoogle(EdgeならMicrosoft)のサーバー、翻訳はGoogle翻訳(非公式の方法)で行うので、インターネット接続が必要です。"></span></p>
+      <p class="lead">配信者が話した言葉を字幕にして、自動で翻訳します。<span class="help" data-help="ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはGoogle(EdgeならMicrosoft)のサーバーで行うので、インターネット接続が必要です。翻訳は「翻訳のしかた」で選べます(おすすめの「PCの中で翻訳」は、PCの中だけで翻訳します)。"></span></p>
       <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
       <div class="field"><label>マイク<span class="help" data-help="電話や離席の時に。止めている間は聞き取り自体を止めて、表示中の字幕も消します。ホットキーは「ホットキー」タブで割り当てられます。"></span></label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button></div></div>
@@ -705,6 +710,11 @@
         <option value="th">タイ語</option>
         <option value="id">インドネシア語</option>
       </select></div></div>
+      <div class="field"><label>翻訳のしかた<span class="help" data-help="「PCの中で翻訳」は、Google Chrome(入っていなければMicrosoft Edge)に入っている翻訳の機能で、PCの中だけで翻訳します。回数の上限が無いので、長時間の配信でも止まりません(翻訳用の小さな窓が開きます。最小化しておいて大丈夫です)。最初の1回だけ、その窓の「翻訳の準備をする」を押して翻訳データをダウンロードします。ネットスラングは少し苦手です。「Google翻訳(ネット)」は非公式の方法なので、使いすぎると一時的に断られて翻訳が出なくなったり、仕様変更で使えなくなる場合があります。PCの中で翻訳できない時(準備前・対応していない言語など)も、代わりにGoogle翻訳(ネット)を使います。"></span></label><div class="inline"><select data-key="translateEngine">
+        <option value="local">PCの中で翻訳(おすすめ)</option>
+        <option value="google">Google翻訳(ネット・使えない場合があります)</option>
+      </select><button class="secondary translate-show-btn">翻訳の窓を出す</button></div></div>
+      <div class="field"><label>翻訳の状態</label><div class="inline"><span class="unit translate-status" style="margin-left:0">-</span></div></div>
       <div class="field"><label>話した言葉でリアクションを飛ばす<span class="help" data-help="話し終わった1文が「リアクション連動」タブのルールに当てはまったら、配信画面にリアクションを飛ばします(例: 「おめでとう」→🎂)。"></span></label><div><input type="checkbox" data-key="voiceReactionLink" /></div></div>
       <div class="field"><label>話した言葉のリアクションに印を付ける<span class="help" data-help="自分の話した言葉で飛んだリアクションの周りを水色に光らせて、リスナーが送ったリアクションと見分けられるようにします。"></span></label><div><input type="checkbox" data-key="voiceReactionMark" /></div></div>
       <div class="field"><label>音声認識に使うブラウザ<span class="help" data-help="Edge(Microsoftの音声認識)は日本語の精度が高めですが、合計で約10時間使うと使えなくなることがあります。Chrome(Googleの音声認識)はその制限が見当たらないので、Chromeを入れておくのがおすすめです。選んだブラウザが入っていない時は、もう一方を使います。"></span></label><div><select data-key="voiceBrowser">

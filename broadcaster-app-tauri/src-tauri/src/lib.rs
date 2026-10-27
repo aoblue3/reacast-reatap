@@ -4,6 +4,7 @@ mod comments;
 mod config_store;
 mod connect_code;
 mod fonts;
+mod local_translate;
 mod obs_bridge;
 mod preflight;
 mod stats;
@@ -1123,6 +1124,7 @@ pub fn run() {
             voice::start_listener(app.handle().clone());
             voice::restore_muted(app.handle());
             voice::sync(app.handle());
+            local_translate::sync(app.handle());
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
@@ -1279,6 +1281,8 @@ pub fn run() {
             voice::voice_reopen,
             voice::voice_edge_usage,
             voice::voice_toggle_mute,
+            local_translate::translate_status,
+            local_translate::translate_show_window,
             tts::tts_list_speakers,
             tts::tts_list_devices,
             tts::tts_test,
@@ -1320,6 +1324,7 @@ pub fn run() {
             // 終了する時に、話した字幕のために開いたEdgeも閉じる
             if let tauri::RunEvent::Exit = event {
                 voice::stop(app);
+                local_translate::stop();
                 // 統計のまだ保存していない分(最大30秒ぶん)を保存する
                 app.state::<stats::Stats>().flush(app);
             }

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" href="data:," />
+<title>ReaCast 翻訳</title>
+<!--
+  PCの中で翻訳する窓(src-tauri/src/local_translate.rs)。ReaCastがChrome(無ければEdge)の
+  小さな窓で開く。Chrome/Edgeに入っている翻訳の機能(Translator API)で、ネットに頼まず
+  PCの中だけで訳す(回数の上限が無い)。ReaCastからOBS連携のWebSocketで
+  translateRequestが届き、translateResultで返す。
+  翻訳データのダウンロード(言語の組み合わせごとに最初の1回だけ)は、ブラウザの決まりで
+  ボタンを押さないと始められないので、その時だけ「翻訳の準備をする」を押してもらう。
+-->
+<style>
+  body { margin: 0; padding: 14px; font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif; font-size: 13px; background: #1c1d22; color: #e6e6ea; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  #state { font-weight: bold; }
+  #state.ok { color: #7dff9a; }
+  #state.ng { color: #ff8a8a; }
+  #state.wait { color: #ffd36b; }
+  #prep { display: none; margin-top: 10px; font-size: 15px; padding: 8px 16px; border: 0; border-radius: 6px; background: #4f8cff; color: #fff; cursor: pointer; }
+  #prep:disabled { opacity: 0.6; cursor: default; }
+  .hint { color: #8d909c; font-size: 12px; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>ReaCast 翻訳(PCの中で翻訳)</h1>
+  <div>状態: <span id="state" class="wait">準備中…</span></div>
+  <button id="prep">翻訳の準備をする</button>
+  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると、Google翻訳(ネット)で翻訳します)。</div>
+  <script>
+    'use strict';
+    const WS_URL = 'ws://127.0.0.1:18771';
+    const stateEl = document.getElementById('state');
+    const prepBtn = document.getElementById('prep');
+    const browser = /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome';
+    // 最初に準備しておく組み合わせ(「ja>en」の形。ReaCastの設定から)
+    const prepPairs = (new URLSearchParams(location.search).get('prep') || '')
+      .split(',')
+      .map((p) => p.split('>'))
+      .filter((p) => p.length === 2 && p[0] && p[1]);
+    // 準備(ダウンロード)が要る組み合わせ。ボタンを押した時にまとめて準備する
+    const needPrep = new Map();
+    const translators = new Map();
+    let detector = null;
+    let ws = null;
+    let lastState = null;
+    const supported = 'Translator' in self;
+    // 開いた時の確認が終わった(それまでは「準備が要る」を知らせない)
+    let started = false;
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+
+    function setState(state, message, popup) {
+      stateEl.textContent = message;
+      document.title = `ReaCast 翻訳: ${message}`;
+      stateEl.className = state === 'ready' ? 'ok' : state === 'unsupported' || state === 'error' ? 'ng' : 'wait';
+      prepBtn.style.display = state === 'needs-click' || state === 'preparing' ? 'inline-block' : 'none';
+      prepBtn.disabled = state === 'preparing';
+      lastState = { type: 'translatorStatus', state, message, popup: !!popup };
+      send(lastState);
+    }
+
+    /** popup: ReaCastに窓を前に出してもらう(開いた時の確認だけ。配信中に知らない言語の
+     *  レスが来た時に、いきなり窓が前に出てこないように) */
+    function refreshState(popup) {
+      if (needPrep.size) {
+        setState('needs-click', `最初の1回だけ準備が要ります。この窓の「翻訳の準備をする」を押してください(それまではGoogle翻訳(ネット)を使います)・${browser}`, popup);
+      } else {
+        setState('ready', `PCの中で翻訳しています・${browser}`);
+      }
+    }
+
+    /** 組み合わせの翻訳を用意する(準備が要って、ボタンからでなければ needs-click) */
+    async function getTranslator(src, dst) {
+      const key = `${src}>${dst}`;
+      if (translators.has(key)) return translators.get(key);
+      const a = await Translator.availability({ sourceLanguage: src, targetLanguage: dst });
+      if (a === 'unavailable') throw new Error('unsupported');
+      if (a !== 'available') {
+        if (!needPrep.has(key)) {
+          needPrep.set(key, [src, dst]);
+          if (started) refreshState();
+        }
+        throw new Error('needs-click');
+      }
+      return createTranslator(src, dst);
+    }
+
+    /** 翻訳を作る(準備が要る時は、ボタンを押した直後に呼ぶ。待ってから呼ぶとブラウザに断られる) */
+    function createTranslator(src, dst) {
+      const key = `${src}>${dst}`;
+      if (translators.has(key)) return translators.get(key);
+      const p = Translator.create({
+        sourceLanguage: src,
+        targetLanguage: dst,
+        monitor(m) {
+          m.addEventListener('downloadprogress', (e) => {
+            if (e.loaded > 0 && e.loaded < 1) setState('preparing', `翻訳データをダウンロードしています(${src}→${dst} ${Math.round(e.loaded * 100)}%)…`);
+          });
+        },
+      });
+      translators.set(key, p);
+      p.then(
+        () => needPrep.delete(key),
+        () => translators.delete(key),
+      );
+      return p;
+    }
+
+    async function getDetector() {
+      if (detector) return detector;
+      if (!('LanguageDetector' in self)) throw new Error('unsupported');
+      const a = await LanguageDetector.availability();
+      if (a === 'unavailable') throw new Error('unsupported');
+      // 言語の判定は、Chromeを起動するたびに「ダウンロードが要る」に戻る(翻訳データと違って
+      // 残らないらしい。2026-10-28に本人のPCで確認)ので、ボタンを押してもらう対象にはしない。
+      // 使えない間は、元の言語が分からない文(ひらがな・カタカナの無いレス)だけGoogle翻訳になる
+      // (ボタンを押した時はついでに用意する)
+      if (a !== 'available') throw new Error('needs-click');
+      return createDetector();
+    }
+
+    function createDetector() {
+      if (detector) return detector;
+      detector = LanguageDetector.create();
+      detector.catch(() => (detector = null));
+      return detector;
+    }
+
+    // 判定結果の言語コードを、翻訳の言語コードに直す
+    function normalize(lang) {
+      if (lang === 'zh-Hans') return 'zh';
+      return lang;
+    }
+
+    async function handle(req) {
+      let src = req.source;
+      if (!src) {
+        const d = await getDetector();
+        const top = (await d.detect(req.text))[0];
+        if (!top || top.detectedLanguage === 'und' || top.confidence < 0.5) throw new Error('undetected');
+        src = normalize(top.detectedLanguage);
+      }
+      // 翻訳先と同じ言語なら、そのまま返す(ReaCastは出さない)
+      if (src === req.target) return { text: req.text, source: src };
+      const tr = await getTranslator(src, req.target);
+      return { text: await tr.translate(req.text), source: src };
+    }
+
+    function connect() {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => lastState && send(lastState);
+      ws.onclose = () => setTimeout(connect, 1500);
+      ws.onmessage = (e) => {
+        let msg;
+        try {
+          msg = JSON.parse(e.data);
+        } catch (_) {
+          return;
+        }
+        if (msg.type !== 'translateRequest' || !supported) return;
+        handle(msg).then(
+          (r) => send({ type: 'translateResult', id: msg.id, text: r.text, source: r.source }),
+          (err) => send({ type: 'translateResult', id: msg.id, error: String((err && err.message) || err) }),
+        );
+      };
+    }
+
+    // ボタン: 準備が要る組み合わせを全部まとめて用意する。押した直後に(何も待たずに)
+    // 全部始める(待ってから始めると、ブラウザに「ボタンを押していない」と断られる。
+    // 確かめてから1つずつ始めていた時は、2回押さないと終わらなかった)
+    prepBtn.addEventListener('click', async () => {
+      const jobs = [...new Set([...needPrep.keys(), ...prepPairs.map((p) => p.join('>'))])].map((key) => {
+        const [s, d] = key.split('>');
+        return Promise.resolve()
+          .then(() => createTranslator(s, d))
+          .catch(() => {});
+      });
+      if ('LanguageDetector' in self && !detector) jobs.push(Promise.resolve().then(createDetector).catch(() => {}));
+      setState('preparing', '翻訳データをダウンロードしています…');
+      await Promise.all(jobs);
+      // 日本語→英語と英語→日本語のように、同じ翻訳データを使う組み合わせは、片方の
+      // ダウンロード中に始めると断られる。終わった後なら準備できているので、もう一度試す
+      for (const [s, d] of [...needPrep.values()]) {
+        try {
+          await getTranslator(s, d);
+        } catch (_) {}
+      }
+      refreshState();
+    });
+
+    /** 準備が要るものを、もう一度確かめる(準備できていれば読み込む) */
+    async function recheck(pairs) {
+      for (const [s, d] of pairs) {
+        try {
+          await getTranslator(s, d);
+        } catch (_) {}
+      }
+      if (!detector) {
+        try {
+          await getDetector();
+        } catch (_) {}
+      }
+    }
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const needsPrep = () => needPrep.size > 0;
+
+    async function init() {
+      connect();
+      if (!supported) {
+        setState('unsupported', `このブラウザはPCの中での翻訳に対応していません(Google翻訳(ネット)を使います)・${browser}`);
+        return;
+      }
+      // 設定で使う組み合わせを、準備できているか先に確かめる(できていれば読み込んでおく)
+      await recheck(prepPairs);
+      // Chromeを起動した直後は、準備済みでも「ダウンロードが要る」と答えることがある
+      // (翻訳データの読み込みが終わる前。2026-10-28に本人のPCで発生)。少し待って確かめ直し、
+      // それでも要る時だけ窓を前に出してボタンを押してもらう
+      for (let i = 0; i < 6 && needsPrep(); i++) {
+        await sleep(3000);
+        await recheck([...needPrep.values()]);
+      }
+      started = true;
+      refreshState(needsPrep());
+      // その後も時々確かめ直す(別の窓で準備した時など)
+      setInterval(() => {
+        if (needsPrep()) recheck([...needPrep.values()]).then(() => refreshState());
+      }, 30000);
+    }
+    init();
+  </script>
+</body>
+</html>

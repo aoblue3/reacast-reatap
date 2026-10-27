@@ -78,13 +78,13 @@ fn effective_browser(app: &AppHandle, choice: &str) -> String {
 /// ReaCastが(落ちた時も含めて)終わればEdgeも終わる。
 /// CreateProcessWを直接使うのは、Jobに入れてから動かすため(止めた状態で起動する)。
 #[cfg(target_os = "windows")]
-struct EdgeProcess {
+pub(crate) struct EdgeProcess {
     job: isize,
 }
 
 #[cfg(target_os = "windows")]
 impl EdgeProcess {
-    fn spawn(exe: &std::path::Path, args: &[String]) -> Result<Self, String> {
+    pub(crate) fn spawn(exe: &std::path::Path, args: &[String]) -> Result<Self, String> {
         use windows::core::{PCWSTR, PWSTR};
         use windows::Win32::Foundation::CloseHandle;
         use windows::Win32::System::JobObjects::{
@@ -148,12 +148,18 @@ impl EdgeProcess {
         Ok(me)
     }
 
+    /// 最小化している窓を元に戻して前に出す(翻訳の窓の「準備」ボタンを押してもらう時)
+    pub(crate) fn show(&self) {
+        let raw = self.job;
+        show_window_when_shown(move |pid| process_in_job(pid, raw), true);
+    }
+
     fn handle(&self) -> windows::Win32::Foundation::HANDLE {
         windows::Win32::Foundation::HANDLE(self.job as *mut core::ffi::c_void)
     }
 
     /// Jobの中にまだ動いているプロセスがあるか(窓が閉じられたら0になる)
-    fn is_running(&self) -> bool {
+    pub(crate) fn is_running(&self) -> bool {
         use windows::Win32::System::JobObjects::{
             JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
         };
@@ -170,7 +176,7 @@ impl EdgeProcess {
         ok.is_ok() && info.ActiveProcesses > 0
     }
 
-    fn kill(&self) {
+    pub(crate) fn kill(&self) {
         unsafe {
             let _ = windows::Win32::System::JobObjects::TerminateJobObject(self.handle(), 0);
         }
@@ -202,9 +208,16 @@ pub(crate) fn minimize_when_shown(pid: u32) {
 /// 続くことを確認済み)。最大10秒待つ。
 #[cfg(target_os = "windows")]
 fn minimize_window_when_shown(matches: impl Fn(u32) -> bool + Send + 'static) {
+    show_window_when_shown(matches, false);
+}
+
+/// 条件に合うプロセスの窓が出たら、最小化する(`restore`なら元に戻して前に出す)。最大10秒待つ。
+#[cfg(target_os = "windows")]
+fn show_window_when_shown(matches: impl Fn(u32) -> bool + Send + 'static, restore: bool) {
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, ShowWindow, SW_MINIMIZE,
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow, ShowWindow, SW_MINIMIZE,
+        SW_RESTORE,
     };
     struct Search<'a> {
         matches: &'a dyn Fn(u32) -> bool,
@@ -231,8 +244,14 @@ fn minimize_window_when_shown(matches: impl Fn(u32) -> bool + Send + 'static) {
                 let _ = EnumWindows(Some(find), LPARAM(&mut search as *mut Search as isize));
             }
             if search.found != 0 {
+                let hwnd = HWND(search.found as *mut core::ffi::c_void);
                 unsafe {
-                    let _ = ShowWindow(HWND(search.found as *mut core::ffi::c_void), SW_MINIMIZE);
+                    if restore {
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
+                        let _ = SetForegroundWindow(hwnd);
+                    } else {
+                        let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                    }
                 }
                 return;
             }
@@ -252,21 +271,22 @@ impl Drop for EdgeProcess {
 
 // Windows以外(開発用のビルドだけ)は普通に起動する
 #[cfg(not(target_os = "windows"))]
-struct EdgeProcess(std::sync::Mutex<std::process::Child>);
+pub(crate) struct EdgeProcess(std::sync::Mutex<std::process::Child>);
 
 #[cfg(not(target_os = "windows"))]
 impl EdgeProcess {
-    fn spawn(exe: &std::path::Path, args: &[String]) -> Result<Self, String> {
+    pub(crate) fn spawn(exe: &std::path::Path, args: &[String]) -> Result<Self, String> {
         std::process::Command::new(exe)
             .args(args)
             .spawn()
             .map(|c| Self(std::sync::Mutex::new(c)))
             .map_err(|e| format!("ブラウザを起動できませんでした: {e}"))
     }
-    fn is_running(&self) -> bool {
+    pub(crate) fn is_running(&self) -> bool {
         matches!(self.0.lock().unwrap().try_wait(), Ok(None))
     }
-    fn kill(&self) {
+    pub(crate) fn show(&self) {}
+    pub(crate) fn kill(&self) {
         let _ = self.0.lock().unwrap().kill();
     }
 }
@@ -281,14 +301,14 @@ impl VoiceManager {
     }
 }
 
-/// 音声認識に使うブラウザ: (exeの場所, 名前, プロフィールのフォルダ名)。
+/// 音声認識に使うブラウザ: (exeの場所, 名前, プロフィールのフォルダ名の後ろ半分("chrome"/"edge"))。
 /// Chromeがあれば優先する。Edgeの音声認識は、プロフィールごとに使った時間を記録して
 /// (Local Stateのspeech_recognition_limiter)、約10時間で使えなくなる(エラー「network」
 /// になる。本人のPCで2026-10-18に発生)ため。Chromeが無ければEdge。
 /// `choice`は設定のvoice_browser("chrome"/"edge"なら、それが無い時だけもう一方)。
 fn browser_path(choice: &str) -> Option<(PathBuf, &'static str, &'static str)> {
-    let chrome = (r"Google\Chrome\Application\chrome.exe", "Chrome", "voice-chrome");
-    let edge = (r"Microsoft\Edge\Application\msedge.exe", "Edge", "voice-edge");
+    let chrome = (r"Google\Chrome\Application\chrome.exe", "Chrome", "chrome");
+    let edge = (r"Microsoft\Edge\Application\msedge.exe", "Edge", "edge");
     let browsers = if choice == "edge" { [edge, chrome] } else { [chrome, edge] };
     for (rel, name, profile) in browsers {
         for var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
@@ -322,25 +342,44 @@ fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
 }
 
 fn launch(app: &AppHandle, url: &str, choice: &str) -> Result<EdgeProcess, String> {
-    let (exe, name, profile) = browser_path(choice).ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
-    log::info!("話した字幕: {name}で開きます");
+    let (child, name) = launch_app_window(
+        app,
+        url,
+        choice,
+        "voice",
+        // このプロフィールの中だけ、マイクの許可を自動で出す(開くのはReaCastの画面だけ)
+        &["--use-fake-ui-for-media-stream"],
+    )?;
+    log::info!("話した字幕: {name}で開きました");
     *app.state::<VoiceManager>().browser_name.lock().unwrap() = name.to_string();
-    let profile = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join(profile);
-    let args: Vec<String> = [
+    Ok(child)
+}
+
+/// ReaCastの画面(OBS用のHTTPで配っているページ)を、Chrome/Edgeの小さな窓(--app)で
+/// 最小化して開く。プロフィールは用途ごとに分ける(`{purpose}-chrome`など)。
+/// 話した字幕の音声認識と、PCの中での翻訳(local_translate.rs)で使う。(窓, ブラウザの名前)を返す
+pub(crate) fn launch_app_window(
+    app: &AppHandle,
+    url: &str,
+    choice: &str,
+    purpose: &str,
+    extra_args: &[&str],
+) -> Result<(EdgeProcess, &'static str), String> {
+    let (exe, name, kind) = browser_path(choice).ok_or("Google ChromeもMicrosoft Edgeも見つかりません")?;
+    let profile = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join(format!("{purpose}-{kind}"));
+    let mut args: Vec<String> = vec![
         format!("--app={url}"),
         format!("--user-data-dir={}", profile.display()),
         "--window-size=460,260".into(),
         "--no-first-run".into(),
         "--no-default-browser-check".into(),
-        // このプロフィールの中だけ、マイクの許可を自動で出す(開くのはReaCastの画面だけ)
-        "--use-fake-ui-for-media-stream".into(),
-        // 最小化しても聞き取りを続けるように、裏に回った時の抑制を止める
+        // 最小化しても動き続けるように、裏に回った時の抑制を止める
         "--disable-background-timer-throttling".into(),
         "--disable-renderer-backgrounding".into(),
         "--disable-backgrounding-occluded-windows".into(),
-    ]
-    .into();
-    EdgeProcess::spawn(&exe, &args)
+    ];
+    args.extend(extra_args.iter().map(|a| a.to_string()));
+    Ok((EdgeProcess::spawn(&exe, &args)?, name))
 }
 
 /// 設定に合わせて、Edgeの音声認識の窓を開く・閉じる・開き直す。
@@ -472,14 +511,32 @@ fn parse_translation(v: &serde_json::Value) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-async fn translate(client: &reqwest::Client, text: &str, target: &str) -> Result<String, String> {
-    translate_detect(client, text, target).await.map(|(t, _)| t)
+async fn translate(client: &reqwest::Client, text: &str, source: Option<&str>, target: &str) -> Result<String, String> {
+    translate_detect(client, text, source, target).await.map(|(t, _)| t)
 }
 
 /// 翻訳を休んでいる間に返すエラー(呼び出し側は、これはログに残さない)
 pub(crate) const TRANSLATE_PAUSED: &str = "翻訳を休んでいます";
+/// 訳さなかった(短すぎる文・「草」「w」だけ等)時に返すエラー(これもログに残さない)
+pub(crate) const TRANSLATE_SKIPPED: &str = "翻訳しませんでした";
 
-/// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり:
+/// ログに残さなくていい翻訳のエラーか
+pub(crate) fn is_quiet_translate_error(e: &str) -> bool {
+    e == TRANSLATE_PAUSED || e == TRANSLATE_SKIPPED
+}
+
+/// 訳さない文: 記号・空白・「w」「草」「笑」を除いて2文字以下(「草」「おつ」を
+/// 訳すと「Grass」のような変な訳になる。あいさつ程度の短い文は訳さなくても伝わる)
+fn skip_translation(text: &str) -> bool {
+    let meaningful = text
+        .chars()
+        .filter(|c| !c.is_whitespace() && !c.is_ascii_punctuation() && !matches!(c, 'w' | 'W' | 'ｗ' | 'Ｗ' | '草' | '笑'))
+        .filter(|c| !matches!(*c as u32, 0x3000..=0x303F | 0xFF01..=0xFF0F | 0xFF1A..=0xFF20 | 0x2000..=0x206F))
+        .count();
+    meaningful <= 2
+}
+
+/// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり(以下はGoogleに頼む時だけ):
 /// ・頼むのは1つずつ、前に頼んでから最低MIN_GAPあける(話した字幕と下の字幕の翻訳の合計)
 /// ・断られたら、しばらく(1分→2分→4分…最長15分)頼みに行かない。断られてもすぐ頼み
 ///   直していたので、止められたまま戻らなくなっていた(2026-10-28、本人のPCで1日中429)
@@ -505,13 +562,22 @@ fn translate_pause(strikes: u32) -> std::time::Duration {
     std::time::Duration::from_secs((60u64 << strikes.saturating_sub(1).min(4)).min(15 * 60))
 }
 
-/// 翻訳して、(訳文, Googleが判定した元の言語)を返す。下の字幕のレスの翻訳
-/// (comments)でも使う。元の言語は応答の3番目(例: "ja")。
+/// 翻訳して、(訳文, 判定した元の言語)を返す。下の字幕のレスの翻訳(comments)でも使う。
+/// `source`は分かっていれば元の言語(話した字幕の聞き取る言葉など。Noneなら自動で判定)。
+/// 設定が「PCの中で翻訳」なら、まずChrome/Edgeの中で訳す(local_translate.rs。回数の
+/// 上限が無い)。使えない時(準備中・その言語に未対応など)だけGoogle翻訳(非公式の方法)。
 pub(crate) async fn translate_detect(
     client: &reqwest::Client,
     text: &str,
+    source: Option<&str>,
     target: &str,
 ) -> Result<(String, String), String> {
+    if skip_translation(text) {
+        return Err(TRANSLATE_SKIPPED.into());
+    }
+    if let Some(v) = crate::local_translate::translate(text, source, target).await {
+        return Ok(v);
+    }
     let key = (target.to_string(), text.to_string());
     // 1つずつ頼む(待っている間はこのロックを持ったまま)
     let mut gate = translate_gate().lock().await;
@@ -577,6 +643,11 @@ pub fn start_listener(app: AppHandle) {
         let mut current_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
         let client = reqwest::Client::new();
         while let Some(msg) = rx.recv().await {
+            // PCの中で翻訳する窓(translate_worker.html)からの結果・状態
+            if matches!(msg["type"].as_str(), Some("translateResult") | Some("translatorStatus")) {
+                crate::local_translate::on_message(&app, &msg);
+                continue;
+            }
             let muted = app.state::<VoiceManager>().muted.load(Ordering::SeqCst);
             if msg["type"] == "voiceStatus" {
                 let state = msg["state"].as_str().unwrap_or("wait");
@@ -638,10 +709,12 @@ pub fn start_listener(app: AppHandle) {
             if settings.voice_translate && !settings.voice_target_lang.trim().is_empty() {
                 let client = client.clone();
                 let target = settings.voice_target_lang.clone();
+                // 聞き取る言葉("ja-JP")の前半が元の言語
+                let source = settings.voice_lang.split('-').next().unwrap_or_default().to_string();
                 tauri::async_runtime::spawn(async move {
-                    match translate(&client, &text, &target).await {
+                    match translate(&client, &text, Some(&source).filter(|s| !s.is_empty()).map(|s| s.as_str()), &target).await {
                         Ok(t) => bridge.push_voice(serde_json::json!({ "type": "voice", "id": id, "translation": t })),
-                        Err(e) if e == TRANSLATE_PAUSED => {}
+                        Err(e) if is_quiet_translate_error(&e) => {}
                         Err(e) => log::warn!("話した字幕: {e}"),
                     }
                 });
@@ -681,6 +754,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn skips_short_slang() {
+        for s in ["草", "w", "wwwww", "おつ", "草草", "ｗｗｗ", "笑笑", "!?", "ok"] {
+            assert!(skip_translation(s), "{s}");
+        }
+        for s in ["おはよう", "Hello", "このボス強すぎない？", "草生える"] {
+            assert!(!skip_translation(s), "{s}");
+        }
+    }
+
+    #[test]
     fn translate_pause_grows_and_caps() {
         let m = |n| translate_pause(n).as_secs() / 60;
         assert_eq!((m(1), m(2), m(3), m(4), m(5), m(9)), (1, 2, 4, 8, 15, 15));
@@ -696,7 +779,9 @@ mod tests {
     #[test]
     #[ignore] // 実際にGoogle翻訳に繋ぐ(cargo test -- --ignored)
     fn translates_with_google() {
-        let t = tauri::async_runtime::block_on(translate(&reqwest::Client::new(), "こんにちは、今日もよろしくお願いします", "en"))
+        // Google翻訳だけを試す(translate()はPCの中での翻訳=Tauriの窓まで繋がり、テストの
+        // exeに入らない部品(comctl32 v6)まで入ってテストが起動しなくなるため)
+        let (t, _) = tauri::async_runtime::block_on(request_translation(&reqwest::Client::new(), "こんにちは、今日もよろしくお願いします", "en"))
             .unwrap();
         eprintln!("{t}");
         assert!(!t.is_empty());
