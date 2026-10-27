@@ -476,6 +476,35 @@ async fn translate(client: &reqwest::Client, text: &str, target: &str) -> Result
     translate_detect(client, text, target).await.map(|(t, _)| t)
 }
 
+/// 翻訳を休んでいる間に返すエラー(呼び出し側は、これはログに残さない)
+pub(crate) const TRANSLATE_PAUSED: &str = "翻訳を休んでいます";
+
+/// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり:
+/// ・頼むのは1つずつ、前に頼んでから最低MIN_GAPあける(話した字幕と下の字幕の翻訳の合計)
+/// ・断られたら、しばらく(1分→2分→4分…最長15分)頼みに行かない。断られてもすぐ頼み
+///   直していたので、止められたまま戻らなくなっていた(2026-10-28、本人のPCで1日中429)
+/// ・同じ文の翻訳は覚えておいて、もう一度頼まない(「草」「おつ」など)
+struct TranslateGate {
+    last: Option<std::time::Instant>,
+    paused_until: Option<std::time::Instant>,
+    strikes: u32,
+    cache: std::collections::HashMap<(String, String), (String, String)>,
+}
+const TRANSLATE_MIN_GAP: std::time::Duration = std::time::Duration::from_millis(1000);
+const TRANSLATE_CACHE_MAX: usize = 300;
+
+fn translate_gate() -> &'static tokio::sync::Mutex<TranslateGate> {
+    static GATE: std::sync::OnceLock<tokio::sync::Mutex<TranslateGate>> = std::sync::OnceLock::new();
+    GATE.get_or_init(|| {
+        tokio::sync::Mutex::new(TranslateGate { last: None, paused_until: None, strikes: 0, cache: Default::default() })
+    })
+}
+
+/// 断られた回数から、休む時間を決める(1分→2分→4分→8分→15分)
+fn translate_pause(strikes: u32) -> std::time::Duration {
+    std::time::Duration::from_secs((60u64 << strikes.saturating_sub(1).min(4)).min(15 * 60))
+}
+
 /// 翻訳して、(訳文, Googleが判定した元の言語)を返す。下の字幕のレスの翻訳
 /// (comments)でも使う。元の言語は応答の3番目(例: "ja")。
 pub(crate) async fn translate_detect(
@@ -483,6 +512,44 @@ pub(crate) async fn translate_detect(
     text: &str,
     target: &str,
 ) -> Result<(String, String), String> {
+    let key = (target.to_string(), text.to_string());
+    // 1つずつ頼む(待っている間はこのロックを持ったまま)
+    let mut gate = translate_gate().lock().await;
+    if let Some(hit) = gate.cache.get(&key) {
+        return Ok(hit.clone());
+    }
+    let now = std::time::Instant::now();
+    if gate.paused_until.is_some_and(|t| t > now) {
+        return Err(TRANSLATE_PAUSED.into());
+    }
+    if let Some(last) = gate.last {
+        let next = last + TRANSLATE_MIN_GAP;
+        if next > now {
+            tokio::time::sleep(next - now).await;
+        }
+    }
+    gate.last = Some(std::time::Instant::now());
+    let result = request_translation(client, text, target).await;
+    match &result {
+        Ok(v) => {
+            gate.strikes = 0;
+            if gate.cache.len() >= TRANSLATE_CACHE_MAX {
+                gate.cache.clear();
+            }
+            gate.cache.insert(key, v.clone());
+        }
+        Err(e) if e.contains("429") => {
+            gate.strikes += 1;
+            let pause = translate_pause(gate.strikes);
+            gate.paused_until = Some(std::time::Instant::now() + pause);
+            log::warn!("Google翻訳に断られたので(HTTP 429)、翻訳を{}分休みます", pause.as_secs() / 60);
+        }
+        Err(_) => {}
+    }
+    result
+}
+
+async fn request_translation(client: &reqwest::Client, text: &str, target: &str) -> Result<(String, String), String> {
     let resp = client
         .get("https://translate.googleapis.com/translate_a/single")
         .query(&[("client", "gtx"), ("sl", "auto"), ("tl", target), ("dt", "t"), ("q", text)])
@@ -574,6 +641,7 @@ pub fn start_listener(app: AppHandle) {
                 tauri::async_runtime::spawn(async move {
                     match translate(&client, &text, &target).await {
                         Ok(t) => bridge.push_voice(serde_json::json!({ "type": "voice", "id": id, "translation": t })),
+                        Err(e) if e == TRANSLATE_PAUSED => {}
                         Err(e) => log::warn!("話した字幕: {e}"),
                     }
                 });
@@ -611,6 +679,12 @@ pub fn voice_edge_usage(app: AppHandle) -> Option<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translate_pause_grows_and_caps() {
+        let m = |n| translate_pause(n).as_secs() / 60;
+        assert_eq!((m(1), m(2), m(3), m(4), m(5), m(9)), (1, 2, 4, 8, 15, 15));
+    }
 
     #[test]
     fn parses_google_translation_response() {

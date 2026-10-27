@@ -1951,6 +1951,7 @@ impl CommentEngine {
                         // 翻訳先と同じ言語だった・訳しても同じだった時は出さない
                         Ok((t, src)) if src != target && t.trim() != body.trim() => bridge.push_subtitle_translation(tid, &t),
                         Ok(_) => {}
+                        Err(e) if e == crate::voice::TRANSLATE_PAUSED => {}
                         Err(e) => log::warn!("字幕の翻訳: {e}"),
                     }
                 });
