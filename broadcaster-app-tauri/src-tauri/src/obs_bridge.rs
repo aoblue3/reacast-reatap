@@ -411,6 +411,28 @@ Connection: close
         return;
     }
 
+    // 新しい絵文字のフォント(emoji_font.rs。ダウンロードした人だけ)。ReaCastの窓
+    // (tauri.localhost)からも読むので、どこから読んでもいいようにする(フォントはCORSが要る)
+    if path.split('?').next() == Some("/emoji-font.ttf") {
+        let data = match crate::emoji_font::installed_path() {
+            Some(p) => tokio::fs::read(p).await.ok(),
+            None => None,
+        };
+        let header = match &data {
+            Some(d) => format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: font/ttf\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                d.len()
+            ),
+            None => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".to_string(),
+        };
+        let _ = socket.write_all(header.as_bytes()).await;
+        if let Some(d) = data {
+            let _ = socket.write_all(&d).await;
+        }
+        let _ = socket.shutdown().await;
+        return;
+    }
+
     // 「?lang=ja-JP」のような後ろの部分は、どの画面を返すかには関係ない
     let page = path.split('?').next().unwrap_or(path);
     let (content_type, body): (&str, &str) = match page {

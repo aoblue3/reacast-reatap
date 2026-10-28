@@ -3,6 +3,7 @@ mod backup;
 mod comments;
 mod config_store;
 mod connect_code;
+mod emoji_font;
 mod fonts;
 mod local_translate;
 mod obs_bridge;
@@ -1136,6 +1137,7 @@ pub fn run() {
             voice::restore_muted(app.handle());
             voice::sync(app.handle());
             local_translate::sync(app.handle());
+            emoji_font::init(app.handle());
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
@@ -1293,6 +1295,9 @@ pub fn run() {
             voice::voice_edge_usage,
             voice::voice_toggle_mute,
             local_translate::translate_status,
+            emoji_font::emoji_font_status,
+            emoji_font::emoji_font_download,
+            emoji_font::emoji_font_remove,
             local_translate::translate_show_window,
             tts::tts_list_speakers,
             tts::tts_list_devices,

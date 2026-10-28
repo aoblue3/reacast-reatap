@@ -60,7 +60,7 @@
     flex-direction: column;
     overflow: hidden;
     margin: 0;
-    font-family: 'Yu Gothic UI', 'Meiryo UI', sans-serif;
+    font-family: 'Yu Gothic UI', 'Meiryo UI', 'ReaCast Emoji', sans-serif;
     font-size: 13px;
     background: var(--c-1c1d22);
     color: var(--c-e6e6ea);
@@ -197,7 +197,7 @@
   .modal.visible { display: flex; }
   .modal > div { background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 460px; max-width: calc(100vw - 40px); }
   #readingDialog > div { background: var(--c-24262d); border: 1px solid var(--c-3a3d47); border-radius: 8px; padding: 14px; width: 320px; }
-  .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif; font-size: 12px; }
+  .post.aa .post-body { white-space: pre; overflow-x: auto; font-family: 'MS PGothic', 'ＭＳ Ｐゴシック', 'ReaCast Emoji', sans-serif; font-size: 12px; }
   .empty { padding: 16px; color: var(--c-8d909c); }
   #preview {
     margin-top: 12px;
@@ -552,6 +552,7 @@
         <option value="bottom-center">下の真ん中</option>
         <option value="bottom-right">右下</option>
       </select></div></div>
+      <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(下の字幕・右のレス一覧・ニコ生風・話した字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
       <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAや「草」「w」のような短いレスは翻訳しません)。翻訳のしかたは下の「翻訳のしかた」で選べます。"></span></label><div class="inline">
         <input type="checkbox" data-key="subtitleTranslate" />
         <span class="unit">翻訳先</span>

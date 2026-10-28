@@ -229,6 +229,24 @@
     document.head.appendChild(link);
   }
 
+  /**
+   * 新しい絵文字のフォント(設定画面でダウンロードした人だけ。src-tauri/src/emoji_font.rs)。
+   * Windowsの絵文字のフォントに無い絵文字(🫍など)だけ、これで表示する(フォントの並びの
+   * 最後に置くので、今まで表示できていた絵文字の見た目は変わらない)。絵文字の範囲の文字が
+   * 出てきた時だけ読み込む。ダウンロードしていなければ読み込みに失敗するだけ。
+   */
+  const EMOJI_FONT = '"ReaCast Emoji"';
+  function setupEmojiFont(version) {
+    let el = document.getElementById('reacast-emoji-font');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'reacast-emoji-font';
+      document.head.appendChild(el);
+    }
+    el.textContent = `@font-face { font-family: "ReaCast Emoji"; src: url("http://127.0.0.1:18772/emoji-font.ttf?v=${version || 0}") format("truetype"); unicode-range: U+00A9, U+00AE, U+203C-2BFF, U+3030, U+303D, U+3297, U+3299, U+1F000-1FBFF, U+E0020-E007F; }`;
+  }
+  setupEmojiFont(0);
+
   /** フォント名をCSSのfont-familyにする。「A, B」のように複数並べると、Aに無い文字は
    * Bで表示する(英数字だけのフォント + 日本語のフォント、のような組み合わせ用)。
    * ウェブフォントなら、その場で読み込む。 */
@@ -239,7 +257,7 @@
       .map((n) => n.trim())
       .filter(Boolean);
     names.forEach(loadWebFont);
-    return names.length ? `${names.map((n) => `"${n}"`).join(', ')}, sans-serif` : 'sans-serif';
+    return names.length ? `${names.map((n) => `"${n}"`).join(', ')}, ${EMOJI_FONT}, sans-serif` : `${EMOJI_FONT}, sans-serif`;
   }
 
   /** obs_bridgeに繋ぎ、切れたら繋ぎ直し続ける。 */
@@ -262,6 +280,11 @@
       }
       if (data && data.type === 'appVersion') {
         checkAppVersion(data.version);
+        return;
+      }
+      // 新しい絵文字のフォントをダウンロード・削除した → 読み込み直す
+      if (data && data.type === 'emojiFont') {
+        setupEmojiFont(Date.now());
         return;
       }
       if (data && typeof data.type === 'string') onMessage(data);

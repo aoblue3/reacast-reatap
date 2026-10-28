@@ -37,6 +37,8 @@ futures-util = "0.3"
 # 単体exeのままの自動アップデート機能用(updater.rs参照)。
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
+# 新しい絵文字のフォント(emoji_font.rs)が、決まった版と同じかを確かめる(gitのblobのSHA-1)
+sha1 = "0.10"
 # コメント読み上げ・字幕機能(comments/参照)。掲示板のdatはShift_JIS(2ch互換)/
 # EUC-JP(したらば)なのでその変換に、読み方ルール(SpeechCastMe互換の
 # 「正規表現/読み」)の適用にregexを使う。
