@@ -178,7 +178,35 @@ impl EdgeProcess {
         ok.is_ok() && info.ActiveProcesses > 0
     }
 
+    /// 終わらせる。いきなり強制終了すると、ブラウザが右下(タスクトレイ)に出していた
+    /// アイコンが消されずに残り、マウスを乗せると消える「幽霊」になるので、まず窓を
+    /// 閉じて(普通に終わってもらって)、少し待っても残っていたら強制終了する
     pub(crate) fn kill(&self) {
+        use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+        };
+        unsafe extern "system" fn close(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
+            if IsWindowVisible(hwnd).as_bool() {
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if process_in_job(pid, lparam.0) {
+                    let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+                }
+            }
+            true.into()
+        }
+        if self.is_running() {
+            unsafe {
+                let _ = EnumWindows(Some(close), LPARAM(self.job));
+            }
+            for _ in 0..20 {
+                if !self.is_running() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
         unsafe {
             let _ = windows::Win32::System::JobObjects::TerminateJobObject(self.handle(), 0);
         }
@@ -396,6 +424,8 @@ pub(crate) fn launch_app_window(
         "--disable-background-timer-throttling".into(),
         "--disable-renderer-backgrounding".into(),
         "--disable-backgrounding-occluded-windows".into(),
+        // 窓を閉じた後も裏で動き続けて、右下(タスクトレイ)にアイコンを出す機能を止める
+        "--disable-background-mode".into(),
     ];
     args.extend(extra_args.iter().map(|a| a.to_string()));
     Ok((EdgeProcess::spawn(&exe, &args)?, name))
