@@ -1013,6 +1013,12 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             .unwrap_or(true);
     // 🍄の効果のように、ランダムで決まるものを自分の画面とOBSで同じにするための種
     let seed = reaction_seed();
+    // 自分の画面とOBSに届くまでの時間が少し違うので、どちらも「この時刻」に表示する(ミリ秒)
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+        + REACTION_LEAD_MS;
     let hide_local = store
         .get("hideLocalOverlay")
         .and_then(|v| v.as_bool())
@@ -1031,7 +1037,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             app.state::<TopmostReasserter>().bump(Duration::from_millis(5000));
             win.emit(
                 "overlay:reaction",
-                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id, "mark": voice_mark, "seed": seed }),
+                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id, "mark": voice_mark, "seed": seed, "at": at }),
             )
             .map_err(|e| e.to_string())?;
         }
@@ -1039,9 +1045,12 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
     // OBSの「ブラウザ」ソースが繋がっていれば、そちらにも同じリアクションを配信する
     // (obs_bridge.rs参照。誰も繋いでいなくても問題なく無視される)。
     app.state::<obs_bridge::ObsBridge>()
-        .broadcast_reaction(&emoji, &viewer_id, voice_mark, seed);
+        .broadcast_reaction(&emoji, &viewer_id, voice_mark, seed, at);
     Ok(())
 }
+
+/// リアクションを表示するまでの待ち(自分の画面とOBSで、届くのがずれても同時に出すため)
+const REACTION_LEAD_MS: u64 = 250;
 
 /// リアクション1回ごとの乱数の種(overlay.jsのseededRandom。32ビット)
 fn reaction_seed() -> u32 {
@@ -1288,6 +1297,7 @@ pub fn run() {
             comments::comments_list_threads,
             comments::comments_switch_thread,
             comments::comments_post,
+            comments::comments_view_thread,
             comments::comments_skip,
             preflight::preflight_check,
             voice::voice_status,

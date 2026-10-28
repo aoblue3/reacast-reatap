@@ -15,6 +15,12 @@
  *     小さな装飾を数個まとめて発生させる。
  */
 const stage = document.getElementById('stage');
+/**
+ * リアクションの中で使う乱数。表示する時だけ、ReaCastがリアクションごとに送る種から
+ * 作った乱数に差し替える(playReaction)ので、自分の画面とOBSで同じ位置・同じ動きになる。
+ * 後から(setTimeoutなどで)使う分は、いつものMath.random
+ */
+let rand = Math.random;
 
 const emojiById = window.EmojiSet.EMOJI_BY_ID;
 
@@ -473,7 +479,7 @@ const COMBO_WINDOW_MS = 1500;
 //      あったため、この方式を用意している。
 if (window.__TAURI__ && window.__TAURI__.event) {
   window.__TAURI__.event.listen('overlay:reaction', (event) => {
-    spawnReaction(event.payload.emoji, { mark: !!event.payload.mark, seed: event.payload.seed });
+    playReaction(event.payload);
   });
   // 設定パネルの「絵文字の大きさ」を起動時に反映し、設定パネルで変更される
   // たびにも(このウィンドウを閉じ直さなくても)即座に反映されるようにする。
@@ -521,7 +527,7 @@ function connectObsBridge(port) {
         if (Array.isArray(data.noComboGrowthIds)) applyNoComboGrowthIds(data.noComboGrowthIds);
         return;
       }
-      if (typeof data.emoji === 'string') spawnReaction(data.emoji, { mark: !!data.mark, seed: data.seed });
+      if (typeof data.emoji === 'string') playReaction(data);
     } catch {
       // 想定外のメッセージは無視する
     }
@@ -598,8 +604,8 @@ function clampBurstZoomStart(vw, vh, size, maxScale) {
   const rangeX = Math.max(0, vw - marginX * 2 - size);
   const rangeY = Math.max(0, vh * 0.5 - overhang * 2);
   return {
-    startX: marginX + Math.random() * rangeX,
-    startY: Math.max(vh * 0.2, marginY) + Math.random() * rangeY,
+    startX: marginX + rand() * rangeX,
+    startY: Math.max(vh * 0.2, marginY) + rand() * rangeY,
   };
 }
 
@@ -618,14 +624,14 @@ function clampHopHeight(startY, hopHeight, netRisePerHop, hopCount, vh) {
 function computeMotionPath(motion, preset, size, vw, vh, duration) {
   const driftFactor = preset.driftFactor ?? 1;
   const riseFactor = preset.riseFactor ?? 1;
-  const rotate = preset.noOuterRotate ? 0 : (Math.random() - 0.5) * 60;
+  const rotate = preset.noOuterRotate ? 0 : (rand() - 0.5) * 60;
 
   if (motion === 'fall') {
     // 画面上部に出現し、ゆっくり下へ沈んでいく(泣き顔がうなだれる、眠気で船を
     // こぐように下がっていく、等)
-    const startX = Math.random() * (vw - size);
-    const startY = Math.random() * (vh * 0.2);
-    const drift = (Math.random() - 0.5) * 200 * driftFactor;
+    const startX = rand() * (vw - size);
+    const startY = rand() * (vh * 0.2);
+    const drift = (rand() - 0.5) * 200 * driftFactor;
     const fallDistance = clampFallDistance(startY, (vh * 0.55 + size) * riseFactor, vh, size);
     return {
       startX,
@@ -644,12 +650,12 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // くる、的中=ダーツのように命中する、を表現)。左右どちらから出すかは通常
     // ランダムだが、矢印(➡⬅)のように向きそのものに意味がある場合は
     // preset.forceFromLeftで固定できる(true=左から右へ、false=右から左へ)。
-    const fromLeft = preset.forceFromLeft ?? Math.random() < 0.5;
-    const startY = vh * 0.15 + Math.random() * (vh * 0.55);
+    const fromLeft = preset.forceFromLeft ?? rand() < 0.5;
+    const startY = vh * 0.15 + rand() * (vh * 0.55);
     const startX = fromLeft ? -size : vw;
     const travel = clampSideTravel((vw * 0.55 + size) * driftFactor, vw);
     const endDx = fromLeft ? travel : -travel;
-    const bob = (Math.random() - 0.5) * 80;
+    const bob = (rand() - 0.5) * 80;
     return {
       startX,
       startY,
@@ -666,8 +672,8 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // 上昇しながら左右に大きく揺れる、一番躍動感のある動き(GG向け)。
     // 単純な2点間の動きではなく、waypointsで3段階の経由地点を刻んで
     // ジグザグに見せる(最後の要素が最終的な着地姿勢)。
-    const startX = vw * 0.5 - size / 2 + (Math.random() - 0.5) * vw * 0.3;
-    const startY = vh - size - Math.random() * (vh * 0.2);
+    const startX = vw * 0.5 - size / 2 + (rand() - 0.5) * vw * 0.3;
+    const startY = vh - size - rand() * (vh * 0.2);
     const riseDistance = clampRiseDistance(startY, (vh * 0.62 + size) * riseFactor, vh);
     const swing = 100 * driftFactor;
     const legDuration = Math.round(duration * 0.25);
@@ -709,7 +715,7 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // 画面端をはみ出さない範囲から選ぶ(clampBurstZoomStart参照)。
     const BURST_ZOOM_MAX_SCALE = 2.4;
     const { startX, startY } = clampBurstZoomStart(vw, vh, size, BURST_ZOOM_MAX_SCALE);
-    const jitter = (Math.random() - 0.5) * 40 * driftFactor;
+    const jitter = (rand() - 0.5) * 40 * driftFactor;
     return {
       startX,
       startY,
@@ -727,13 +733,13 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // 横に倒れる動きをするので、外側はあまり動かさず沈む距離だけ小さく持たせる)。
     // preset.fullRangeY: 🍣寿司のように「画面下部だけでなくどこにでも現れて
     // ほしい」場合は、開始Y座標を画面の縦方向ほぼ全域からランダムに選ぶ。
-    const startX = Math.random() * (vw - size);
+    const startX = rand() * (vw - size);
     let startY;
     if (preset.fullRangeY) {
       const marginY = vh * EDGE_MARGIN_RATIO;
-      startY = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+      startY = marginY + rand() * Math.max(1, vh - marginY * 2 - size);
     } else {
-      startY = vh - size - Math.random() * (vh * 0.25);
+      startY = vh - size - rand() * (vh * 0.25);
     }
     const sinkDistance = clampFallDistance(startY, 26 * riseFactor, vh, size);
     return {
@@ -752,13 +758,13 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // 🐸 カエル: ぴょんぴょん跳ねながら画面を左右どちらかへ横切りつつ、
     // 少しずつ上へ移動する専用モーション。waypointsで「跳ねる頂点」と
     // 「着地」を交互に3回刻み、pogoスティックのような動きにする。
-    const goRight = Math.random() < 0.5;
+    const goRight = rand() < 0.5;
     const dir = goRight ? 1 : -1;
     const startX = goRight
-      ? size + Math.random() * (vw * 0.15)
-      : vw - size - Math.random() * (vw * 0.15);
-    const startY = vh - size - Math.random() * (vh * 0.15);
-    const hopStepX = vw * 0.12 * (0.7 + Math.random() * 0.5);
+      ? size + rand() * (vw * 0.15)
+      : vw - size - rand() * (vw * 0.15);
+    const startY = vh - size - rand() * (vh * 0.15);
+    const hopStepX = vw * 0.12 * (0.7 + rand() * 0.5);
     const netRisePerHop = vh * 0.045 * riseFactor;
     const hopCount = 3;
     // 跳躍を重ねるたびに正味では少しずつ上へ移動していくため、最後の跳躍の
@@ -815,8 +821,8 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // いかにも作り物めいた動きに見えていた。⚽(ballBounce。下記参照)と
     // 同じ考え方で、重力・反発係数による刻み時間シミュレーションに置き換える
     // (縦方向のみの単純な1次元シミュレーション)。
-    const startX = Math.random() * (vw - size);
-    const startY = Math.random() * (vh * 0.15);
+    const startX = rand() * (vw - size);
+    const startY = rand() * (vh * 0.15);
     // groundYは開始位置からの相対的な落下距離(=床のY座標)。シミュレーションは
     // この相対座標系(y=0が開始位置)で行う。
     const groundY = clampFallDistance(startY, (vh * 0.62 + size) * riseFactor, vh, size);
@@ -828,11 +834,11 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // 下限を設ける)。
     const gravity = Math.max(2200, groundY * 11);
     // 💩は⚽ほど勢いよく弾まないよう、反発係数はやや控えめにする。
-    const restitution = 0.38 + Math.random() * 0.14;
+    const restitution = 0.38 + rand() * 0.14;
     const dtMs = 45;
     const dt = dtMs / 1000;
     const simBudgetMs = Math.round(duration * 0.72);
-    const wobbleDir = Math.random() < 0.5 ? -1 : 1;
+    const wobbleDir = rand() < 0.5 ? -1 : 1;
 
     const waypoints = [];
     let t = 0;
@@ -897,13 +903,13 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // spawnReaction側のpreset.explodeDelayRangeMs処理で行う)。
     // 着地する高さは、常に画面下部固定ではなく、開始位置より下・画面内の
     // 余白を除いた範囲からランダムに選ぶ(要望: 着地位置を全範囲ランダムに)。
-    const startX = Math.random() * (vw - size);
-    const startY = Math.random() * (vh * 0.15);
-    const drift = (Math.random() - 0.5) * 60 * driftFactor;
+    const startX = rand() * (vw - size);
+    const startY = rand() * (vh * 0.15);
+    const drift = (rand() - 0.5) * 60 * driftFactor;
     const marginY = vh * EDGE_MARGIN_RATIO;
     const minLandY = Math.max(startY + size * 0.5, marginY);
     const maxLandY = Math.max(minLandY, vh - marginY - size);
-    const landY = minLandY + Math.random() * Math.max(0, maxLandY - minLandY);
+    const landY = minLandY + rand() * Math.max(0, maxLandY - minLandY);
     const fallDistance = Math.max(0, landY - startY);
     // 落下距離が短い(高い位置に着地する)場合は短く、長い(画面下の方まで
     // 落ちる)場合は長く、距離に応じてtransition時間を按分する。
@@ -926,10 +932,10 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
   if (motion === 'popUp') {
     // 🧨 爆竹: 画面下の方に現れて、左右どちらかランダムな斜め上方向へ、
     // 跳ねるように2段階で急上昇する(爆竹が弾ける勢いのイメージ)。
-    const dir = Math.random() < 0.5 ? -1 : 1;
-    const startX = Math.min(Math.max(size, Math.random() * (vw - size)), vw - size);
-    const startY = vh - size - Math.random() * (vh * 0.12);
-    const jumpX = vw * (0.07 + Math.random() * 0.08) * dir;
+    const dir = rand() < 0.5 ? -1 : 1;
+    const startX = Math.min(Math.max(size, rand() * (vw - size)), vw - size);
+    const startY = vh - size - rand() * (vh * 0.12);
+    const jumpX = vw * (0.07 + rand() * 0.08) * dir;
     const jumpY = clampRiseDistance(startY, (vh * 0.3 + size) * riseFactor, vh);
     const legDuration = Math.round(duration * 0.22);
     const waypoints = [
@@ -968,21 +974,21 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const leftX = marginX;
     const rightX = Math.max(leftX, vw - marginX - size);
 
-    const edge = ['top', 'bottom', 'left', 'right'][Math.floor(Math.random() * 4)];
+    const edge = ['top', 'bottom', 'left', 'right'][Math.floor(rand() * 4)];
     // 「ボールの勢いをもう少し早めで」という要望に対応し、速度レンジを底上げ
     // する(重力(下記gravity)はspeedに比例させてあるので、速くしても
     // 軌道の「見た目のバランス」自体は保たれる)。
-    const speed = (vw + vh) * (0.42 + Math.random() * 0.26) * riseFactor;
+    const speed = (vw + vh) * (0.42 + rand() * 0.26) * riseFactor;
     let x, y, vx, vy;
     if (edge === 'top') {
-      x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
+      x = marginX + rand() * Math.max(1, vw - marginX * 2 - size);
       y = ceilY;
-      vx = (Math.random() - 0.5) * speed * 0.7;
+      vx = (rand() - 0.5) * speed * 0.7;
       vy = speed * 0.3;
     } else if (edge === 'bottom') {
-      x = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
+      x = marginX + rand() * Math.max(1, vw - marginX * 2 - size);
       y = floorY;
-      vx = (Math.random() - 0.5) * speed * 0.7;
+      vx = (rand() - 0.5) * speed * 0.7;
       // 「下から上に投げ込まれるのが無い」という指摘への対応: 以前は上向きの
       // 初速がvy=-speed*0.85にとどまっており、直後の重力で早々に引き戻されて
       // 目立たなかった。画面下端から明確に高く跳ね上がって見えるよう初速を
@@ -990,12 +996,12 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
       vy = -speed * 1.05;
     } else if (edge === 'left') {
       x = leftX;
-      y = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+      y = marginY + rand() * Math.max(1, vh - marginY * 2 - size);
       vx = speed * 0.8;
       vy = -speed * 0.3;
     } else {
       x = rightX;
-      y = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+      y = marginY + rand() * Math.max(1, vh - marginY * 2 - size);
       vx = -speed * 0.8;
       vy = -speed * 0.3;
     }
@@ -1003,7 +1009,7 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const startY = y;
 
     const gravity = speed * 1.6;
-    const restitution = 0.56 + Math.random() * 0.12;
+    const restitution = 0.56 + rand() * 0.12;
     const dtMs = 45;
     const dt = dtMs / 1000;
     // 「消える瞬間まで動き続けるように」という指摘への対応。以前は
@@ -1025,14 +1031,14 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // ほぼ全域(duration-30ms、要素除去のわずかに直前)まで伸ばし、この静止
     // ギャップをほぼ解消する。
     const simBudgetMs = Math.max(dtMs * 2, Math.round(duration - 30));
-    const rollSpeed = speed * (0.05 + Math.random() * 0.03);
+    const rollSpeed = speed * (0.05 + rand() * 0.03);
 
     const waypoints = [];
     let t = 0;
     let rotateAcc = 0;
     let bounces = 0;
     let rolling = false;
-    let rollDir = Math.random() < 0.5 ? -1 : 1;
+    let rollDir = rand() < 0.5 ? -1 : 1;
     while (t < simBudgetMs) {
       if (!rolling) {
         vy += gravity * dt;
@@ -1114,7 +1120,7 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     // (vw)固定にし、移動距離を画面幅より大きめ(1.35倍)に取ることで、
     // 長い文言でも確実に画面外まで流れきってから消えるようにしてある。
     const startX = vw;
-    const startY = vh * 0.08 + Math.random() * (vh * 0.8);
+    const startY = vh * 0.08 + rand() * (vh * 0.8);
     const travel = vw * 1.35 * driftFactor;
     return {
       startX,
@@ -1137,18 +1143,18 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const stepCount = 5;
     const marginX = vw * EDGE_MARGIN_RATIO;
     const marginY = vh * EDGE_MARGIN_RATIO;
-    const startX = marginX + Math.random() * Math.max(1, vw - marginX * 2 - size);
-    const startY = marginY + Math.random() * Math.max(1, vh - marginY * 2 - size);
+    const startX = marginX + rand() * Math.max(1, vw - marginX * 2 - size);
+    const startY = marginY + rand() * Math.max(1, vh - marginY * 2 - size);
     let curX = startX;
     let curY = startY;
     const stepDist = Math.min(vw, vh) * 0.14 * riseFactor;
     const legDuration = Math.max(200, Math.round(duration / stepCount));
     const waypoints = [];
     for (let i = 1; i <= stepCount; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      let dx = Math.cos(angle) * stepDist * (0.7 + Math.random() * 0.6);
+      const angle = rand() * Math.PI * 2;
+      let dx = Math.cos(angle) * stepDist * (0.7 + rand() * 0.6);
       // 縦方向は横方向より控えめにし、床の上を移動しているような見た目にする
-      let dy = Math.sin(angle) * stepDist * (0.7 + Math.random() * 0.6) * 0.6;
+      let dy = Math.sin(angle) * stepDist * (0.7 + rand() * 0.6) * 0.6;
       if (curX + dx < marginX || curX + dx > vw - marginX - size) dx = -dx;
       if (curY + dy < marginY || curY + dy > vh - marginY - size) dy = -dy;
       curX += dx;
@@ -1176,12 +1182,12 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
   if (motion === 'roll') {
     // 🍙: 画面の外(左右どちらか)の上の方から入ってきて、反対側の下の方へ、転がる
     // (進んだ距離の分だけ回る)・小さく弾むを繰り返しながら斜めに転がって出ていく
-    const fromRight = Math.random() < 0.5;
+    const fromRight = rand() < 0.5;
     const dir = fromRight ? -1 : 1;
     const startX = fromRight ? vw + size * 0.2 : -size * 1.2;
-    const startY = vh * (0.04 + Math.random() * 0.26);
+    const startY = vh * (0.04 + rand() * 0.26);
     const endX = fromRight ? -size * 1.4 : vw + size * 0.4;
-    const endY = Math.min(vh - size, startY + vh * (0.22 + Math.random() * 0.25));
+    const endY = Math.min(vh - size, startY + vh * (0.22 + rand() * 0.25));
     const dx = endX - startX;
     const dy = endY - startY;
     const legs = 7;
@@ -1194,7 +1200,7 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     for (let i = 1; i <= legs; i++) {
       const f0 = (i - 0.5) / legs;
       const f1 = i / legs;
-      const hop = size * (0.18 + Math.random() * 0.14);
+      const hop = size * (0.18 + rand() * 0.14);
       // 弾んだ頂点
       angle += ((dx / legs / 2) / radius) * (180 / Math.PI) * 0.9;
       waypoints.push({ atMs: t, legMs: leg, transform: `translate(${dx * f0}px, ${dy * f0 - hop}px) rotate(${angle}deg)` });
@@ -1226,8 +1232,8 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
     const maxX = Math.max(minX + 1, vw - marginX - size);
     const minY = marginY;
     const maxY = Math.max(minY + 1, vh - marginY - size);
-    const startX = minX + Math.random() * (maxX - minX);
-    const startY = minY + Math.random() * (maxY - minY);
+    const startX = minX + rand() * (maxX - minX);
+    const startY = minY + rand() * (maxY - minY);
     const clampX = (x) => Math.min(maxX, Math.max(minX, x));
     const clampY = (y) => Math.min(maxY, Math.max(minY, y));
     let curX = startX;
@@ -1250,14 +1256,14 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
       t += leg;
     };
     for (let i = 0; i < segments; i++) {
-      const r = Math.random();
-      const angle = Math.random() * Math.PI * 2;
+      const r = rand();
+      const angle = rand() * Math.PI * 2;
       if (i > 0 && r < 0.22) {
         // ぴたっと止まる(少しかがんで様子をうかがう)
         push(curX, curY, unit * 0.9, ' scale(1.05, 0.92)');
       } else if (r < 0.5) {
         // ぴょんと跳びかかる: 弧を描くように、上がってから着地する
-        const dist = span * (0.18 + Math.random() * 0.12);
+        const dist = span * (0.18 + rand() * 0.12);
         const nx = clampX(curX + Math.cos(angle) * dist);
         const ny = clampY(curY + Math.sin(angle) * dist * 0.6);
         facingRight = nx > curX;
@@ -1268,7 +1274,7 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
         curY = ny;
       } else {
         // ダッと走る: 遠くまで素早く(他のリアクションがあれば、そっちへ走ってじゃれつく)
-        const dist = span * (0.25 + Math.random() * 0.2);
+        const dist = span * (0.25 + rand() * 0.2);
         const nx = clampX(curX + Math.cos(angle) * dist);
         const ny = clampY(curY + Math.sin(angle) * dist);
         facingRight = nx > curX;
@@ -1304,9 +1310,9 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
   }
 
   // 'rise'(既定): 下から出てきて上に上がっていく
-  const startX = Math.random() * (vw - size);
-  const startY = vh - size - Math.random() * (vh * 0.3);
-  const drift = (Math.random() - 0.5) * 240 * driftFactor;
+  const startX = rand() * (vw - size);
+  const startY = vh - size - rand() * (vh * 0.3);
+  const drift = (rand() - 0.5) * 240 * driftFactor;
   const riseDistance = clampRiseDistance(startY, (vh * 0.6 + size) * riseFactor, vh);
   return {
     startX,
@@ -1332,8 +1338,8 @@ function spawnRainbow(opts) {
   const h = w * 0.55;
   const el = document.createElement('div');
   el.className = 'reaction-item rainbow-item' + (opts && opts.mark ? ' self-mark' : '');
-  el.style.left = `${Math.max(0, Math.random() * (vw - w))}px`;
-  el.style.top = `${Math.max(0, Math.random() * (vh - h))}px`;
+  el.style.left = `${Math.max(0, rand() * (vw - w))}px`;
+  el.style.top = `${Math.max(0, rand() * (vh - h))}px`;
   el.style.width = `${w}px`;
   el.style.height = `${h}px`;
   el.style.opacity = '0';
@@ -1458,8 +1464,8 @@ function spawnHotel(opts) {
   };
 
   // ホテル(上にハートが浮かぶので、画面の上の方は少し空けておく)
-  const hx = margin + Math.random() * Math.max(0, vw - hotelSize - margin * 2);
-  const hy = Math.max(base * 2.2, margin) + Math.random() * Math.max(0, vh - hotelSize - base * 2.2 - margin);
+  const hx = margin + rand() * Math.max(0, vw - hotelSize - margin * 2);
+  const hy = Math.max(base * 2.2, margin) + rand() * Math.max(0, vh - hotelSize - base * 2.2 - margin);
   const hotel = part('🏩', hotelSize, hx, hy);
   hotel.style.transform = 'scale(0)';
   hotel.style.transformOrigin = '50% 100%';
@@ -1495,14 +1501,14 @@ function spawnHotel(opts) {
   // 足りない分は、ランダムな生き物が画面の端から来る(左右から1匹ずつ)
   const creatures = EMOJI_SET.filter((e) => e.creature);
   while (pair.length < 2 && creatures.length) {
-    const e = creatures[Math.floor(Math.random() * creatures.length)];
+    const e = creatures[Math.floor(rand() * creatures.length)];
     const fromLeft = pair.length === 0 ? doorX > vw / 2 : !(pair[0].x < doorX);
     pair.push({
       char: e.char,
-      filter: e.blackChance && Math.random() < e.blackChance ? 'grayscale(1) brightness(0.32) contrast(1.6)' : '',
+      filter: e.blackChance && rand() < e.blackChance ? 'grayscale(1) brightness(0.32) contrast(1.6)' : '',
       size: base,
       x: fromLeft ? -base * 1.2 : vw + base * 0.2,
-      y: doorY - base * (0.6 + Math.random() * 0.8),
+      y: doorY - base * (0.6 + rand() * 0.8),
     });
   }
 
@@ -1540,10 +1546,10 @@ function spawnHotel(opts) {
     const hearts = ['💕', '💗', '💓', '💖', '💞'];
     for (let i = 0; i < 6; i++) {
       setTimeout(() => {
-        const size = base * (0.55 + Math.random() * 0.5);
-        const h = part(hearts[i % hearts.length], size, hx + hotelSize * (0.2 + Math.random() * 0.6) - size / 2, hy - size * 0.2);
+        const size = base * (0.55 + rand() * 0.5);
+        const h = part(hearts[i % hearts.length], size, hx + hotelSize * (0.2 + rand() * 0.6) - size / 2, hy - size * 0.2);
         h.firstChild.classList.add('hotel-heart');
-        h.firstChild.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * base)}px`);
+        h.firstChild.style.setProperty('--drift', `${Math.round((rand() - 0.5) * base)}px`);
       }, 250 + i * 260);
     }
   }, lastIn);
@@ -1622,8 +1628,8 @@ function spawnSunglasses(opts) {
   activeItems.push(box);
 
   // グラサン(少し傾けて置いてある)
-  const gx = margin + Math.random() * Math.max(0, vw - gSize - margin * 2);
-  const gy = margin + Math.random() * Math.max(0, vh - gSize - margin * 2);
+  const gx = margin + rand() * Math.max(0, vw - gSize - margin * 2);
+  const gy = margin + rand() * Math.max(0, vh - gSize - margin * 2);
   const glasses = document.createElement('span');
   glasses.className = 'hotel-part';
   glasses.style.left = `${gx}px`;
@@ -1890,7 +1896,7 @@ function spawnMushroom(opts) {
       [0, 260, 520].forEach((t, i) => setTimeout(() => (mush.style.transform = `scale(${[0.72, 0.45, 0.2][i]})`), t));
       setTimeout(() => (mush.style.opacity = '0'), 700);
       // 食べかすがぽろぽろ落ちる
-      for (let i = 0; i < 3; i++) fx('🟤', s * 0.12, mx + mSize / 2, my + mSize * 0.6, (Math.random() - 0.5) * s * 0.4, s * 0.35, 150 + i * 260, 0.6);
+      for (let i = 0; i < 3; i++) fx('🟤', s * 0.12, mx + mSize / 2, my + mSize * 0.6, (rand() - 0.5) * s * 0.4, s * 0.35, 150 + i * 260, 0.6);
     }, eatAt);
     const effect = isBaby ? 'grow' : plannedEffect;
     const at = eatAt + 900;
@@ -1903,7 +1909,7 @@ function spawnMushroom(opts) {
         // パワーアップ: 大・小・大・小…とピカピカ切り替わって、最後に大きくなる
         const big = 2.1;
         [1.5, 1, 1.5, 1, 1.8, 1.2, big].forEach((k, i) => setTimeout(() => (w.el.style.transform = `${flip}scale(${k})`), i * 110));
-        for (let i = 0; i < 6; i++) fx('✨', s * 0.5, cx + (Math.random() - 0.5) * s * 2.4, cy - s * (0.4 + Math.random() * 1.6), 0, -s * 0.3, 800 + i * 120);
+        for (let i = 0; i < 6; i++) fx('✨', s * 0.5, cx + (rand() - 0.5) * s * 2.4, cy - s * (0.4 + rand() * 1.6), 0, -s * 0.3, 800 + i * 120);
         finish(2400);
       } else if (effect === 'dead') {
         // コテッと横に倒れて、💀になって、👻が昇っていく
@@ -1934,7 +1940,7 @@ function spawnMushroom(opts) {
         w.glyph.classList.add('mush-shake');
         const dir = fromLeft ? 1 : -1;
         for (let i = 0; i < 8; i++) {
-          fx('🔥', s * (0.45 + i * 0.05), cx + dir * s * 0.45, cy + s * 0.1, dir * s * (1.8 + Math.random() * 0.8), (Math.random() - 0.5) * s * 0.6, 200 + i * 130, 1.5);
+          fx('🔥', s * (0.45 + i * 0.05), cx + dir * s * 0.45, cy + s * 0.1, dir * s * (1.8 + rand() * 0.8), (rand() - 0.5) * s * 0.6, 200 + i * 130, 1.5);
         }
         for (let i = 0; i < 3; i++) fx('💦', s * 0.35, cx - dir * s * 0.4, cy - s * 0.4, -dir * s * 0.6, -s * 0.5, 300 + i * 300);
         finish(2600);
@@ -2256,6 +2262,372 @@ function toLogo(glyph, logoStyle) {
   glyph.style.filter = '';
 }
 
+/**
+ * ⭐ 流れ星: 画面の左上か右上から、ランダムな角度で、光の尾と星くずを引いて流れ星が
+ * 降ってくる。流れ星に触れた生き物(emoji-set.jsでcreature:true)は、しばらく虹色に
+ * 光る無敵の状態になって、画面のほかのリアクション(生き物以外も)に走っていき、体当たりで
+ * 倒す(倒されたものはひっくり返って、跳ねてから画面の下へ落ちる)。倒すたびに頭の上に
+ * 点数が出て(100→200→400→…→8000)、その後は1UPが続く。時間が来たら元に戻るので、
+ * 1UPまで行かないこともある。誰にも触れなければ、そのまま画面の外へ流れていく。
+ */
+let starStyleAdded = false;
+const STAR_SCORES = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
+/** 無敵の状態の長さ(最後の少しは、点滅がゆっくりになって終わりが近いのが分かる) */
+const STAR_POWER_MS = 8000;
+const STAR_POWER_ENDING_MS = 1800;
+
+function addStarStyle() {
+  addMushroomStyle();
+  if (starStyleAdded) return;
+  starStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .star-head { filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 10px #fff3a0) drop-shadow(0 0 20px #ffc93c); }
+    .star-spin { display: inline-block; animation: star-spin 900ms linear infinite; }
+    @keyframes star-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .star-tail {
+      position: absolute; height: 8px; margin-top: -4px; border-radius: 4px; transform-origin: 0 50%;
+      background: linear-gradient(to right, rgba(255, 255, 240, 0.95), rgba(255, 220, 110, 0.7) 18%, rgba(150, 190, 255, 0.35) 55%, rgba(150, 190, 255, 0));
+      filter: blur(1.5px);
+    }
+    .star-dust { position: absolute; border-radius: 50%; animation: star-dust var(--life, 900ms) ease-out forwards; }
+    @keyframes star-dust {
+      0% { opacity: 1; transform: translate(0, 0) scale(1); }
+      100% { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.2); }
+    }
+    .star-power { animation: star-power 320ms steps(1) infinite; }
+    .star-power.ending { animation-duration: 900ms; }
+    @keyframes star-power {
+      0% { filter: brightness(1.3) drop-shadow(0 0 8px #ff5a5a); }
+      25% { filter: brightness(1.5) hue-rotate(90deg) drop-shadow(0 0 8px #ffe14d); }
+      50% { filter: brightness(1.3) hue-rotate(180deg) drop-shadow(0 0 8px #5aff8c); }
+      75% { filter: brightness(1.5) hue-rotate(270deg) drop-shadow(0 0 8px #5ac8ff); }
+    }
+    .star-run { display: inline-block; animation: star-run 150ms ease-in-out infinite alternate; }
+    @keyframes star-run { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-14%) rotate(6deg); } }
+    .star-ghost { animation: star-ghost 420ms ease-out forwards; }
+    @keyframes star-ghost { from { opacity: 0.55; } to { opacity: 0; } }
+    .star-score {
+      position: absolute; white-space: nowrap; font-weight: 900; color: #ffffff; letter-spacing: 0.02em;
+      font-family: "Arial Black", "Segoe UI", sans-serif;
+      text-shadow: 0 0 2px #000, 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+      animation: star-score 1000ms ease-out forwards;
+    }
+    .star-score.oneup { color: #6dff6d; }
+    @keyframes star-score {
+      0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
+      15% { opacity: 1; transform: translate(-50%, -20%) scale(1.1); }
+      70% { opacity: 1; transform: translate(-50%, -90%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -130%) scale(1); }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnStar(opts) {
+  addStarStyle();
+  // 降ってくる場所・角度は、OBSと自分の画面で同じになるように種から決める
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const base = settings.baseSizePx;
+  const sSize = base * 0.9;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item star-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 600ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 650);
+  };
+
+  /** 消えていく光の粒(星くず)。cx, cyが真ん中 */
+  const dust = (cx, cy, size, color, dx, dy, life) => {
+    const d = document.createElement('span');
+    d.className = 'star-dust';
+    d.style.left = `${cx - size / 2}px`;
+    d.style.top = `${cy - size / 2}px`;
+    d.style.width = `${size}px`;
+    d.style.height = `${size}px`;
+    d.style.background = color;
+    d.style.boxShadow = `0 0 ${size * 1.5}px ${color}`;
+    d.style.setProperty('--dx', `${dx}px`);
+    d.style.setProperty('--dy', `${dy}px`);
+    d.style.setProperty('--life', `${life}ms`);
+    box.appendChild(d);
+    setTimeout(() => d.remove(), life + 50);
+  };
+  const DUST_COLORS = ['#ffffff', '#fff6b0', '#ffd75a', '#b9d4ff', '#ffe9fb'];
+
+  // ---- 流れ星 ----
+  const fromLeft = rnd() < 0.5;
+  const dir = fromLeft ? 1 : -1;
+  // 角度(横から下向きに25〜60度)と、出てくる場所(左上・右上のあたり。画面の少し外から)
+  const angle = ((25 + rnd() * 35) * Math.PI) / 180;
+  let x;
+  let y;
+  if (rnd() < 0.6) {
+    x = fromLeft ? rnd() * vw * 0.45 : vw - rnd() * vw * 0.45;
+    y = -sSize;
+  } else {
+    x = fromLeft ? -sSize : vw + sSize;
+    y = rnd() * vh * 0.35;
+  }
+  const vx = Math.cos(angle) * dir;
+  const vy = Math.sin(angle);
+  // 画面を横切るのに1.6秒くらい
+  const speed = Math.max(vw, vh) * 0.65;
+  const tailLen = sSize * 6;
+  const tailDeg = (Math.atan2(-vy, -vx) * 180) / Math.PI;
+
+  const tail = document.createElement('span');
+  tail.className = 'hotel-part star-tail';
+  tail.style.width = `${tailLen}px`;
+  box.appendChild(tail);
+  const star = document.createElement('span');
+  star.className = 'hotel-part star-head';
+  star.style.fontSize = `${sSize}px`;
+  star.style.zIndex = '2';
+  const starGlyph = document.createElement('span');
+  starGlyph.className = 'reaction-glyph star-spin';
+  starGlyph.textContent = '⭐';
+  star.appendChild(starGlyph);
+  box.appendChild(star);
+
+  // ---- 無敵になった生き物 ----
+  const powerUp = (item) => {
+    const w = takeOver(item, box);
+    const s = w.size;
+    w.el.style.zIndex = '1';
+    w.el.classList.add('star-power');
+    w.glyph.classList.add('star-run');
+    const cat = w.glyph.textContent === '🐈';
+    let px = w.x;
+    let py = w.y;
+    let target = null;
+    let wander = null;
+    let kills = 0;
+    const runSpeed = Math.max(vw, vh) * 0.45;
+    const endAt = performance.now() + STAR_POWER_MS;
+    let t0 = performance.now();
+    let lastGhost = 0;
+    const falling = [];
+
+    // 倒されたものは、ひっくり返って少し跳ねてから、画面の下へ落ちていく
+    const knockOut = (o, awayDir) => {
+      const d = takeOver(o, box);
+      d.el.style.zIndex = '1';
+      d.glyph.style.transform = 'scaleY(-1)';
+      falling.push({ el: d.el, x: d.x, y: d.y, vx: awayDir * base * 2.5, vy: -base * 9, size: d.size });
+      const cx = d.x + d.size / 2;
+      const cy = d.y + d.size / 2;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        dust(cx, cy, 4 + Math.random() * 4, DUST_COLORS[i % DUST_COLORS.length], Math.cos(a) * s * 0.8, Math.sin(a) * s * 0.8, 500);
+      }
+    };
+    // 頭の上に点数(10回目からは1UP)
+    const score = () => {
+      const label = kills < STAR_SCORES.length ? String(STAR_SCORES[kills]) : '1UP';
+      const p = document.createElement('span');
+      p.className = 'star-score' + (label === '1UP' ? ' oneup' : '');
+      p.textContent = label;
+      p.style.left = `${px + s / 2}px`;
+      p.style.top = `${py - s * 0.45}px`;
+      p.style.fontSize = `${Math.max(14, s * 0.42)}px`;
+      p.style.zIndex = '3';
+      box.appendChild(p);
+      setTimeout(() => p.remove(), 1100);
+      kills += 1;
+    };
+    // 倒しに行く相手: 一番近いリアクション(生き物以外も。ほかの場面の途中のものは除く)
+    const pickTarget = () =>
+      activeItems
+        .filter((o) => o !== box && o.isConnected && !o.dataset.noChase && !o.dataset.dating)
+        .map((o) => ({ o, r: o.getBoundingClientRect() }))
+        .filter((c) => c.r.width > 0 && c.r.right > 0 && c.r.left < vw && c.r.bottom > 0 && c.r.top < vh)
+        .sort((a, b) => Math.hypot(a.r.left - px, a.r.top - py) - Math.hypot(b.r.left - px, b.r.top - py))[0];
+
+    const run = (now) => {
+      if (!box.isConnected) return;
+      const dt = Math.min(50, now - t0) / 1000;
+      t0 = now;
+      // 倒されたものを落とす
+      for (let i = falling.length - 1; i >= 0; i--) {
+        const f = falling[i];
+        f.vy += base * 28 * dt;
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        f.el.style.left = `${f.x}px`;
+        f.el.style.top = `${f.y}px`;
+        if (f.y > vh + f.size) {
+          f.el.remove();
+          falling.splice(i, 1);
+        }
+      }
+      if (now >= endAt) {
+        // 時間切れ: 元に戻る(倒したものが落ちきるのを待ってから消える)
+        w.el.classList.remove('star-power', 'ending');
+        w.glyph.classList.remove('star-run');
+        w.glyph.classList.add('hotel-hop');
+        if (falling.length) requestAnimationFrame(run);
+        else finish(900);
+        return;
+      }
+      if (endAt - now < STAR_POWER_ENDING_MS) w.el.classList.add('ending');
+
+      if (!target || !target.isConnected || target.dataset.dating) {
+        const c = pickTarget();
+        target = c ? c.o : null;
+      }
+      let tx;
+      let ty;
+      if (target) {
+        const r = target.getBoundingClientRect();
+        tx = r.left + r.width / 2 - s / 2;
+        ty = r.top + r.height / 2 - s / 2;
+        wander = null;
+      } else {
+        // 誰もいない間は、画面の中を走り回る
+        if (!wander || Math.hypot(wander.x - px, wander.y - py) < s * 0.5) {
+          wander = { x: s + rnd() * Math.max(0, vw - s * 3), y: vh * 0.3 + rnd() * Math.max(0, vh * 0.6 - s * 1.5) };
+        }
+        tx = wander.x;
+        ty = wander.y;
+      }
+      const dx = tx - px;
+      const dy = ty - py;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.min(dist, runSpeed * dt);
+      if (dist > 0) {
+        px += (dx / dist) * step;
+        py += (dy / dist) * step;
+      }
+      px = Math.max(0, Math.min(vw - s, px));
+      py = Math.max(0, Math.min(vh - s, py));
+      w.el.style.left = `${px}px`;
+      w.el.style.top = `${py}px`;
+      if (cat && Math.abs(dx) > 1) w.el.style.transform = dx > 0 ? 'scaleX(-1)' : '';
+      // 走った跡: 虹色の残像と光の粒
+      if (now - lastGhost > 70 && step > 0.5) {
+        lastGhost = now;
+        const g = document.createElement('span');
+        g.className = 'hotel-part star-ghost';
+        g.style.left = `${px}px`;
+        g.style.top = `${py}px`;
+        g.style.fontSize = `${s}px`;
+        g.style.filter = `hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
+        if (w.el.style.transform) g.style.transform = w.el.style.transform;
+        g.textContent = w.glyph.textContent;
+        box.insertBefore(g, w.el);
+        setTimeout(() => g.remove(), 450);
+        dust(px + s / 2, py + s * 0.85, 3 + Math.random() * 4, `hsl(${Math.round(now / 2) % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
+      }
+      // 触れたら倒す
+      if (target) {
+        const r = target.getBoundingClientRect();
+        if (Math.hypot(r.left + r.width / 2 - (px + s / 2), r.top + r.height / 2 - (py + s / 2)) < s * 0.5 + r.width * 0.4) {
+          target.dataset.dating = '1';
+          knockOut(target, r.left + r.width / 2 >= px + s / 2 ? 1 : -1);
+          score();
+          target = null;
+        }
+      }
+      requestAnimationFrame(run);
+    };
+    requestAnimationFrame(run);
+  };
+
+  let last = 0;
+  let lastDust = 0;
+  const fly = (now) => {
+    if (finished || !star.isConnected) return;
+    const dt = last ? Math.min(50, now - last) / 1000 : 0;
+    last = now;
+    x += vx * speed * dt;
+    y += vy * speed * dt;
+    star.style.left = `${x - sSize / 2}px`;
+    star.style.top = `${y - sSize / 2}px`;
+    tail.style.left = `${x}px`;
+    tail.style.top = `${y}px`;
+    tail.style.transform = `rotate(${tailDeg}deg)`;
+    // 通った跡に、きらきらした星くずを残す
+    if (now - lastDust > 28) {
+      lastDust = now;
+      for (let i = 0; i < 2; i++) {
+        dust(
+          x - vx * sSize * 0.3 + (Math.random() - 0.5) * sSize * 0.4,
+          y - vy * sSize * 0.3 + (Math.random() - 0.5) * sSize * 0.4,
+          2 + Math.random() * sSize * 0.12,
+          DUST_COLORS[Math.floor(Math.random() * DUST_COLORS.length)],
+          (Math.random() - 0.5) * sSize * 0.6,
+          sSize * (0.2 + Math.random() * 0.6),
+          700 + Math.random() * 600,
+        );
+      }
+    }
+    // 生き物に触れたら、その子が無敵になる
+    const hit = activeItems
+      .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
+      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .find((c) => c.r.width > 0 && Math.hypot(c.r.left + c.r.width / 2 - x, c.r.top + c.r.height / 2 - y) < sSize * 0.5 + c.r.width * 0.45);
+    if (hit) {
+      hit.o.dataset.dating = '1';
+      star.remove();
+      tail.remove();
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        dust(x, y, 3 + Math.random() * 5, DUST_COLORS[i % DUST_COLORS.length], Math.cos(a) * sSize * 1.6, Math.sin(a) * sSize * 1.6, 800);
+      }
+      powerUp(hit.o);
+      return;
+    }
+    // 画面の外まで流れたら終わり
+    if (x < -tailLen || x > vw + tailLen || y > vh + sSize) {
+      finish(0);
+      return;
+    }
+    requestAnimationFrame(fly);
+  };
+  requestAnimationFrame(fly);
+}
+
+/**
+ * ReaCastから届いたリアクションを表示する。自分の画面とOBSは届くのが少しずれることがある
+ * ので、ReaCastが決めた時刻(at。少し先)に合わせて同時に出す。乱数も同じ種から作る
+ */
+function playReaction(p) {
+  const run = () => {
+    const prev = rand;
+    rand = seededRandom(p.seed);
+    try {
+      spawnReaction(p.emoji, { mark: !!p.mark, seed: p.seed });
+    } finally {
+      rand = prev;
+    }
+  };
+  const wait = typeof p.at === 'number' ? p.at - Date.now() : 0;
+  if (wait > 0 && wait < 3000) setTimeout(run, wait);
+  else run();
+}
+
 function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
@@ -2279,6 +2651,10 @@ function spawnReaction(emojiId, opts) {
     spawnApple(opts);
     return;
   }
+  if (emojiId === 'star') {
+    spawnStar(opts);
+    return;
+  }
 
   enforceMaxConcurrent();
 
@@ -2300,7 +2676,7 @@ function spawnReaction(emojiId, opts) {
     ? settings.baseSizePx + settings.comboSizeStepPx * (comboLevel - 1)
     : settings.baseSizePx;
   const duration =
-    settings.animationDurationMs * (0.85 + Math.random() * 0.3) * (preset.durationFactor ?? 1);
+    settings.animationDurationMs * (0.85 + rand() * 0.3) * (preset.durationFactor ?? 1);
 
   const el = document.createElement('div');
   el.className = 'reaction-item';
@@ -2316,14 +2692,14 @@ function spawnReaction(emojiId, opts) {
   // 草(id:kusa)のように、絵文字ではなく複数の文字からランダムに1つを選んで
   // 表示したいリアクション用。無ければ従来通りchar固定。
   glyph.textContent = emoji.randomChars
-    ? emoji.randomChars[Math.floor(Math.random() * emoji.randomChars.length)]
+    ? emoji.randomChars[Math.floor(rand() * emoji.randomChars.length)]
     : emoji.char;
   glyph.style.fontSize = `${size}px`;
   glyph.style.lineHeight = '1';
   // 🐈のように、たまに黒猫にするもの(emoji-set.jsのblackChance)。黒猫の絵文字
   // (🐈‍⬛)はWindows 10のフォントに無く「🐈⬛」と2つに分かれて表示されるため、
   // 同じ🐈を色のフィルターで黒くして表す(外側にかけて、自己アニメーションと干渉させない)
-  if (emoji.blackChance && Math.random() < emoji.blackChance) {
+  if (emoji.blackChance && rand() < emoji.blackChance) {
     el.style.filter = 'grayscale(1) brightness(0.32) contrast(1.6)';
   }
   if (emoji.color) {
@@ -2378,7 +2754,7 @@ function spawnReaction(emojiId, opts) {
   // 別の(アニメーションしない)ラップ要素に持たせて、glyph自身の自己
   // アニメーションと干渉しないようにしている。
   let glyphHost = glyph;
-  if (preset.randomFlip && Math.random() < 0.5) {
+  if (preset.randomFlip && rand() < 0.5) {
     const flipWrap = document.createElement('span');
     flipWrap.style.display = 'inline-block';
     flipWrap.style.transform = 'scaleX(-1)';
@@ -2467,7 +2843,7 @@ function spawnReaction(emojiId, opts) {
   // 飛散まで含めた、より賑やかな爆発演出に強化してある。
   if (preset.explodeDelayRangeMs) {
     const [minDelay, maxDelay] = preset.explodeDelayRangeMs;
-    const explodeDelay = path.moveDuration + minDelay + Math.random() * (maxDelay - minDelay);
+    const explodeDelay = path.moveDuration + minDelay + rand() * (maxDelay - minDelay);
     const explodeX = path.endX + size / 2;
     const explodeY = path.endY + size / 2;
     setTimeout(() => {
@@ -2512,7 +2888,7 @@ function spawnReaction(emojiId, opts) {
       });
       // 爆発の瞬間、絵文字自体も勢いよく弾けて回転しながら消えるようにする
       el.style.transition = 'transform 340ms cubic-bezier(.22,1.6,.4,1), opacity 300ms ease-out';
-      const explodeSpin = (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 14);
+      const explodeSpin = (rand() < 0.5 ? -1 : 1) * (18 + rand() * 14);
       el.style.transform += ` scale(2.1) rotate(${explodeSpin.toFixed(0)}deg)`;
       el.style.opacity = '0';
     }, explodeDelay);
@@ -2552,9 +2928,9 @@ function spawnReaction(emojiId, opts) {
       if (el.isConnected) spawnFireworkBurst(burstX, burstY, size);
     }, 60);
     for (let i = 0; i < 2; i++) {
-      const offsetX = (Math.random() - 0.5) * size * 5;
-      const offsetY = -Math.random() * size * 2.5;
-      const delay = 280 + i * 280 + Math.random() * 180;
+      const offsetX = (rand() - 0.5) * size * 5;
+      const offsetY = -rand() * size * 2.5;
+      const delay = 280 + i * 280 + rand() * 180;
       setTimeout(() => {
         if (el.isConnected) spawnFireworkBurst(burstX + offsetX, burstY + offsetY, size);
       }, delay);
@@ -2789,7 +3165,7 @@ function spawnFlash(cx, cy, size) {
 // (enforceMaxParticles)も新設したので、どちらの対策でも重くなりすぎないよう
 // 二重に効くようにしてある)。
 function spawnFireworkBurst(cx, cy, size) {
-  const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+  const color = CONFETTI_COLORS[Math.floor(rand() * CONFETTI_COLORS.length)];
   spawnFlash(cx, cy, size * 1.9);
   spawnParticles({ shape: 'confetti', count: 14, life: 950 }, cx, cy, size);
   spawnParticles({ shape: 'dot', color, count: 10, spread: 62, life: 900, drift: 'twinkle' }, cx, cy, size);
@@ -2807,12 +3183,12 @@ function spawnRadialLines(cx, cy, baseSize, spec) {
   const life = spec.life || 380;
   const color = spec.color || 'rgba(255,255,255,0.9)';
   for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+    const angle = (Math.PI * 2 * i) / count + (rand() - 0.5) * 0.3;
     const el = document.createElement('div');
     el.className = 'particle';
     el.style.left = `${cx}px`;
     el.style.top = `${cy - thickness / 2}px`;
-    el.style.width = `${length * (0.75 + Math.random() * 0.35)}px`;
+    el.style.width = `${length * (0.75 + rand() * 0.35)}px`;
     el.style.height = `${thickness}px`;
     el.style.background = color;
     el.style.transformOrigin = 'left center';
@@ -2826,10 +3202,10 @@ function spawnRadialLines(cx, cy, baseSize, spec) {
 function spawnOneParticle(spec, cx, cy, baseSize, i) {
   // 放射状(紙吹雪・効果線)は円周方向に、それ以外は上向き寄りの扇状にランダムに散らす
   const isRadial = spec.shape === 'confetti' || spec.shape === 'streak';
-  const angle = isRadial ? Math.random() * Math.PI * 2 : (Math.random() - 0.5) * 1.6 - Math.PI / 2;
+  const angle = isRadial ? rand() * Math.PI * 2 : (rand() - 0.5) * 1.6 - Math.PI / 2;
   const spread = spec.spread || 30;
-  const dx = Math.cos(angle) * spread * (0.6 + Math.random() * 0.8);
-  const rise = isRadial ? 50 + Math.random() * 70 : spread * (1.1 + Math.random() * 0.7);
+  const dx = Math.cos(angle) * spread * (0.6 + rand() * 0.8);
+  const rise = isRadial ? 50 + rand() * 70 : spread * (1.1 + rand() * 0.7);
 
   const el = document.createElement('div');
   el.className = 'particle';
@@ -2837,8 +3213,8 @@ function spawnOneParticle(spec, cx, cy, baseSize, i) {
   el.style.setProperty('--rise', `${rise}px`);
   el.style.setProperty('--rot', `${(angle * 180) / Math.PI}deg`);
 
-  const startOffsetX = (Math.random() - 0.5) * baseSize * 0.5;
-  const startOffsetY = (Math.random() - 0.5) * baseSize * 0.3;
+  const startOffsetX = (rand() - 0.5) * baseSize * 0.5;
+  const startOffsetY = (rand() - 0.5) * baseSize * 0.3;
   el.style.left = `${cx + startOffsetX}px`;
   el.style.top = `${cy + startOffsetY}px`;
 
@@ -2863,8 +3239,8 @@ function spawnOneParticle(spec, cx, cy, baseSize, i) {
     el.style.borderRadius = '2px';
     el.style.background = spec.color || 'rgba(255,255,255,0.85)';
   } else if (spec.shape === 'confetti') {
-    el.style.width = `${5 + Math.random() * 4}px`;
-    el.style.height = `${8 + Math.random() * 6}px`;
+    el.style.width = `${5 + rand() * 4}px`;
+    el.style.height = `${8 + rand() * 6}px`;
     el.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
     el.style.borderRadius = '1px';
   }

@@ -357,12 +357,20 @@
     <section data-tab="thread">
       <p class="lead">今読んでいるスレッドのレス。「読み上げ」でもう一度読み、「返信」で書き込み欄に&gt;&gt;番号を入れます。<span class="help" data-help="1番から全部遡って見られます。レスを右クリックすると、選んだ文字やレスの本文のコピー、選んだ文字のGoogle検索、「ここから読み始める」、NGワード・読み方の登録ができます。"></span></p>
       <label class="unit" style="display:inline-flex; align-items:center; gap:4px; margin: 0 0 6px"><input type="checkbox" data-key="threadOpenAtBottom" /> 開いた時に一番下(最新のレス)を表示する</label>
+      <div class="inline" style="margin: 0 0 6px">
+        <span>表示するスレッド</span>
+        <select id="threadViewSelect" style="max-width: 420px"><option value="">今読んでいるスレッド</option></select>
+        <button class="secondary" id="threadViewReload" title="板のスレッドの一覧を読み込み直します">一覧を更新</button>
+        <button class="secondary" id="threadViewSwitch" style="display:none" title="読み上げ・字幕を、表示しているスレッドに切り替えます">このスレッドを読み上げる</button>
+        <span class="help" data-help="前のスレッドなど、読み上げているのとは別のスレッドのレスを見られます(見るだけで、読み上げ・字幕には出ません)。書き込み欄からは、表示しているスレッドに書き込みます。一覧は、読んでいる板のスレッドです(落ちたスレッドは出ません)。"></span>
+        <span id="threadViewMsg" class="unit"></span>
+      </div>
       <div id="threadList"><div class="empty">取得を開始すると、ここにスレッドのレスが表示されます</div></div>
       <div class="inline" style="margin: 10px 0 6px">
         <span>名前</span><input type="text" data-key="postName" style="width: 180px" placeholder="空欄なら板の名無し" />
         <span>メール</span><input type="text" data-key="postMail" style="width: 120px" placeholder="sage など" />
       </div>
-      <textarea id="postBody" style="min-height: 70px; font-family: inherit" placeholder="今読んでいるスレッドに書き込む本文(Ctrl+Enter・Shift+Enterでも書き込めます)"></textarea>
+      <textarea id="postBody" style="min-height: 70px; font-family: inherit" placeholder="表示しているスレッドに書き込む本文(Ctrl+Enter・Shift+Enterでも書き込めます)"></textarea>
       <div class="inline" style="margin-top: 6px">
         <button id="postBtn">書き込む</button>
         <label class="unit" style="display:inline-flex; align-items:center; gap:4px"><input type="checkbox" data-key="postShiftEnter" /> Shift+Enterで書き込む</label>

@@ -185,6 +185,7 @@ function showTab(name) {
   for (const s of document.querySelectorAll('main section')) s.classList.toggle('active', s.dataset.tab === name);
   document.querySelector('main').scrollTop = 0;
   if (window.HelpTips) window.HelpTips.close();
+  if (name === 'thread' && typeof loadThreadChoices === 'function') loadThreadChoices();
   // 「スレッドのレス」を開いた時に、一番下(最新のレス)を表示する(設定でONの時)
   if (name === 'thread' && settings && settings.threadOpenAtBottom) {
     requestAnimationFrame(() => {
@@ -2072,7 +2073,9 @@ function buildPostEl(p) {
   reply.textContent = '返信';
   reply.title = '下の書き込み欄に「>>番号」を入れます';
   reply.addEventListener('click', () => insertReplyAnchor(p.no));
-  head.append(no, name, date, btn, from, reply);
+  // 別のスレッドを見ている時は、読み上げ直しはできない(返信だけ)
+  if (viewUrl) head.append(no, name, date, reply);
+  else head.append(no, name, date, btn, from, reply);
   const body = document.createElement('div');
   body.className = 'post-body';
   body.textContent = p.body || '';
@@ -2123,7 +2126,7 @@ function openPostMenu(e, p) {
     ['このレスの本文をコピー', p.body ? () => copyText(p.body, `レス${p.no}の本文をコピーしました`) : null],
     [selected ? `「${short}」をGoogleで検索` : '文字を選んでから右クリックすると検索できます', selected ? () => invoke('comments_search_web', { text: selected }).catch((err) => (postMenuMsgEl.textContent = String(err))) : null],
     null,
-    [`ここから読み始める(レス${p.no}〜)`, p.no > 0 ? () => readFrom(p.no) : null],
+    [`ここから読み始める(レス${p.no}〜)`, p.no > 0 && !viewUrl ? () => readFrom(p.no) : null],
     null,
     [selected ? `「${short}」をNGワードに追加` : '文字を選んでから右クリックするとNGワードに追加できます', selected ? () => addNgWord(selected) : null],
     [selected ? `「${selected.slice(0, 20)}」の読み方を登録…` : '文字を選んでから右クリックすると読み方を登録できます', selected ? () => openReadingDialog(selected) : null],
@@ -2205,6 +2208,80 @@ window.addEventListener('blur', closePostMenu);
 threadListEl.addEventListener('scroll', closePostMenu);
 document.querySelector('main').addEventListener('scroll', closePostMenu);
 
+// ---- 表示するスレッドを選ぶ(前のスレッドなどを見るだけ) ----
+/** 表示している別のスレッドのURL(空なら今読んでいるスレッド) */
+let viewUrl = '';
+const threadViewSelect = document.getElementById('threadViewSelect');
+const threadViewSwitch = document.getElementById('threadViewSwitch');
+const threadViewMsg = document.getElementById('threadViewMsg');
+let threadChoicesLoading = false;
+
+async function loadThreadChoices() {
+  if (threadChoicesLoading) return;
+  const status = await invoke('comments_status').catch(() => null);
+  const url = (status && status.threadUrl) || (settings && settings.threadUrl) || '';
+  if (!url.trim()) return;
+  threadChoicesLoading = true;
+  try {
+    const { threads } = await invoke('comments_list_threads', { url });
+    for (const o of Array.from(threadViewSelect.options)) if (o.value) o.remove();
+    for (const t of threads) {
+      if (t.current) continue;
+      const o = document.createElement('option');
+      o.value = t.url;
+      o.textContent = `${t.title}(${t.count})`;
+      threadViewSelect.appendChild(o);
+    }
+    // 見ているスレッドが一覧から消えていても(落ちた等)、選んだままにしておく
+    if (viewUrl && !Array.from(threadViewSelect.options).some((o) => o.value === viewUrl)) {
+      const o = document.createElement('option');
+      o.value = viewUrl;
+      o.textContent = viewUrl;
+      threadViewSelect.appendChild(o);
+    }
+    threadViewSelect.value = viewUrl;
+  } catch (err) {
+    threadViewMsg.textContent = String(err);
+  } finally {
+    threadChoicesLoading = false;
+  }
+}
+
+async function showThreadView(url) {
+  viewUrl = url;
+  threadViewSwitch.style.display = url ? '' : 'none';
+  threadViewMsg.textContent = url ? '読み込んでいます…' : '';
+  threadListEl.textContent = '';
+  try {
+    const r = url ? await invoke('comments_view_thread', { url }) : await invoke('comments_get_thread');
+    if (viewUrl !== url) return;
+    threadListEl.textContent = '';
+    if (!(r.posts || []).length) resetPosts();
+    appendPosts(r.posts || []);
+    threadListEl.scrollTop = threadListEl.scrollHeight;
+    threadViewMsg.textContent = url ? '見るだけ(読み上げ・字幕には出ません)' : '';
+  } catch (err) {
+    if (viewUrl === url) threadViewMsg.textContent = String(err);
+  }
+}
+
+threadViewSelect.addEventListener('change', () => showThreadView(threadViewSelect.value));
+document.getElementById('threadViewReload').addEventListener('click', async () => {
+  await loadThreadChoices();
+  if (viewUrl) showThreadView(viewUrl);
+});
+threadViewSwitch.addEventListener('click', async () => {
+  if (!viewUrl) return;
+  try {
+    await invoke('comments_switch_thread', { url: viewUrl });
+    threadViewSelect.value = '';
+    await showThreadView('');
+    loadThreadChoices();
+  } catch (err) {
+    threadViewMsg.textContent = String(err);
+  }
+});
+
 function appendPosts(posts) {
   if (!posts.length) return;
   // 一番下を見ている時だけ、新しいレスに合わせて自動でスクロールする
@@ -2239,7 +2316,9 @@ async function submitPost() {
     // 入力途中の名前・メール欄も反映してから書き込む
     clearTimeout(saveTimer);
     await invoke('comments_save_settings', { settings });
-    await invoke('comments_post', { body });
+    await invoke('comments_post', { body, url: viewUrl || null });
+    // 見ているだけのスレッドは自動で読み込まないので、書き込んだら読み直す
+    if (viewUrl) showThreadView(viewUrl);
     postBodyEl.value = '';
     postMsgEl.textContent = '書き込みました';
   } catch (err) {
@@ -2296,6 +2375,8 @@ document.getElementById('testBtn').addEventListener('click', () => {
   appendPosts(thread.posts || []);
   threadListEl.scrollTop = threadListEl.scrollHeight;
   listen('comments:posts', (e) => {
+    // 別のスレッドを見ている間は、読み上げているスレッドのレスを混ぜない
+    if (viewUrl) return;
     if (e.payload.reset) resetPosts();
     appendPosts(e.payload.posts || []);
   });

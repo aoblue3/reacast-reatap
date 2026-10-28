@@ -69,6 +69,7 @@ const EMOJI_SET = [
   { id: 'sunglasses', char: '🕶️', label: 'グラサン', anim: 'sunglasses' },
   { id: 'mushroom', char: '🍄', label: 'キノコ', anim: 'mushroom' },
   { id: 'apple', char: '🍎', label: 'りんご', anim: 'apple' },
+  { id: 'star', char: '⭐', label: '流れ星', anim: 'star' },
 
   // ==================== 食べ物系 ====================
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },

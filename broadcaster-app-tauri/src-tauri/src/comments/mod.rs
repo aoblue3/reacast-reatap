@@ -206,6 +206,9 @@ pub struct CommentSettings {
     /// v1.7.9で🍎を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v8: bool,
+    /// ⭐を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v9: bool,
     pub ng_words: String,
     // ---- レス着信音 ----
     /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
@@ -384,6 +387,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "グラサン|サングラス|🕶/sunglasses",
     "キノコ|きのこ|🍄/mushroom",
     "りんご|リンゴ|林檎|🍎|🍏/apple",
+    "流れ星|⭐|🌟/star",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -497,6 +501,7 @@ impl Default for CommentSettings {
             reaction_presets_v6: true,
             reaction_presets_v7: true,
             reaction_presets_v8: true,
+            reaction_presets_v9: true,
             ng_words: String::new(),
             chime_enabled: false,
             chime_path: String::new(),
@@ -1355,6 +1360,18 @@ impl CommentEngine {
         serde_json::json!({ "posts": posts })
     }
 
+    /// 読み上げていないスレッドのレス(「スレッドのレス」で別のスレッドを見る時)を、
+    /// 今のスレッドのレスと同じ形にする
+    fn raw_posts_json(&self, raws: &[source::RawPost]) -> Vec<serde_json::Value> {
+        let st = self.state.lock().unwrap();
+        raws.iter()
+            .map(|r| {
+                let p = Post::from_raw(r, None);
+                p.to_json(detect_aa(&st.settings, &st.compiled, &p))
+            })
+            .collect()
+    }
+
     /// 指定したレス番号のレスを、順番待ちの先頭に入れてもう一度表示・読み上げる。
     pub fn replay(&self, no: u32) -> Result<(), String> {
         let mut st = self.state.lock().unwrap();
@@ -2195,7 +2212,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 || !s.reaction_presets_v9 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2249,6 +2266,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v6 = true;
     s.reaction_presets_v7 = true;
     s.reaction_presets_v8 = true;
+    s.reaction_presets_v9 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
@@ -2566,16 +2584,35 @@ pub async fn comments_list_threads(engine: Engine<'_>, url: String) -> Result<se
     Ok(serde_json::json!({ "threads": items }))
 }
 
-/// 今読んでいるスレッドに書き込む(「スレッドのレス」タブから)。名前・メール欄は設定のもの。
+/// 読み上げているのとは別のスレッドのレスを全部読む(「スレッドのレス」で見るだけ。
+/// 読み上げ・字幕には出さない)
 #[tauri::command]
-pub async fn comments_post(engine: Engine<'_>, body: String) -> Result<(), String> {
+pub async fn comments_view_thread(engine: Engine<'_>, url: String) -> Result<serde_json::Value, String> {
+    let (board, key) = source::parse_url(&url)?;
+    let key = key.ok_or("スレッドのURLを指定してください")?;
+    let mut reader = source::ThreadReader::new(ThreadRef { board, key });
+    let raws = reader.poll(&source::http_client()).await?;
+    Ok(serde_json::json!({
+        "url": reader.thread.read_url(),
+        "title": reader.title,
+        "posts": engine.raw_posts_json(&raws),
+    }))
+}
+
+/// スレッドに書き込む(「スレッドのレス」タブから)。urlが無ければ今読んでいるスレッド。
+/// 名前・メール欄は設定のもの。
+#[tauri::command]
+pub async fn comments_post(engine: Engine<'_>, body: String, url: Option<String>) -> Result<(), String> {
     if body.trim().is_empty() {
         return Err("本文が空です".into());
     }
-    let url = engine
-        .status()
-        .thread_url
-        .ok_or("読み込み中のスレッドがありません(「開始」を押してから書き込んでください)")?;
+    let url = match url {
+        Some(u) => u,
+        None => engine
+            .status()
+            .thread_url
+            .ok_or("読み込み中のスレッドがありません(「開始」を押してから書き込んでください)")?,
+    };
     let (board, key) = source::parse_url(&url)?;
     let key = key.ok_or("スレッドのURLが分かりません")?;
     let settings = engine.settings();

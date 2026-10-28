@@ -166,8 +166,8 @@ impl ObsBridge {
     /// ならず、単に何も起きない)。
     /// markは話した言葉で飛んだリアクションの印(overlay.jsで周りを光らせる)。
     /// `seed`は、ランダムで決まる演出(🍄の効果など)をReaCastの画面と同じにするための種
-    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str, mark: bool, seed: u32) {
-        let payload = serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id, "mark": mark, "seed": seed })
+    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str, mark: bool, seed: u32, at: u64) {
+        let payload = serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id, "mark": mark, "seed": seed, "at": at })
             .to_string();
         let _ = self.tx.send(payload);
     }
@@ -307,7 +307,8 @@ pub fn start(
     initial_combo_growth_enabled: bool,
     initial_no_combo_growth_ids: Vec<String>,
 ) -> ObsBridge {
-    let (tx, _rx) = broadcast::channel::<String>(64);
+    // リアクションが一度にたくさん来ても、OBSの画面が取りこぼさないように多めに持つ
+    let (tx, _rx) = broadcast::channel::<String>(1024);
     let settings = Arc::new(Mutex::new(BridgeSettings {
         glyph_scale: initial_glyph_scale,
         glyph_opacity: initial_glyph_opacity,
