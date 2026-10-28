@@ -68,6 +68,7 @@ const EMOJI_SET = [
   { id: 'lovehotel', char: '🏩', label: 'ホテル', anim: 'lovehotel' },
   { id: 'sunglasses', char: '🕶️', label: 'グラサン', anim: 'sunglasses' },
   { id: 'mushroom', char: '🍄', label: 'キノコ', anim: 'mushroom' },
+  { id: 'apple', char: '🍎', label: 'りんご', anim: 'apple' },
 
   // ==================== 食べ物系 ====================
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },

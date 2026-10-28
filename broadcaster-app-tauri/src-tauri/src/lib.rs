@@ -1010,6 +1010,8 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             .try_state::<std::sync::Arc<comments::CommentEngine>>()
             .map(|e| e.settings().voice_reaction_mark)
             .unwrap_or(true);
+    // 🍄の効果のように、ランダムで決まるものを自分の画面とOBSで同じにするための種
+    let seed = reaction_seed();
     let hide_local = store
         .get("hideLocalOverlay")
         .and_then(|v| v.as_bool())
@@ -1028,7 +1030,7 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
             app.state::<TopmostReasserter>().bump(Duration::from_millis(5000));
             win.emit(
                 "overlay:reaction",
-                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id, "mark": voice_mark }),
+                serde_json::json!({ "emoji": emoji, "viewerId": viewer_id, "mark": voice_mark, "seed": seed }),
             )
             .map_err(|e| e.to_string())?;
         }
@@ -1036,8 +1038,17 @@ pub(crate) fn show_reaction(app: &tauri::AppHandle, emoji: &str, viewer_id: &str
     // OBSの「ブラウザ」ソースが繋がっていれば、そちらにも同じリアクションを配信する
     // (obs_bridge.rs参照。誰も繋いでいなくても問題なく無視される)。
     app.state::<obs_bridge::ObsBridge>()
-        .broadcast_reaction(&emoji, &viewer_id, voice_mark);
+        .broadcast_reaction(&emoji, &viewer_id, voice_mark, seed);
     Ok(())
+}
+
+/// リアクション1回ごとの乱数の種(overlay.jsのseededRandom。32ビット)
+fn reaction_seed() -> u32 {
+    static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0);
+    let x = (t ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    (x >> 32) as u32
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

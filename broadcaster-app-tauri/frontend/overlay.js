@@ -473,7 +473,7 @@ const COMBO_WINDOW_MS = 1500;
 //      あったため、この方式を用意している。
 if (window.__TAURI__ && window.__TAURI__.event) {
   window.__TAURI__.event.listen('overlay:reaction', (event) => {
-    spawnReaction(event.payload.emoji, { mark: !!event.payload.mark });
+    spawnReaction(event.payload.emoji, { mark: !!event.payload.mark, seed: event.payload.seed });
   });
   // 設定パネルの「絵文字の大きさ」を起動時に反映し、設定パネルで変更される
   // たびにも(このウィンドウを閉じ直さなくても)即座に反映されるようにする。
@@ -521,7 +521,7 @@ function connectObsBridge(port) {
         if (Array.isArray(data.noComboGrowthIds)) applyNoComboGrowthIds(data.noComboGrowthIds);
         return;
       }
-      if (typeof data.emoji === 'string') spawnReaction(data.emoji, { mark: !!data.mark });
+      if (typeof data.emoji === 'string') spawnReaction(data.emoji, { mark: !!data.mark, seed: data.seed });
     } catch {
       // 想定外のメッセージは無視する
     }
@@ -1736,9 +1736,28 @@ function spawnSunglasses(opts) {
  *   trippy   … ワライタケ。色がぐるぐる変わりながら回って、💫が回る
  * 誰も来なければ、そのまましばらくして消える。セリフ(文字)は出さず、動きと絵文字だけで見せる。
  */
+/**
+ * 同じリアクションを、配信者の画面(Tauriのオーバーレイ)とOBSで同じ結果にするための乱数。
+ * ReaCastがリアクションごとに送る種(seed)から作る(mulberry32)。種が無ければMath.random
+ * (どちらの画面も別々にMath.randomで決めていたので、🍄の効果が画面ごとに違っていた)。
+ */
+function seededRandom(seed) {
+  if (typeof seed !== 'number' || !Number.isFinite(seed)) return Math.random;
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 let mushroomStyleAdded = false;
 const MUSHROOM_EFFECTS = ['grow', 'dead', 'tasty', 'spicy', 'tiny', 'trippy'];
-function spawnMushroom(opts) {
+
+/** 🍄・🍎の場面(ホテル・グラサンと同じ部品)を作る前に、使うアニメーションを用意する */
+function addMushroomStyle() {
   addHotelStyle();
   if (!mushroomStyleAdded) {
     mushroomStyleAdded = true;
@@ -1761,6 +1780,34 @@ function spawnMushroom(opts) {
     `;
     document.head.appendChild(st);
   }
+}
+
+/**
+ * 場面の上に、効果の文字や絵文字を出す(cx, cyが真ん中。dx, dyだけ動いて消える)
+ */
+function sceneFx(box, char, size, cx, cy, dx, dy, delay = 0, end = 1, cls = 'mush-fx') {
+  setTimeout(() => {
+    const p = document.createElement('span');
+    p.className = 'hotel-part';
+    p.style.left = `${cx - size / 2}px`;
+    p.style.top = `${cy - size / 2}px`;
+    p.style.fontSize = `${size}px`;
+    p.style.zIndex = '2';
+    const g = document.createElement('span');
+    g.className = `reaction-glyph ${cls}`;
+    g.textContent = char;
+    g.style.setProperty('--dx', `${dx}px`);
+    g.style.setProperty('--dy', `${dy}px`);
+    g.style.setProperty('--end', String(end));
+    p.appendChild(g);
+    box.appendChild(p);
+  }, delay);
+}
+
+function spawnMushroom(opts) {
+  addMushroomStyle();
+  // 位置と効果は、OBSと自分の画面で同じになるように種から決める
+  const rnd = seededRandom(opts && opts.seed);
   enforceMaxConcurrent();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -1781,29 +1828,13 @@ function spawnMushroom(opts) {
   stage.appendChild(box);
   activeItems.push(box);
 
-  // 効果の文字や絵文字を出す(cx, cyが真ん中。dx, dyだけ動いて消える)
-  const fx = (char, size, cx, cy, dx, dy, delay = 0, end = 1, cls = 'mush-fx') => {
-    setTimeout(() => {
-      const p = document.createElement('span');
-      p.className = 'hotel-part';
-      p.style.left = `${cx - size / 2}px`;
-      p.style.top = `${cy - size / 2}px`;
-      p.style.fontSize = `${size}px`;
-      p.style.zIndex = '2';
-      const g = document.createElement('span');
-      g.className = `reaction-glyph ${cls}`;
-      g.textContent = char;
-      g.style.setProperty('--dx', `${dx}px`);
-      g.style.setProperty('--dy', `${dy}px`);
-      g.style.setProperty('--end', String(end));
-      p.appendChild(g);
-      box.appendChild(p);
-    }, delay);
-  };
+  const fx = (...a) => sceneFx(box, ...a);
 
   // キノコ(ぽんっと生える)
-  const mx = margin + Math.random() * Math.max(0, vw - mSize - margin * 2);
-  const my = margin + Math.random() * Math.max(0, vh - mSize - margin * 2);
+  const mx = margin + rnd() * Math.max(0, vw - mSize - margin * 2);
+  const my = margin + rnd() * Math.max(0, vh - mSize - margin * 2);
+  // 食べた時の効果も、先に決めておく
+  const plannedEffect = MUSHROOM_EFFECTS[Math.floor(rnd() * MUSHROOM_EFFECTS.length)];
   const mush = document.createElement('span');
   mush.className = 'hotel-part';
   mush.style.left = `${mx}px`;
@@ -1861,7 +1892,7 @@ function spawnMushroom(opts) {
       // 食べかすがぽろぽろ落ちる
       for (let i = 0; i < 3; i++) fx('🟤', s * 0.12, mx + mSize / 2, my + mSize * 0.6, (Math.random() - 0.5) * s * 0.4, s * 0.35, 150 + i * 260, 0.6);
     }, eatAt);
-    const effect = isBaby ? 'grow' : MUSHROOM_EFFECTS[Math.floor(Math.random() * MUSHROOM_EFFECTS.length)];
+    const effect = isBaby ? 'grow' : plannedEffect;
     const at = eatAt + 900;
     const cx = tx + s / 2;
     const cy = ty + s / 2;
@@ -1958,6 +1989,202 @@ function spawnMushroom(opts) {
   setTimeout(look, 450);
 }
 
+/**
+ * 🍎 りんご(たまに🍏): 画面のどこかに上から落ちてきて、着地したらコロコロ転がって止まる。
+ * 生き物のリアクション(emoji-set.jsでcreature:true。👶も)が画面にいれば、近い子が来て
+ * かじる。かじると、かじった跡の付いた白いりんご(あのマークのような形)に変わって、
+ * 光りながらゆっくり浮かんで回る。誰も来なければ、転がったまましばらくして消える。
+ * 落ちる場所・緑のりんごかどうかは、OBSと自分の画面で同じになるように種から決める。
+ */
+let appleStyleAdded = false;
+function spawnApple(opts) {
+  addMushroomStyle();
+  if (!appleStyleAdded) {
+    appleStyleAdded = true;
+    const st = document.createElement('style');
+    st.textContent = `
+      .apple-land { animation: apple-land 260ms ease-out; }
+      @keyframes apple-land { 0% { transform: scale(1.25, 0.75); } 60% { transform: scale(0.92, 1.08); } 100% { transform: scale(1, 1); } }
+      /* 絵文字の絵は文字の枠より少しはみ出すので、余白を足してから切り抜く(足さないと端が欠ける) */
+      .apple-bite {
+        padding: 0.4em;
+        margin: -0.4em;
+        -webkit-mask-image: radial-gradient(circle at calc(100% - 0.45em) 1.02em, transparent var(--br, 0em), #000 calc(var(--br, 0em) + 0.01em));
+        mask-image: radial-gradient(circle at calc(100% - 0.45em) 1.02em, transparent var(--br, 0em), #000 calc(var(--br, 0em) + 0.01em));
+      }
+      .apple-logo { animation: apple-logo 2400ms ease-in-out forwards; }
+      @keyframes apple-logo {
+        0% { transform: translateY(0) rotateY(0deg) scale(1); }
+        35% { transform: translateY(-35%) rotateY(180deg) scale(1.45); }
+        70% { transform: translateY(-45%) rotateY(360deg) scale(1.6); }
+        100% { transform: translateY(-45%) rotateY(360deg) scale(1.6); }
+      }
+      .apple-halo { border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.35) 35%, rgba(255, 255, 255, 0) 70%); animation: apple-halo 2400ms ease-out forwards; }
+      @keyframes apple-halo { 0% { opacity: 0; transform: scale(0.3); } 40% { opacity: 1; transform: scale(1.6); } 100% { opacity: 0.6; transform: scale(2.2); } }
+    `;
+    document.head.appendChild(st);
+  }
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const base = settings.baseSizePx;
+  const aSize = base * 0.8;
+  const margin = Math.min(base * 1.5, Math.min(vw, vh) * 0.2);
+  const green = rnd() < 0.3;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item apple-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 600ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+  const fx = (...a) => sceneFx(box, ...a);
+
+  // 着地する場所(画面の下の方)と、転がる向き・距離
+  const lx = margin + rnd() * Math.max(0, vw - aSize - margin * 2);
+  const ly = vh * 0.45 + rnd() * Math.max(0, vh * 0.5 - aSize - margin * 0.5);
+  const dir = rnd() < 0.5 ? -1 : 1;
+  const rollDist = aSize * (1 + rnd() * 1.5);
+  // 転がった後に止まる場所(画面の外に出ないように)
+  const ax = Math.max(margin * 0.5, Math.min(vw - aSize - margin * 0.5, lx + dir * rollDist));
+  const ay = ly;
+
+  const apple = document.createElement('span');
+  apple.className = 'hotel-part';
+  apple.style.left = `${lx}px`;
+  apple.style.top = `${-aSize * 1.5}px`;
+  apple.style.fontSize = `${aSize}px`;
+  apple.style.transformOrigin = '50% 50%';
+  const glyph = document.createElement('span');
+  glyph.className = 'reaction-glyph';
+  glyph.style.display = 'inline-block';
+  glyph.style.transformOrigin = '50% 100%';
+  glyph.textContent = green ? '🍏' : '🍎';
+  apple.appendChild(glyph);
+  box.appendChild(apple);
+
+  // 落ちる(だんだん速く)→着地してつぶれる→コロコロ転がって止まる
+  const fallMs = 650 + Math.round((ly / vh) * 300);
+  apple.style.transition = `top ${fallMs}ms cubic-bezier(.55, 0, 1, .45)`;
+  requestAnimationFrame(() => requestAnimationFrame(() => (apple.style.top = `${ly}px`)));
+  setTimeout(() => {
+    glyph.classList.add('apple-land');
+    const turns = (Math.abs(ax - lx) / (Math.PI * aSize)) * 360;
+    apple.style.transition = 'left 1000ms cubic-bezier(.2, .6, .35, 1), transform 1000ms cubic-bezier(.2, .6, .35, 1)';
+    apple.style.left = `${ax}px`;
+    apple.style.transform = `rotate(${dir * turns}deg)`;
+  }, fallMs);
+  const landedAt = fallMs + 1050;
+
+  const born = Date.now();
+  const waitUntil = born + landedAt + Math.max(6000, settings.animationDurationMs * 2);
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 650);
+  };
+
+  const eat = (item) => {
+    const w = takeOver(item, box);
+    const s = w.size;
+    // りんごの横(来た側)に、足元をそろえて立つ
+    const fromLeft = w.x + s / 2 < ax + aSize / 2;
+    const tx = fromLeft ? ax - s * 0.85 : ax + aSize - s * 0.15;
+    const ty = ay + aSize - s;
+    const flip = w.glyph.textContent === '🐈' && fromLeft ? 'scaleX(-1) ' : '';
+    w.el.style.transformOrigin = '50% 100%';
+    if (flip) w.el.style.transform = flip;
+    w.glyph.classList.add('hotel-hop');
+    const dist = Math.hypot(tx - w.x, ty - w.y);
+    const walkMs = Math.round(Math.min(1800, Math.max(500, dist * 1.8)));
+    w.el.style.transition = `left ${walkMs}ms ease-out, top ${walkMs}ms ease-out`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      w.el.style.left = `${tx}px`;
+      w.el.style.top = `${ty}px`;
+    }));
+    // かじる(来た側がかじられて、跡が大きくなる)。転がった回転は戻して、まっすぐ立てる
+    const eatAt = walkMs + 80;
+    setTimeout(() => {
+      w.glyph.classList.remove('hotel-hop');
+      w.glyph.classList.add('mush-chew');
+      // かじり跡はいつも絵の右側に付けて、左から来た時は絵を左右反転する(跡が来た側に向く)
+      apple.style.transition = 'transform 200ms ease-out';
+      apple.style.transform = fromLeft ? 'rotate(0deg) scaleX(-1)' : 'rotate(0deg)';
+      glyph.classList.remove('apple-land');
+      glyph.classList.add('apple-bite');
+      [0, 280, 560].forEach((t, i) => setTimeout(() => glyph.style.setProperty('--br', ['0.12em', '0.17em', '0.2em'][i]), t));
+      // かじったかけらが飛ぶ
+      for (let i = 0; i < 3; i++) {
+        fx('✨', s * 0.18, fromLeft ? ax : ax + aSize, ay + aSize * 0.4, (fromLeft ? -1 : 1) * s * 0.3, -s * 0.2, 100 + i * 280, 0.6);
+      }
+    }, eatAt);
+    // あのマークのような、白く光るりんごに変わって、浮かびながらくるっと回る
+    const at = eatAt + 1000;
+    const cx = ax + aSize / 2;
+    const cy = ay + aSize / 2;
+    setTimeout(() => {
+      w.glyph.classList.remove('mush-chew');
+      w.glyph.classList.add('mush-joy');
+      // 後ろの光
+      const halo = document.createElement('span');
+      halo.className = 'hotel-part apple-halo';
+      const hs = aSize * 1.4;
+      halo.style.left = `${cx - hs / 2}px`;
+      halo.style.top = `${cy - hs / 2 - aSize * 0.4}px`;
+      halo.style.width = `${hs}px`;
+      halo.style.height = `${hs}px`;
+      box.insertBefore(halo, apple);
+      glyph.style.transition = 'filter 500ms ease-in';
+      glyph.style.filter = 'brightness(0) invert(1) drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))';
+      apple.style.zIndex = '1';
+      apple.style.transition = '';
+      apple.style.perspective = '600px';
+      glyph.style.transformOrigin = '50% 50%';
+      glyph.classList.add('apple-logo');
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        fx('✨', aSize * 0.35, cx, cy - aSize * 0.4, Math.cos(a) * aSize * 1.3, Math.sin(a) * aSize * 1.1, 500 + i * 60);
+      }
+      finish(2900);
+    }, at);
+  };
+
+  // 着地してから、生き物が来るのを待つ(0.3秒おきに見る)
+  const look = () => {
+    if (finished) return;
+    if (Date.now() > waitUntil) {
+      finish(0);
+      return;
+    }
+    const cx = ax + aSize / 2;
+    const cy = ay + aSize / 2;
+    const eater = activeItems
+      .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
+      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .filter((c) => c.r.width > 0)
+      .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
+    if (eater) {
+      eater.o.dataset.dating = '1';
+      eat(eater.o);
+      return;
+    }
+    setTimeout(look, 300);
+  };
+  setTimeout(look, landedAt);
+}
+
 function spawnReaction(emojiId, opts) {
   const emoji = emojiById.get(emojiId);
   if (!emoji) return;
@@ -1975,6 +2202,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'mushroom') {
     spawnMushroom(opts);
+    return;
+  }
+  if (emojiId === 'apple') {
+    spawnApple(opts);
     return;
   }
 

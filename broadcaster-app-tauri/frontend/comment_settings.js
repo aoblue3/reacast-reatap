@@ -2225,7 +2225,8 @@ async function submitPost() {
 
 postBtn.addEventListener('click', submitPost);
 postBodyEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.ctrlKey) {
+  // Ctrl+Enter・Shift+Enterで書き込む(普通のEnterは改行。日本語の変換中のEnterは確定なので書き込まない)
+  if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey) && !e.isComposing) {
     e.preventDefault();
     submitPost();
   }

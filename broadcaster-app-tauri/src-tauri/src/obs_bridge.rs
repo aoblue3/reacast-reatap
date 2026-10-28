@@ -165,10 +165,10 @@ impl ObsBridge {
     /// そちらにも同じリアクションを配信する(誰も繋いでいなくてもエラーには
     /// ならず、単に何も起きない)。
     /// markは話した言葉で飛んだリアクションの印(overlay.jsで周りを光らせる)。
-    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str, mark: bool) {
-        let payload =
-            serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id, "mark": mark })
-                .to_string();
+    /// `seed`は、ランダムで決まる演出(🍄の効果など)をReaCastの画面と同じにするための種
+    pub fn broadcast_reaction(&self, emoji: &str, viewer_id: &str, mark: bool, seed: u32) {
+        let payload = serde_json::json!({ "type": "reaction", "emoji": emoji, "viewerId": viewer_id, "mark": mark, "seed": seed })
+            .to_string();
         let _ = self.tx.send(payload);
     }
 
