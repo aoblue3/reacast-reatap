@@ -362,9 +362,10 @@
         <span>名前</span><input type="text" data-key="postName" style="width: 180px" placeholder="空欄なら板の名無し" />
         <span>メール</span><input type="text" data-key="postMail" style="width: 120px" placeholder="sage など" />
       </div>
-      <textarea id="postBody" style="min-height: 70px; font-family: inherit" placeholder="今読んでいるスレッドに書き込む本文(Shift+Enter・Ctrl+Enterでも書き込めます)"></textarea>
+      <textarea id="postBody" style="min-height: 70px; font-family: inherit" placeholder="今読んでいるスレッドに書き込む本文(Ctrl+Enter・Shift+Enterでも書き込めます)"></textarea>
       <div class="inline" style="margin-top: 6px">
         <button id="postBtn">書き込む</button>
+        <label class="unit" style="display:inline-flex; align-items:center; gap:4px"><input type="checkbox" data-key="postShiftEnter" /> Shift+Enterで書き込む</label>
         <span id="postMsg" class="unit"></span>
         <span class="help" data-help="jpnkn等の2ちゃんねる互換の掲示板だけに書き込めます(したらば掲示板には書き込めません)。"></span>
       </div>

@@ -1997,6 +1997,31 @@ function spawnMushroom(opts) {
  * 落ちる場所・緑のりんごかどうかは、OBSと自分の画面で同じになるように種から決める。
  */
 let appleStyleAdded = false;
+/**
+ * かじられた後のりんごの色(あのマークの歴代の色っぽく)。top・bottomは、りんごの絵の
+ * 上端・下端(px)。虹色の帯を絵の高さに合わせるために使う
+ */
+const APPLE_LOGO_STYLES = [
+  // 6色の虹の帯
+  (top, bottom) => {
+    const c = ['#61bb46', '#fdb827', '#f5821f', '#e03a3e', '#963d97', '#009ddc'];
+    const h = (bottom - top) / c.length;
+    const stops = c.map((col, i) => `${col} ${top + h * i}px ${top + h * (i + 1)}px`);
+    return `linear-gradient(to bottom, ${c[0]} 0 ${top}px, ${stops.join(', ')}, ${c[c.length - 1]} ${bottom}px)`;
+  },
+  // 黒一色
+  () => '#1d1d1f',
+  // 水色のつやつや
+  (top, bottom) => {
+    const h = bottom - top;
+    return `linear-gradient(to bottom, #eaf7ff ${top}px, #8fd0ff ${top + h * 0.3}px, #2a8fe0 ${top + h * 0.6}px, #0b4f9c ${bottom}px)`;
+  },
+  // 銀色の金属
+  () => 'linear-gradient(160deg, #ffffff 0%, #c9ced3 32%, #7d848b 50%, #eceff1 64%, #8b9197 100%)',
+  // 白一色
+  () => '#ffffff',
+];
+
 function spawnApple(opts) {
   addMushroomStyle();
   if (!appleStyleAdded) {
@@ -2009,6 +2034,7 @@ function spawnApple(opts) {
       .apple-bite {
         padding: 0.4em;
         margin: -0.4em;
+        line-height: normal;
         -webkit-mask-image: radial-gradient(circle at calc(100% - 0.45em) 1.02em, transparent var(--br, 0em), #000 calc(var(--br, 0em) + 0.01em));
         mask-image: radial-gradient(circle at calc(100% - 0.45em) 1.02em, transparent var(--br, 0em), #000 calc(var(--br, 0em) + 0.01em));
       }
@@ -2032,6 +2058,8 @@ function spawnApple(opts) {
   const aSize = base * 0.8;
   const margin = Math.min(base * 1.5, Math.min(vw, vh) * 0.2);
   const green = rnd() < 0.3;
+  // かじられた後の色も、先に決めておく(OBSと自分の画面で同じ色に)
+  const logoStyle = APPLE_LOGO_STYLES[Math.floor(rnd() * APPLE_LOGO_STYLES.length)];
 
   const box = document.createElement('div');
   box.className = 'reaction-item apple-scene' + (opts && opts.mark ? ' self-mark' : '');
@@ -2146,8 +2174,11 @@ function spawnApple(opts) {
       halo.style.width = `${hs}px`;
       halo.style.height = `${hs}px`;
       box.insertBefore(halo, apple);
-      glyph.style.transition = 'filter 500ms ease-in';
-      glyph.style.filter = 'brightness(0) invert(1) drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))';
+      // 一瞬白く光ってから、かじり跡の付いたりんごの形を、歴代の色で塗ったものに変わる
+      glyph.style.transition = 'filter 250ms ease-in';
+      glyph.style.filter = 'brightness(0) invert(1)';
+      setTimeout(() => toLogo(glyph, logoStyle), 260);
+      apple.style.filter = 'drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))';
       apple.style.zIndex = '1';
       apple.style.transition = '';
       apple.style.perspective = '600px';
@@ -2183,6 +2214,46 @@ function spawnApple(opts) {
     setTimeout(look, 300);
   };
   setTimeout(look, landedAt);
+}
+
+/**
+ * かじられたりんご(.apple-bite)を、同じ形の、色を塗った板に置き換える。絵文字は色を
+ * 変えられないので、絵文字を描いた絵(canvas)の形だけを切り抜きに使う(かじり跡も同じ
+ * 所を消す)。CSSのかじり跡(.apple-bite)と同じ位置・大きさ。
+ */
+function toLogo(glyph, logoStyle) {
+  const W = glyph.offsetWidth;
+  const H = glyph.offsetHeight;
+  const cs = getComputedStyle(glyph);
+  const fs = parseFloat(cs.fontSize);
+  const r = Number.parseFloat(glyph.style.getPropertyValue('--br')) || 0.2;
+  const k = 2;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(W * k);
+  c.height = Math.ceil(H * k);
+  const ctx = c.getContext('2d');
+  if (!ctx || !W || !H) return;
+  ctx.scale(k, k);
+  ctx.font = `${fs}px ${cs.fontFamily}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(glyph.textContent, W / 2, H / 2);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.arc(W - 0.45 * fs, 1.02 * fs, r * fs, 0, Math.PI * 2);
+  ctx.fill();
+  const url = `url(${c.toDataURL()})`;
+  glyph.style.boxSizing = 'border-box';
+  glyph.style.width = `${W}px`;
+  glyph.style.height = `${H}px`;
+  glyph.textContent = '';
+  glyph.style.webkitMaskImage = url;
+  glyph.style.maskImage = url;
+  glyph.style.webkitMaskSize = '100% 100%';
+  glyph.style.maskSize = '100% 100%';
+  glyph.style.background = logoStyle(0.3 * fs, H - 0.3 * fs);
+  glyph.style.transition = 'filter 300ms ease-out';
+  glyph.style.filter = '';
 }
 
 function spawnReaction(emojiId, opts) {

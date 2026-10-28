@@ -83,6 +83,8 @@ pub struct CommentSettings {
     /// 「スレッドのレス」タブから書き込む時の名前・メール欄
     pub post_name: String,
     pub post_mail: String,
+    /// 書き込み欄でShift+Enterを押したら書き込む(OFFなら改行。Ctrl+Enterはいつも書き込む)
+    pub post_shift_enter: bool,
     /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 読み上げの途中でPCやReaCastが落ちた時、次に同じスレッドを開始したら、
@@ -431,6 +433,7 @@ impl Default for CommentSettings {
             thread_open_at_bottom: false,
             post_name: String::new(),
             post_mail: String::new(),
+            post_shift_enter: true,
             start_res_no: 0,
             resume_reading: true,
             initial_text: "スレッド読み込みを開始しました".into(),

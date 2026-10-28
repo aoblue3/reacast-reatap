@@ -2225,8 +2225,10 @@ async function submitPost() {
 
 postBtn.addEventListener('click', submitPost);
 postBodyEl.addEventListener('keydown', (e) => {
-  // Ctrl+Enter・Shift+Enterで書き込む(普通のEnterは改行。日本語の変換中のEnterは確定なので書き込まない)
-  if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey) && !e.isComposing) {
+  // Ctrl+Enter・Shift+Enter(設定でONの時)で書き込む(普通のEnterは改行。日本語の変換中の
+  // Enterは確定なので書き込まない)
+  const shiftPosts = !settings || settings.postShiftEnter !== false;
+  if (e.key === 'Enter' && (e.ctrlKey || (e.shiftKey && shiftPosts)) && !e.isComposing) {
     e.preventDefault();
     submitPost();
   }
