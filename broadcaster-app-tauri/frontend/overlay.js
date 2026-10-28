@@ -1467,6 +1467,7 @@ function spawnHotel(opts) {
   const hx = margin + rand() * Math.max(0, vw - hotelSize - margin * 2);
   const hy = Math.max(base * 2.2, margin) + rand() * Math.max(0, vh - hotelSize - base * 2.2 - margin);
   const hotel = part('🏩', hotelSize, hx, hy);
+  hotel.dataset.prop = '1';
   hotel.style.transform = 'scale(0)';
   hotel.style.transformOrigin = '50% 100%';
   hotel.style.transition = 'transform 450ms cubic-bezier(.2, 1.6, .4, 1)';
@@ -1516,6 +1517,8 @@ function spawnHotel(opts) {
   let lastIn = 0;
   pair.forEach((c, i) => {
     const w = part(c.char, c.size, c.x, c.y);
+    w.dataset.actor = '1';
+    w.dataset.creature = '1';
     if (c.filter) w.style.filter = c.filter;
     w.firstChild.classList.add('hotel-hop');
     const tx = doorX - c.size / 2 + (i === 0 ? -c.size * 0.25 : c.size * 0.25);
@@ -1542,6 +1545,7 @@ function spawnHotel(opts) {
 
   // 2匹とも入ったら、ホテルが揺れて、上にハートが浮かぶ
   setTimeout(() => {
+    if (hotel.dataset.starred) return;
     hotel.firstChild.classList.add('hotel-shake');
     const hearts = ['💕', '💗', '💓', '💖', '💞'];
     for (let i = 0; i < 6; i++) {
@@ -1578,6 +1582,7 @@ function takeOver(item, box) {
   el.className = 'hotel-part';
   el.dataset.actor = '1';
   if (item.dataset.creature || item.dataset.emojiId === 'baby') el.dataset.creature = '1';
+  if (item.dataset.emojiId) el.dataset.emojiId = item.dataset.emojiId;
   el.style.left = `${r.left}px`;
   el.style.top = `${r.top}px`;
   el.style.fontSize = `${size}px`;
@@ -1633,6 +1638,7 @@ function spawnSunglasses(opts) {
   const gx = margin + rand() * Math.max(0, vw - gSize - margin * 2);
   const gy = margin + rand() * Math.max(0, vh - gSize - margin * 2);
   const glasses = document.createElement('span');
+  glasses.dataset.prop = '1';
   glasses.className = 'hotel-part';
   glasses.style.left = `${gx}px`;
   glasses.style.top = `${gy}px`;
@@ -1698,6 +1704,7 @@ function spawnSunglasses(opts) {
         glasses.style.transition = 'none';
         glasses.style.left = `${w.size / 2 - gs2 / 2}px`;
         glasses.style.top = `${w.size * 0.36 - gs2 / 2}px`;
+        delete glasses.dataset.prop;
         w.el.appendChild(glasses);
         const sp = document.createElement('span');
         sp.className = 'hotel-part';
@@ -1721,6 +1728,10 @@ function spawnSunglasses(opts) {
     }
     const cx = gx + gSize / 2;
     const cy = gy + gSize / 2;
+    if (glasses.dataset.starred) {
+      finish(0);
+      return;
+    }
     const face = activeItems
       .filter((o) => o !== box && o.isConnected && o.dataset.face && !o.dataset.dating)
       .map((o) => ({ o, r: o.getBoundingClientRect() }))
@@ -1848,6 +1859,7 @@ function spawnMushroom(opts) {
   // 食べた時の効果も、先に決めておく
   const plannedEffect = MUSHROOM_EFFECTS[Math.floor(rnd() * MUSHROOM_EFFECTS.length)];
   const mush = document.createElement('span');
+  mush.dataset.prop = '1';
   mush.className = 'hotel-part';
   mush.style.left = `${mx}px`;
   mush.style.top = `${my}px`;
@@ -1985,6 +1997,10 @@ function spawnMushroom(opts) {
       finish(0);
       return;
     }
+    if (mush.dataset.starred) {
+      finish(0);
+      return;
+    }
     const cx = mx + mSize / 2;
     const cy = my + mSize / 2;
     const eater = activeItems
@@ -2098,6 +2114,7 @@ function spawnApple(opts) {
 
   const apple = document.createElement('span');
   apple.className = 'hotel-part';
+  apple.dataset.prop = '1';
   apple.style.left = `${lx}px`;
   apple.style.top = `${-aSize * 1.5}px`;
   apple.style.fontSize = `${aSize}px`;
@@ -2209,6 +2226,10 @@ function spawnApple(opts) {
   const look = () => {
     if (finished) return;
     if (Date.now() > waitUntil) {
+      finish(0);
+      return;
+    }
+    if (apple.dataset.starred) {
       finish(0);
       return;
     }
@@ -2343,6 +2364,12 @@ function addStarStyle() {
     }
   `;
   document.head.appendChild(st);
+}
+
+/** 場面の中の生き物・置いてある物が、今見えているか */
+function sceneVisible(el) {
+  if (el.style.visibility === 'hidden' || el.closest('[style*="visibility: hidden"]')) return false;
+  return Number(getComputedStyle(el).opacity) > 0.3;
 }
 
 function spawnStar(opts) {
@@ -2539,15 +2566,46 @@ function spawnStar(opts) {
       }
     };
 
-    // 倒されたものは、ひっくり返って少し跳ねてから、画面の下へ落ちていく
-    const knockOut = (o, awayDir) => {
-      const d = takeOver(o, box);
-      d.el.style.zIndex = '1';
-      d.el.dataset.starred = '1';
-      d.glyph.style.transform = 'scaleY(-1)';
-      falling.push({ el: d.el, x: d.x, y: d.y, vx: awayDir * base * 2.5, vy: -base * 9, size: d.size });
-      const cx = d.x + d.size / 2;
-      const cy = d.y + d.size / 2;
+    // 倒されたものは、ひっくり返って少し跳ねてから、画面の下へ落ちていく。場面の生き物・
+    // 置いてある物(🏩🍄など)は、今の見た目を写し取って落とす(元のものは見えなくする)
+    const knockOut = (t, awayDir) => {
+      let el;
+      let r0;
+      if (t.isItem) {
+        r0 = t.el.getBoundingClientRect();
+        const d = takeOver(t.el, box);
+        el = d.el;
+      } else {
+        r0 = t.el.getBoundingClientRect();
+        const copy = t.el.cloneNode(true);
+        t.el.dataset.starred = '1';
+        t.el.style.visibility = 'hidden';
+        copy.style.transition = 'none';
+        copy.style.position = 'relative';
+        copy.style.left = '0';
+        copy.style.top = '0';
+        copy.style.opacity = '1';
+        el = document.createElement('span');
+        el.className = 'hotel-part';
+        el.appendChild(copy);
+        box.appendChild(el);
+        el.style.left = `${r0.left}px`;
+        el.style.top = `${r0.top}px`;
+        const r1 = copy.getBoundingClientRect();
+        el.style.left = `${r0.left + (r0.left - r1.left)}px`;
+        el.style.top = `${r0.top + (r0.top - r1.top)}px`;
+      }
+      el.style.zIndex = '1';
+      el.dataset.starred = '1';
+      el.style.transformOrigin = '50% 50%';
+      el.style.transform = 'scaleY(-1)';
+      const fx0 = parseFloat(el.style.left) || r0.left;
+      const fy0 = parseFloat(el.style.top) || r0.top;
+      // 画面の下に消えきるまで落とす(大きい物は少し余分に)
+      const size = (Math.max(r0.width, r0.height) || s) * 1.5;
+      falling.push({ el, x: fx0, y: fy0, vx: awayDir * base * 2.5, vy: -base * 9, size });
+      const cx = r0.left + r0.width / 2;
+      const cy = r0.top + r0.height / 2;
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
         dust(cx, cy, 4 + Math.random() * 4, DUST_COLORS[i % DUST_COLORS.length], Math.cos(a) * s * 0.8, Math.sin(a) * s * 0.8, 500);
@@ -2568,13 +2626,26 @@ function spawnStar(opts) {
       setTimeout(() => p.remove(), 1100);
       kills += 1;
     };
-    // 倒しに行く相手: 一番近いリアクション(生き物以外も。ほかの場面の途中のものは除く)
-    const pickTarget = () =>
-      activeItems
-        .filter((o) => o !== box && o.isConnected && !o.dataset.noChase && !o.dataset.dating)
-        .map((o) => ({ o, r: o.getBoundingClientRect() }))
+    // 倒しに行く相手: 一番近いもの。リアクション(生き物以外も)と、ほかの場面の生き物・
+    // 置いてある物(🏩🍄🍎🕶️)。👶は倒さない。ほかの無敵の子は、ぶつかると両方消える
+    const alive = (t) =>
+      t.el.isConnected && (t.isItem ? !t.el.dataset.dating : !t.el.dataset.starred && sceneVisible(t.el));
+    const pickTarget = () => {
+      const c0 = center();
+      const items = activeItems
+        .filter((o) => o !== box && o.isConnected && !o.dataset.noChase && !o.dataset.dating && !o.dataset.starred && o.dataset.emojiId !== 'baby')
+        // 🌈は絵文字1つではないので、場面の物と同じく見た目ごと写し取って倒す
+        .map((o) => ({ el: o, isItem: !o.classList.contains('rainbow-item') }));
+      const scene = Array.from(stage.querySelectorAll('[data-actor], [data-prop]'))
+        .filter((o) => !box.contains(o) && o.dataset.emojiId !== 'baby' && !o.closest('.star-scene'))
+        .map((o) => ({ el: o, isItem: false }))
+        .filter(alive);
+      return items
+        .concat(scene)
+        .map((t) => ({ t, r: t.el.getBoundingClientRect() }))
         .filter((c) => c.r.width > 0 && c.r.right > 0 && c.r.left < vw && c.r.bottom > 0 && c.r.top < vh)
-        .sort((a, b) => Math.hypot(a.r.left - px, a.r.top - py) - Math.hypot(b.r.left - px, b.r.top - py))[0];
+        .sort((a, b) => Math.hypot(a.r.left + a.r.width / 2 - c0.x, a.r.top + a.r.height / 2 - c0.y) - Math.hypot(b.r.left + b.r.width / 2 - c0.x, b.r.top + b.r.height / 2 - c0.y))[0];
+    };
 
     const run = (now) => {
       if (!box.isConnected) {
@@ -2628,14 +2699,14 @@ function spawnStar(opts) {
         }
       }
 
-      if (!target || !target.isConnected || target.dataset.dating) {
+      if (!target || !alive(target)) {
         const c = pickTarget();
-        target = c ? c.o : null;
+        target = c ? c.t : null;
       }
       let tx;
       let ty;
       if (target) {
-        const r = target.getBoundingClientRect();
+        const r = target.el.getBoundingClientRect();
         tx = px + (r.left + r.width / 2 - c0.x);
         ty = py + (r.top + r.height / 2 - c0.y);
         wander = null;
@@ -2677,9 +2748,9 @@ function spawnStar(opts) {
       }
       // 触れたら倒す
       if (target) {
-        const r = target.getBoundingClientRect();
-        if (Math.hypot(r.left + r.width / 2 - c0.x, r.top + r.height / 2 - c0.y) < c0.r + r.width * 0.4) {
-          target.dataset.dating = '1';
+        const r = target.el.getBoundingClientRect();
+        if (Math.hypot(r.left + r.width / 2 - c0.x, r.top + r.height / 2 - c0.y) < c0.r + Math.min(r.width, r.height) * 0.4) {
+          if (target.isItem) target.el.dataset.dating = '1';
           knockOut(target, r.left + r.width / 2 >= c0.x ? 1 : -1);
           score();
           target = null;
@@ -2726,7 +2797,7 @@ function spawnStar(opts) {
       .find((c) => touches(c.r));
     if (!hit) {
       hit = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
-        .filter((o) => !o.dataset.starred && !o.dataset.noStar && o.style.visibility !== 'hidden' && !box.contains(o))
+        .filter((o) => !o.dataset.starred && !o.dataset.noStar && sceneVisible(o) && !box.contains(o))
         .map((o) => ({ o, r: o.getBoundingClientRect(), isItem: false }))
         .find((c) => touches(c.r));
     }
