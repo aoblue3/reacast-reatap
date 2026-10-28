@@ -1576,6 +1576,8 @@ function takeOver(item, box) {
   if (idx !== -1) activeItems.splice(idx, 1);
   const el = document.createElement('span');
   el.className = 'hotel-part';
+  el.dataset.actor = '1';
+  if (item.dataset.creature || item.dataset.emojiId === 'baby') el.dataset.creature = '1';
   el.style.left = `${r.left}px`;
   el.style.top = `${r.top}px`;
   el.style.fontSize = `${size}px`;
@@ -1692,7 +1694,11 @@ function spawnSunglasses(opts) {
         pair.style.width = `${vw}px`;
         pair.style.height = `${vh}px`;
         pair.appendChild(w.el);
-        pair.appendChild(glasses);
+        const gs2 = parseFloat(glasses.style.fontSize) || w.size * 0.74;
+        glasses.style.transition = 'none';
+        glasses.style.left = `${w.size / 2 - gs2 / 2}px`;
+        glasses.style.top = `${w.size * 0.36 - gs2 / 2}px`;
+        w.el.appendChild(glasses);
         const sp = document.createElement('span');
         sp.className = 'hotel-part';
         sp.style.left = `${fx + w.size * 0.82}px`;
@@ -1913,6 +1919,7 @@ function spawnMushroom(opts) {
         finish(2400);
       } else if (effect === 'dead') {
         // コテッと横に倒れて、💀になって、👻が昇っていく
+        w.el.dataset.noStar = '1';
         w.el.style.transition = 'transform 380ms cubic-bezier(.5, 0, .8, .6)';
         w.el.style.transform = `${flip}rotate(${fromLeft ? -90 : 90}deg)`;
         setTimeout(() => {
@@ -2275,6 +2282,8 @@ const STAR_SCORES = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
 /** 無敵の状態の長さ(最後の少しは、点滅がゆっくりになって終わりが近いのが分かる) */
 const STAR_POWER_MS = 8000;
 const STAR_POWER_ENDING_MS = 1800;
+/** 今無敵の子(ほかの流れ星の場面の子とぶつかったら、両方消える) */
+const STAR_POWERED = new Set();
 
 function addStarStyle() {
   addMushroomStyle();
@@ -2303,6 +2312,18 @@ function addStarStyle() {
       50% { filter: brightness(1.3) hue-rotate(180deg) drop-shadow(0 0 8px #5aff8c); }
       75% { filter: brightness(1.5) hue-rotate(270deg) drop-shadow(0 0 8px #5ac8ff); }
     }
+    .star-boom {
+      position: absolute; border-radius: 50%; z-index: 4;
+      background: radial-gradient(circle, #ffffff 0%, rgba(255, 250, 200, 0.95) 25%, rgba(255, 170, 255, 0.5) 50%, rgba(120, 200, 255, 0) 72%);
+      animation: star-boom 750ms ease-out forwards;
+    }
+    @keyframes star-boom { 0% { opacity: 0; transform: scale(0.2); } 15% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(2.4); } }
+    .star-ring {
+      position: absolute; border-radius: 50%; z-index: 4; border: 4px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 14px #ffffff, inset 0 0 14px #b8e0ff;
+      animation: star-ring 800ms ease-out forwards;
+    }
+    @keyframes star-ring { 0% { opacity: 1; transform: scale(0.1); } 100% { opacity: 0; transform: scale(3.2); } }
     .star-run { display: inline-block; animation: star-run 150ms ease-in-out infinite alternate; }
     @keyframes star-run { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-14%) rotate(6deg); } }
     .star-ghost { animation: star-ghost 420ms ease-out forwards; }
@@ -2412,15 +2433,53 @@ function spawnStar(opts) {
   box.appendChild(star);
 
   // ---- 無敵になった生き物 ----
-  const powerUp = (item) => {
-    const w = takeOver(item, box);
-    const s = w.size;
-    w.el.style.zIndex = '1';
-    w.el.classList.add('star-power');
-    w.glyph.classList.add('star-run');
-    const cat = w.glyph.textContent === '🐈';
-    let px = w.x;
-    let py = w.y;
+  // sourceがリアクション(activeItemsの1つ)ならそのまま連れてくる。ほかの場面(🕶️・🍄など)の
+  // 途中の生き物なら、今の見た目(グラサン・大きさ・色など)のまま写し取って連れてくる
+  // (元の場面のものは見えなくして、その場面はそのまま裏で終わらせる)
+  const powerUp = (source, isItem) => {
+    let body;
+    let r0;
+    if (isItem) {
+      const w = takeOver(source, box);
+      body = w.el;
+      r0 = body.getBoundingClientRect();
+    } else {
+      r0 = source.getBoundingClientRect();
+      body = source.cloneNode(true);
+      source.dataset.starred = '1';
+      source.style.visibility = 'hidden';
+      const g = body.querySelector('.reaction-glyph');
+      if (g) g.classList.remove('hotel-hop', 'mush-chew', 'star-run');
+    }
+    body.dataset.starred = '1';
+    body.style.transition = 'none';
+    body.style.position = 'relative';
+    body.style.left = '0';
+    body.style.top = '0';
+    body.style.visibility = '';
+    const holder = document.createElement('span');
+    holder.className = 'hotel-part star-power';
+    holder.style.zIndex = '1';
+    const hopper = document.createElement('span');
+    hopper.className = 'star-run';
+    hopper.appendChild(body);
+    holder.appendChild(hopper);
+    box.appendChild(holder);
+    // 写し取る前と同じ所に見えるように置く(元の大きさ・向きの変化も含めて)
+    let px = r0.left;
+    let py = r0.top;
+    holder.style.left = `${px}px`;
+    holder.style.top = `${py}px`;
+    const r1 = body.getBoundingClientRect();
+    px += r0.left - r1.left;
+    py += r0.top - r1.top;
+    holder.style.left = `${px}px`;
+    holder.style.top = `${py}px`;
+    const s = Math.max(base * 0.4, r0.width || base);
+    const glyph = body.querySelector('.reaction-glyph');
+    const char = glyph ? glyph.textContent : '';
+    const cat = char === '🐈' && !body.style.transform;
+
     let target = null;
     let wander = null;
     let kills = 0;
@@ -2428,12 +2487,63 @@ function spawnStar(opts) {
     const endAt = performance.now() + STAR_POWER_MS;
     let t0 = performance.now();
     let lastGhost = 0;
+    let goneAt = 0;
     const falling = [];
+    const center = () => {
+      const r = body.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: Math.max(r.width, r.height) / 2 };
+    };
+
+    // 無敵同士がぶつかったら、光って両方とも消える
+    const me = {
+      gone: false,
+      center,
+      vanish() {
+        if (me.gone) return;
+        me.gone = true;
+        goneAt = performance.now();
+        STAR_POWERED.delete(me);
+        holder.classList.remove('star-power', 'ending');
+        hopper.classList.remove('star-run');
+        holder.style.transition = 'transform 650ms cubic-bezier(.5, 0, .9, .4), opacity 650ms ease-in';
+        holder.style.transformOrigin = '50% 50%';
+        holder.style.filter = 'brightness(3) drop-shadow(0 0 12px #ffffff)';
+        holder.style.transform = 'rotate(540deg) scale(0)';
+        holder.style.opacity = '0';
+      },
+    };
+    STAR_POWERED.add(me);
+    const boom = (cx, cy, size) => {
+      const flash = document.createElement('span');
+      flash.className = 'star-boom';
+      flash.style.left = `${cx - size}px`;
+      flash.style.top = `${cy - size}px`;
+      flash.style.width = `${size * 2}px`;
+      flash.style.height = `${size * 2}px`;
+      box.appendChild(flash);
+      const ring = document.createElement('span');
+      ring.className = 'star-ring';
+      ring.style.left = `${cx - size}px`;
+      ring.style.top = `${cy - size}px`;
+      ring.style.width = `${size * 2}px`;
+      ring.style.height = `${size * 2}px`;
+      box.appendChild(ring);
+      setTimeout(() => {
+        flash.remove();
+        ring.remove();
+      }, 1000);
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        const d = size * (1.2 + Math.random() * 1.2);
+        dust(cx, cy, 3 + Math.random() * 6, `hsl(${(i * 15) % 360}, 100%, 75%)`, Math.cos(a) * d, Math.sin(a) * d, 900 + Math.random() * 400);
+      }
+    };
 
     // 倒されたものは、ひっくり返って少し跳ねてから、画面の下へ落ちていく
     const knockOut = (o, awayDir) => {
       const d = takeOver(o, box);
       d.el.style.zIndex = '1';
+      d.el.dataset.starred = '1';
       d.glyph.style.transform = 'scaleY(-1)';
       falling.push({ el: d.el, x: d.x, y: d.y, vx: awayDir * base * 2.5, vy: -base * 9, size: d.size });
       const cx = d.x + d.size / 2;
@@ -2446,11 +2556,12 @@ function spawnStar(opts) {
     // 頭の上に点数(10回目からは1UP)
     const score = () => {
       const label = kills < STAR_SCORES.length ? String(STAR_SCORES[kills]) : '1UP';
+      const c = center();
       const p = document.createElement('span');
       p.className = 'star-score' + (label === '1UP' ? ' oneup' : '');
       p.textContent = label;
-      p.style.left = `${px + s / 2}px`;
-      p.style.top = `${py - s * 0.45}px`;
+      p.style.left = `${c.x}px`;
+      p.style.top = `${c.y - c.r - s * 0.45}px`;
       p.style.fontSize = `${Math.max(14, s * 0.42)}px`;
       p.style.zIndex = '3';
       box.appendChild(p);
@@ -2466,7 +2577,10 @@ function spawnStar(opts) {
         .sort((a, b) => Math.hypot(a.r.left - px, a.r.top - py) - Math.hypot(b.r.left - px, b.r.top - py))[0];
 
     const run = (now) => {
-      if (!box.isConnected) return;
+      if (!box.isConnected) {
+        STAR_POWERED.delete(me);
+        return;
+      }
       const dt = Math.min(50, now - t0) / 1000;
       t0 = now;
       // 倒されたものを落とす
@@ -2482,16 +2596,37 @@ function spawnStar(opts) {
           falling.splice(i, 1);
         }
       }
+      if (me.gone) {
+        // ぶつかって消えた: 倒したものが落ちきってから終わる
+        if (falling.length || now - goneAt < 700) requestAnimationFrame(run);
+        else finish(0);
+        return;
+      }
       if (now >= endAt) {
         // 時間切れ: 元に戻る(倒したものが落ちきるのを待ってから消える)
-        w.el.classList.remove('star-power', 'ending');
-        w.glyph.classList.remove('star-run');
-        w.glyph.classList.add('hotel-hop');
+        STAR_POWERED.delete(me);
+        holder.classList.remove('star-power', 'ending');
+        hopper.classList.remove('star-run');
+        hopper.classList.add('hotel-hop');
         if (falling.length) requestAnimationFrame(run);
         else finish(900);
         return;
       }
-      if (endAt - now < STAR_POWER_ENDING_MS) w.el.classList.add('ending');
+      if (endAt - now < STAR_POWER_ENDING_MS) holder.classList.add('ending');
+
+      // ほかの無敵の子とぶつかったら、両方消える
+      const c0 = center();
+      for (const other of STAR_POWERED) {
+        if (other === me || other.gone) continue;
+        const c1 = other.center();
+        if (Math.hypot(c1.x - c0.x, c1.y - c0.y) < (c0.r + c1.r) * 0.8) {
+          boom((c0.x + c1.x) / 2, (c0.y + c1.y) / 2, Math.max(c0.r, c1.r) * 1.6);
+          other.vanish();
+          me.vanish();
+          requestAnimationFrame(run);
+          return;
+        }
+      }
 
       if (!target || !target.isConnected || target.dataset.dating) {
         const c = pickTarget();
@@ -2501,8 +2636,8 @@ function spawnStar(opts) {
       let ty;
       if (target) {
         const r = target.getBoundingClientRect();
-        tx = r.left + r.width / 2 - s / 2;
-        ty = r.top + r.height / 2 - s / 2;
+        tx = px + (r.left + r.width / 2 - c0.x);
+        ty = py + (r.top + r.height / 2 - c0.y);
         wander = null;
       } else {
         // 誰もいない間は、画面の中を走り回る
@@ -2520,32 +2655,32 @@ function spawnStar(opts) {
         px += (dx / dist) * step;
         py += (dy / dist) * step;
       }
-      px = Math.max(0, Math.min(vw - s, px));
-      py = Math.max(0, Math.min(vh - s, py));
-      w.el.style.left = `${px}px`;
-      w.el.style.top = `${py}px`;
-      if (cat && Math.abs(dx) > 1) w.el.style.transform = dx > 0 ? 'scaleX(-1)' : '';
+      // 画面の外に出ないように(見えている絵の位置で確かめる)
+      px += Math.max(0, -(c0.x - c0.r)) - Math.max(0, c0.x + c0.r - vw);
+      py += Math.max(0, -(c0.y - c0.r)) - Math.max(0, c0.y + c0.r - vh);
+      holder.style.left = `${px}px`;
+      holder.style.top = `${py}px`;
+      if (cat && Math.abs(dx) > 1) holder.style.transform = dx > 0 ? 'scaleX(-1)' : '';
       // 走った跡: 虹色の残像と光の粒
       if (now - lastGhost > 70 && step > 0.5) {
         lastGhost = now;
-        const g = document.createElement('span');
-        g.className = 'hotel-part star-ghost';
+        const g = body.cloneNode(true);
+        g.classList.add('star-ghost');
+        g.style.position = 'absolute';
         g.style.left = `${px}px`;
         g.style.top = `${py}px`;
-        g.style.fontSize = `${s}px`;
-        g.style.filter = `hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
-        if (w.el.style.transform) g.style.transform = w.el.style.transform;
-        g.textContent = w.glyph.textContent;
-        box.insertBefore(g, w.el);
+        g.style.filter = `${body.style.filter || ''} hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
+        if (holder.style.transform) g.style.transform = `${holder.style.transform} ${body.style.transform || ''}`;
+        box.insertBefore(g, holder);
         setTimeout(() => g.remove(), 450);
-        dust(px + s / 2, py + s * 0.85, 3 + Math.random() * 4, `hsl(${Math.round(now / 2) % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
+        dust(c0.x, c0.y + c0.r * 0.7, 3 + Math.random() * 4, `hsl(${Math.round(now / 2) % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
       }
       // 触れたら倒す
       if (target) {
         const r = target.getBoundingClientRect();
-        if (Math.hypot(r.left + r.width / 2 - (px + s / 2), r.top + r.height / 2 - (py + s / 2)) < s * 0.5 + r.width * 0.4) {
+        if (Math.hypot(r.left + r.width / 2 - c0.x, r.top + r.height / 2 - c0.y) < c0.r + r.width * 0.4) {
           target.dataset.dating = '1';
-          knockOut(target, r.left + r.width / 2 >= px + s / 2 ? 1 : -1);
+          knockOut(target, r.left + r.width / 2 >= c0.x ? 1 : -1);
           score();
           target = null;
         }
@@ -2583,20 +2718,27 @@ function spawnStar(opts) {
         );
       }
     }
-    // 生き物に触れたら、その子が無敵になる
-    const hit = activeItems
+    // 生き物に触れたら、その子が無敵になる(🕶️・🍄などの場面の途中の生き物も、その姿のまま)
+    const touches = (r) => r.width > 0 && Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y) < sSize * 0.5 + r.width * 0.45;
+    let hit = activeItems
       .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
-      .map((o) => ({ o, r: o.getBoundingClientRect() }))
-      .find((c) => c.r.width > 0 && Math.hypot(c.r.left + c.r.width / 2 - x, c.r.top + c.r.height / 2 - y) < sSize * 0.5 + c.r.width * 0.45);
+      .map((o) => ({ o, r: o.getBoundingClientRect(), isItem: true }))
+      .find((c) => touches(c.r));
+    if (!hit) {
+      hit = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
+        .filter((o) => !o.dataset.starred && !o.dataset.noStar && o.style.visibility !== 'hidden' && !box.contains(o))
+        .map((o) => ({ o, r: o.getBoundingClientRect(), isItem: false }))
+        .find((c) => touches(c.r));
+    }
     if (hit) {
-      hit.o.dataset.dating = '1';
+      if (hit.isItem) hit.o.dataset.dating = '1';
       star.remove();
       tail.remove();
       for (let i = 0; i < 14; i++) {
         const a = (i / 14) * Math.PI * 2;
         dust(x, y, 3 + Math.random() * 5, DUST_COLORS[i % DUST_COLORS.length], Math.cos(a) * sSize * 1.6, Math.sin(a) * sSize * 1.6, 800);
       }
-      powerUp(hit.o);
+      powerUp(hit.o, hit.isItem);
       return;
     }
     // 画面の外まで流れたら終わり
