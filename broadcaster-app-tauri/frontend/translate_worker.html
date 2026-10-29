@@ -80,6 +80,9 @@
       if (translators.has(key)) return translators.get(key);
       const a = await Translator.availability({ sourceLanguage: src, targetLanguage: dst });
       if (a === 'unavailable') throw new Error('unsupported');
+      // 設定の組み合わせ以外(中国語・韓国語などのレスがたまに来た時)は、準備を頼まずに
+      // Google翻訳に任せる(配信の途中に「準備が要ります」が何度も出ていた。2026-10-29)
+      if (a !== 'available' && !prepPairs.some(([s, d]) => s === src && d === dst)) throw new Error('not-prepared');
       if (a !== 'available') {
         if (!needPrep.has(key)) {
           needPrep.set(key, [src, dst]);

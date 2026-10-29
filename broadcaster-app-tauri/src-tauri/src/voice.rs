@@ -574,15 +574,19 @@ pub(crate) fn is_quiet_translate_error(e: &str) -> bool {
     e == TRANSLATE_PAUSED || e == TRANSLATE_SKIPPED
 }
 
-/// 訳さない文: 記号・空白・「w」「草」「笑」を除いて2文字以下(「草」「おつ」を
-/// 訳すと「Grass」のような変な訳になる。あいさつ程度の短い文は訳さなくても伝わる)
+/// 訳さない文: 記号・空白・「w」「草」「笑」「乙」を除くと文字が無い(数字・絵文字だけも)か、
+/// 「おつ」などの決まった言い方だけ(訳すと「Grass」「Otsu」のような変な訳になる)。
+/// 「はい」「hi」「你好」のような短い文は訳す
 fn skip_translation(text: &str) -> bool {
-    let meaningful = text
+    let meaningful: String = text
         .chars()
-        .filter(|c| !c.is_whitespace() && !c.is_ascii_punctuation() && !matches!(c, 'w' | 'W' | 'ｗ' | 'Ｗ' | '草' | '笑'))
+        .filter(|c| !c.is_whitespace() && !c.is_ascii_punctuation() && !matches!(c, 'w' | 'W' | 'ｗ' | 'Ｗ' | '草' | '笑' | '乙' | 'ー' | '～' | '〜'))
         .filter(|c| !matches!(*c as u32, 0x3000..=0x303F | 0xFF01..=0xFF0F | 0xFF1A..=0xFF20 | 0x2000..=0x206F))
-        .count();
-    meaningful <= 2
+        .collect();
+    if !meaningful.chars().any(|c| c.is_alphabetic()) {
+        return true;
+    }
+    matches!(meaningful.as_str(), "おつ" | "おつかれ" | "うぽつ" | "ｵﾂ" | "オツ")
 }
 
 /// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり(以下はGoogleに頼む時だけ):
@@ -827,10 +831,10 @@ mod tests {
 
     #[test]
     fn skips_short_slang() {
-        for s in ["草", "w", "wwwww", "おつ", "草草", "ｗｗｗ", "笑笑", "!?", "ok"] {
+        for s in ["草", "w", "wwwww", "おつ", "おつー", "うぽつ", "草草", "ｗｗｗ", "笑笑", "!?", "乙", "888", "👍"] {
             assert!(skip_translation(s), "{s}");
         }
-        for s in ["おはよう", "Hello", "このボス強すぎない？", "草生える"] {
+        for s in ["おはよう", "Hello", "このボス強すぎない？", "草生える", "hi", "gg", "ok", "你好", "谢", "안녕", "はい", "猫", "やば"] {
             assert!(!skip_translation(s), "{s}");
         }
     }
