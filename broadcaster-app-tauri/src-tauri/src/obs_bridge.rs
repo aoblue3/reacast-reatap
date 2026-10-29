@@ -73,6 +73,10 @@ struct BridgeSettings {
     combo_growth_enabled: bool,
     // 「大きくしない」に個別指定されているリアクションIDの一覧。
     no_combo_growth_ids: Vec<String>,
+    // 自分の画面(Tauriのオーバーレイ)の大きさ。OBS側はこの大きさで動かして縮めて映す
+    // (位置・当たり判定を自分の画面と同じにするため。まだ分からなければ0)
+    stage_w: f64,
+    stage_h: f64,
 }
 
 impl BridgeSettings {
@@ -83,6 +87,8 @@ impl BridgeSettings {
             "glyphOpacity": self.glyph_opacity,
             "comboGrowthEnabled": self.combo_growth_enabled,
             "noComboGrowthIds": self.no_combo_growth_ids,
+            "stageW": self.stage_w,
+            "stageH": self.stage_h,
         })
     }
 }
@@ -191,6 +197,21 @@ impl ObsBridge {
     /// 変更された時に呼ぶ(IDの配列を丸ごと置き換える)。
     pub fn set_no_combo_growth_ids(&self, ids: Vec<String>) {
         self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
+    }
+
+    /// オーバーレイの窓の大きさが分かった(変わった)時に呼ぶ。同じなら何も送らない
+    pub fn set_stage_size(&self, w: f64, h: f64) {
+        let same = self
+            .settings
+            .lock()
+            .map(|s| s.stage_w == w && s.stage_h == h)
+            .unwrap_or(false);
+        if !same {
+            self.update_and_broadcast(|s| {
+                s.stage_w = w;
+                s.stage_h = h;
+            });
+        }
     }
 
     /// コメント機能: 取得元(bbs/youtube/twitch)ごとのアイコン画像のフォルダを設定する
@@ -314,6 +335,8 @@ pub fn start(
         glyph_opacity: initial_glyph_opacity,
         combo_growth_enabled: initial_combo_growth_enabled,
         no_combo_growth_ids: initial_no_combo_growth_ids,
+        stage_w: 0.0,
+        stage_h: 0.0,
     }));
     let comments = Arc::new(Mutex::new(CommentBridgeState::default()));
     let (voice_tx, voice_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
@@ -489,6 +512,8 @@ async fn run_ws_server(
             glyph_opacity: 1.0,
             combo_growth_enabled: true,
             no_combo_growth_ids: Vec::new(),
+            stage_w: 0.0,
+            stage_h: 0.0,
         });
         let initial_comments = comments.lock().map(|c| c.initial_messages()).unwrap_or_default();
         tauri::async_runtime::spawn(handle_ws_connection(

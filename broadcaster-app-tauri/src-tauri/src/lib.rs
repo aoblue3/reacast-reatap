@@ -934,6 +934,15 @@ fn set_overlay_no_combo_growth_ids(
     Ok(())
 }
 
+/// オーバーレイ(overlay.js)が、自分の窓の大きさを伝えてくる。OBSのブラウザソースは
+/// この大きさで動かして縮めて映す(位置・当たり判定を自分の画面と同じにするため)
+#[tauri::command]
+fn set_overlay_stage_size(obs_bridge: tauri::State<obs_bridge::ObsBridge>, w: f64, h: f64) {
+    if w.is_finite() && h.is_finite() && w >= 100.0 && h >= 100.0 && w <= 20000.0 && h <= 20000.0 {
+        obs_bridge.set_stage_size(w, h);
+    }
+}
+
 // 視聴者アプリ(viewer-app-tauri)側で見つかった不具合と同種の予防策として、
 // こちらもcfg_get/cfg_setを非同期化しておく。ConfigStore::set()は呼ばれる
 // たびに設定ファイル全体を同期的にディスクへ書き込む実装で、素の`fn`の
@@ -1267,6 +1276,7 @@ pub fn run() {
             get_credentials,
             get_relay_address,
             get_overlay_settings,
+            set_overlay_stage_size,
             set_overlay_glyph_scale,
             set_overlay_glyph_opacity,
             set_overlay_combo_growth,

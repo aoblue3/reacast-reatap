@@ -22,6 +22,91 @@ const stage = document.getElementById('stage');
  */
 let rand = Math.random;
 
+/**
+ * リアクションを動かす場所の大きさ。OBSのブラウザソースは自分の画面(オーバーレイ)と大きさが
+ * 違うので、そのままだと位置や当たり判定(⭐で無敵になる・倒すなど)が画面ごとに違ってしまう。
+ * OBSでは、自分の画面と同じ大きさの場所で動かして、それを縮めて(拡げて)映す
+ * (自分の画面の大きさはReaCastから届く。届くまでは、OBSの画面の大きさのまま)
+ */
+const view = { w: 0, h: 0, k: 1, ox: 0, oy: 0 };
+function stageW() {
+  return view.w || window.innerWidth;
+}
+function stageH() {
+  return view.h || window.innerHeight;
+}
+function layoutStage() {
+  if (!view.w || !view.h) {
+    view.k = 1;
+    view.ox = 0;
+    view.oy = 0;
+    stage.style.cssText = '';
+    return;
+  }
+  const k = Math.min(window.innerWidth / view.w, window.innerHeight / view.h) || 1;
+  view.k = k;
+  view.ox = (window.innerWidth - view.w * k) / 2;
+  view.oy = (window.innerHeight - view.h * k) / 2;
+  stage.style.inset = 'auto';
+  stage.style.left = '0';
+  stage.style.top = '0';
+  stage.style.width = `${view.w}px`;
+  stage.style.height = `${view.h}px`;
+  stage.style.overflow = 'hidden';
+  stage.style.transformOrigin = '0 0';
+  stage.style.transform = `translate(${view.ox}px, ${view.oy}px) scale(${k})`;
+}
+function applyStageSize(w, h) {
+  if (!(w > 0 && h > 0)) return;
+  if (view.w === w && view.h === h) return;
+  view.w = w;
+  view.h = h;
+  layoutStage();
+}
+window.addEventListener('resize', layoutStage);
+/** 要素の位置・大きさ(動かす場所の中での値。OBSで縮めて映していても同じ値になる) */
+function rectOf(el) {
+  const r = el.getBoundingClientRect();
+  if (view.k === 1 && !view.ox && !view.oy) return r;
+  const left = (r.left - view.ox) / view.k;
+  const top = (r.top - view.oy) / view.k;
+  const width = r.width / view.k;
+  const height = r.height / view.k;
+  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top };
+}
+
+/**
+ * 決まった刻み(1/60秒)で動かす動き(⭐の流れ星・無敵の子)。OBS(30fpsなど)と自分の画面
+ * (60fps以上)で同じ所で当たる/外れるように、どちらも同じ時計(Date.now)の同じ刻みで、
+ * 登録された順に1歩ずつ進める。fn(t, dt)がfalseを返したら止まる
+ */
+const SIM_STEP_MS = 1000 / 60;
+const simTasks = [];
+let simTick = 0;
+function simAdd(startAt, fn) {
+  simTasks.push({ from: Math.ceil(startAt / SIM_STEP_MS), fn });
+  if (simTasks.length === 1) {
+    simTick = Math.ceil(startAt / SIM_STEP_MS) - 1;
+    requestAnimationFrame(simFrame);
+  }
+}
+function simFrame() {
+  const until = Math.floor(Date.now() / SIM_STEP_MS);
+  // 長く止まっていた(画面が隠れていたなど)時も、同じ歩みになるよう全部進める(多すぎる分は飛ばす)
+  if (until - simTick > 60 * 60) simTick = until - 60 * 60;
+  while (simTick < until && simTasks.length) {
+    simTick += 1;
+    const t = simTick * SIM_STEP_MS;
+    for (let i = 0; i < simTasks.length; i++) {
+      const task = simTasks[i];
+      if (task.done || task.from > simTick) continue;
+      if (task.fn(t, SIM_STEP_MS / 1000) === false) task.done = true;
+    }
+    for (let i = simTasks.length - 1; i >= 0; i--) if (simTasks[i].done) simTasks.splice(i, 1);
+  }
+  if (simTasks.length) requestAnimationFrame(simFrame);
+}
+
 const emojiById = window.EmojiSet.EMOJI_BY_ID;
 
 // Electron版 broadcaster-app/config.js の DEFAULT_OVERLAY_SETTINGS と同じ値。
@@ -478,6 +563,13 @@ const COMBO_WINDOW_MS = 1500;
 //      透明部分がうまく抜けずデスクトップが映り込んでしまう実機不具合が
 //      あったため、この方式を用意している。
 if (window.__TAURI__ && window.__TAURI__.event) {
+  const sendStageSize = () => {
+    window.__TAURI__.core
+      .invoke('set_overlay_stage_size', { w: window.innerWidth, h: window.innerHeight })
+      .catch(() => {});
+  };
+  sendStageSize();
+  window.addEventListener('resize', sendStageSize);
   window.__TAURI__.event.listen('overlay:reaction', (event) => {
     playReaction(event.payload);
   });
@@ -525,6 +617,7 @@ function connectObsBridge(port) {
         if (typeof data.glyphOpacity === 'number') applyGlyphOpacity(data.glyphOpacity);
         if (typeof data.comboGrowthEnabled === 'boolean') applyComboGrowth(data.comboGrowthEnabled);
         if (Array.isArray(data.noComboGrowthIds)) applyNoComboGrowthIds(data.noComboGrowthIds);
+        if (typeof data.stageW === 'number' && typeof data.stageH === 'number') applyStageSize(data.stageW, data.stageH);
         return;
       }
       if (typeof data.emoji === 'string') playReaction(data);
@@ -1332,8 +1425,8 @@ function computeMotionPath(motion, preset, size, vw, vh, duration) {
  */
 function spawnRainbow(opts) {
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const w = Math.min(vw * 0.6, settings.baseSizePx * 7);
   const h = w * 0.55;
   const el = document.createElement('div');
@@ -1431,8 +1524,8 @@ function addHotelStyle() {
 function spawnHotel(opts) {
   addHotelStyle();
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const base = settings.baseSizePx;
   const hotelSize = base * 2;
   const margin = base * 0.5;
@@ -1481,7 +1574,7 @@ function spawnHotel(opts) {
   const pair = [];
   const onScreen = activeItems
     .filter((o) => o !== box && o.isConnected && o.dataset.creature && !o.dataset.dating)
-    .map((o) => ({ o, r: o.getBoundingClientRect() }))
+    .map((o) => ({ o, r: rectOf(o) }))
     .filter((c) => c.r.width > 0)
     .sort((a, b) => Math.hypot(a.r.left - doorX, a.r.top - doorY) - Math.hypot(b.r.left - doorX, b.r.top - doorY))
     .slice(0, 2);
@@ -1572,7 +1665,7 @@ function spawnHotel(opts) {
  * 「歩く役」を演出の要素(box)の中に作り直す。返すのは {el, size, x, y, glyph}。
  */
 function takeOver(item, box) {
-  const r = item.getBoundingClientRect();
+  const r = rectOf(item);
   const g = item.querySelector('.reaction-glyph');
   const size = Math.max(settings.baseSizePx * 0.6, Math.min(settings.baseSizePx * 1.6, r.height || settings.baseSizePx));
   item.remove();
@@ -1616,8 +1709,8 @@ function spawnSunglasses(opts) {
     document.head.appendChild(st);
   }
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const base = settings.baseSizePx;
   const gSize = base * 1.1;
   const margin = base * 0.8;
@@ -1734,7 +1827,7 @@ function spawnSunglasses(opts) {
     }
     const face = activeItems
       .filter((o) => o !== box && o.isConnected && o.dataset.face && !o.dataset.dating)
-      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .map((o) => ({ o, r: rectOf(o) }))
       .filter((c) => c.r.width > 0)
       .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
     if (face && now - born > 450) {
@@ -1832,8 +1925,8 @@ function spawnMushroom(opts) {
   // 位置と効果は、OBSと自分の画面で同じになるように種から決める
   const rnd = seededRandom(opts && opts.seed);
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const base = settings.baseSizePx;
   const mSize = base * 0.9;
   // 大きくなる・火を吹く効果が画面からはみ出しにくいよう、端から少し離して生やす
@@ -2005,7 +2098,7 @@ function spawnMushroom(opts) {
     const cy = my + mSize / 2;
     const eater = activeItems
       .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
-      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .map((o) => ({ o, r: rectOf(o) }))
       .filter((c) => c.r.width > 0)
       .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
     if (eater && now - born > 450) {
@@ -2081,8 +2174,8 @@ function spawnApple(opts) {
   }
   const rnd = seededRandom(opts && opts.seed);
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const base = settings.baseSizePx;
   const aSize = base * 0.8;
   const margin = Math.min(base * 1.5, Math.min(vw, vh) * 0.2);
@@ -2237,7 +2330,7 @@ function spawnApple(opts) {
     const cy = ay + aSize / 2;
     const eater = activeItems
       .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
-      .map((o) => ({ o, r: o.getBoundingClientRect() }))
+      .map((o) => ({ o, r: rectOf(o) }))
       .filter((c) => c.r.width > 0)
       .sort((a, b) => Math.hypot(a.r.left - cx, a.r.top - cy) - Math.hypot(b.r.left - cx, b.r.top - cy))[0];
     if (eater) {
@@ -2377,8 +2470,8 @@ function spawnStar(opts) {
   // 降ってくる場所・角度は、OBSと自分の画面で同じになるように種から決める
   const rnd = seededRandom(opts && opts.seed);
   enforceMaxConcurrent();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const base = settings.baseSizePx;
   const sSize = base * 0.9;
 
@@ -2463,15 +2556,15 @@ function spawnStar(opts) {
   // sourceがリアクション(activeItemsの1つ)ならそのまま連れてくる。ほかの場面(🕶️・🍄など)の
   // 途中の生き物なら、今の見た目(グラサン・大きさ・色など)のまま写し取って連れてくる
   // (元の場面のものは見えなくして、その場面はそのまま裏で終わらせる)
-  const powerUp = (source, isItem) => {
+  const powerUp = (source, isItem, startT) => {
     let body;
     let r0;
     if (isItem) {
       const w = takeOver(source, box);
       body = w.el;
-      r0 = body.getBoundingClientRect();
+      r0 = rectOf(body);
     } else {
-      r0 = source.getBoundingClientRect();
+      r0 = rectOf(source);
       body = source.cloneNode(true);
       source.dataset.starred = '1';
       source.style.visibility = 'hidden';
@@ -2497,7 +2590,7 @@ function spawnStar(opts) {
     let py = r0.top;
     holder.style.left = `${px}px`;
     holder.style.top = `${py}px`;
-    const r1 = body.getBoundingClientRect();
+    const r1 = rectOf(body);
     px += r0.left - r1.left;
     py += r0.top - r1.top;
     holder.style.left = `${px}px`;
@@ -2511,13 +2604,12 @@ function spawnStar(opts) {
     let wander = null;
     let kills = 0;
     const runSpeed = Math.max(vw, vh) * 0.45;
-    const endAt = performance.now() + STAR_POWER_MS;
-    let t0 = performance.now();
+    const endAt = startT + STAR_POWER_MS;
     let lastGhost = 0;
     let goneAt = 0;
     const falling = [];
     const center = () => {
-      const r = body.getBoundingClientRect();
+      const r = rectOf(body);
       return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: Math.max(r.width, r.height) / 2 };
     };
 
@@ -2525,10 +2617,10 @@ function spawnStar(opts) {
     const me = {
       gone: false,
       center,
-      vanish() {
+      vanish(t) {
         if (me.gone) return;
         me.gone = true;
-        goneAt = performance.now();
+        goneAt = t;
         STAR_POWERED.delete(me);
         holder.classList.remove('star-power', 'ending');
         hopper.classList.remove('star-run');
@@ -2572,11 +2664,11 @@ function spawnStar(opts) {
       let el;
       let r0;
       if (t.isItem) {
-        r0 = t.el.getBoundingClientRect();
+        r0 = rectOf(t.el);
         const d = takeOver(t.el, box);
         el = d.el;
       } else {
-        r0 = t.el.getBoundingClientRect();
+        r0 = rectOf(t.el);
         const copy = t.el.cloneNode(true);
         t.el.dataset.starred = '1';
         t.el.style.visibility = 'hidden';
@@ -2591,7 +2683,7 @@ function spawnStar(opts) {
         box.appendChild(el);
         el.style.left = `${r0.left}px`;
         el.style.top = `${r0.top}px`;
-        const r1 = copy.getBoundingClientRect();
+        const r1 = rectOf(copy);
         el.style.left = `${r0.left + (r0.left - r1.left)}px`;
         el.style.top = `${r0.top + (r0.top - r1.top)}px`;
       }
@@ -2642,18 +2734,16 @@ function spawnStar(opts) {
         .filter(alive);
       return items
         .concat(scene)
-        .map((t) => ({ t, r: t.el.getBoundingClientRect() }))
+        .map((t) => ({ t, r: rectOf(t.el) }))
         .filter((c) => c.r.width > 0 && c.r.right > 0 && c.r.left < vw && c.r.bottom > 0 && c.r.top < vh)
         .sort((a, b) => Math.hypot(a.r.left + a.r.width / 2 - c0.x, a.r.top + a.r.height / 2 - c0.y) - Math.hypot(b.r.left + b.r.width / 2 - c0.x, b.r.top + b.r.height / 2 - c0.y))[0];
     };
 
-    const run = (now) => {
+    const run = (now, dt) => {
       if (!box.isConnected) {
         STAR_POWERED.delete(me);
-        return;
+        return false;
       }
-      const dt = Math.min(50, now - t0) / 1000;
-      t0 = now;
       // 倒されたものを落とす
       for (let i = falling.length - 1; i >= 0; i--) {
         const f = falling[i];
@@ -2669,9 +2759,9 @@ function spawnStar(opts) {
       }
       if (me.gone) {
         // ぶつかって消えた: 倒したものが落ちきってから終わる
-        if (falling.length || now - goneAt < 700) requestAnimationFrame(run);
-        else finish(0);
-        return;
+        if (falling.length || now - goneAt < 700) return true;
+        finish(0);
+        return false;
       }
       if (now >= endAt) {
         // 時間切れ: 元に戻る(倒したものが落ちきるのを待ってから消える)
@@ -2679,9 +2769,9 @@ function spawnStar(opts) {
         holder.classList.remove('star-power', 'ending');
         hopper.classList.remove('star-run');
         hopper.classList.add('hotel-hop');
-        if (falling.length) requestAnimationFrame(run);
-        else finish(900);
-        return;
+        if (falling.length) return true;
+        finish(900);
+        return false;
       }
       if (endAt - now < STAR_POWER_ENDING_MS) holder.classList.add('ending');
 
@@ -2692,10 +2782,9 @@ function spawnStar(opts) {
         const c1 = other.center();
         if (Math.hypot(c1.x - c0.x, c1.y - c0.y) < (c0.r + c1.r) * 0.8) {
           boom((c0.x + c1.x) / 2, (c0.y + c1.y) / 2, Math.max(c0.r, c1.r) * 1.6);
-          other.vanish();
-          me.vanish();
-          requestAnimationFrame(run);
-          return;
+          other.vanish(now);
+          me.vanish(now);
+          return true;
         }
       }
 
@@ -2706,7 +2795,7 @@ function spawnStar(opts) {
       let tx;
       let ty;
       if (target) {
-        const r = target.el.getBoundingClientRect();
+        const r = rectOf(target.el);
         tx = px + (r.left + r.width / 2 - c0.x);
         ty = py + (r.top + r.height / 2 - c0.y);
         wander = null;
@@ -2748,7 +2837,7 @@ function spawnStar(opts) {
       }
       // 触れたら倒す
       if (target) {
-        const r = target.el.getBoundingClientRect();
+        const r = rectOf(target.el);
         if (Math.hypot(r.left + r.width / 2 - c0.x, r.top + r.height / 2 - c0.y) < c0.r + Math.min(r.width, r.height) * 0.4) {
           if (target.isItem) target.el.dataset.dating = '1';
           knockOut(target, r.left + r.width / 2 >= c0.x ? 1 : -1);
@@ -2756,17 +2845,15 @@ function spawnStar(opts) {
           target = null;
         }
       }
-      requestAnimationFrame(run);
+      return true;
     };
-    requestAnimationFrame(run);
+    simAdd(startT + SIM_STEP_MS, run);
   };
 
-  let last = 0;
   let lastDust = 0;
-  const fly = (now) => {
-    if (finished || !star.isConnected) return;
-    const dt = last ? Math.min(50, now - last) / 1000 : 0;
-    last = now;
+  const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
+  const fly = (now, dt) => {
+    if (finished || !star.isConnected) return false;
     x += vx * speed * dt;
     y += vy * speed * dt;
     star.style.left = `${x - sSize / 2}px`;
@@ -2793,12 +2880,12 @@ function spawnStar(opts) {
     const touches = (r) => r.width > 0 && Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y) < sSize * 0.5 + r.width * 0.45;
     let hit = activeItems
       .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
-      .map((o) => ({ o, r: o.getBoundingClientRect(), isItem: true }))
+      .map((o) => ({ o, r: rectOf(o), isItem: true }))
       .find((c) => touches(c.r));
     if (!hit) {
       hit = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
         .filter((o) => !o.dataset.starred && !o.dataset.noStar && sceneVisible(o) && !box.contains(o))
-        .map((o) => ({ o, r: o.getBoundingClientRect(), isItem: false }))
+        .map((o) => ({ o, r: rectOf(o), isItem: false }))
         .find((c) => touches(c.r));
     }
     if (hit) {
@@ -2809,17 +2896,17 @@ function spawnStar(opts) {
         const a = (i / 14) * Math.PI * 2;
         dust(x, y, 3 + Math.random() * 5, DUST_COLORS[i % DUST_COLORS.length], Math.cos(a) * sSize * 1.6, Math.sin(a) * sSize * 1.6, 800);
       }
-      powerUp(hit.o, hit.isItem);
-      return;
+      powerUp(hit.o, hit.isItem, now);
+      return false;
     }
     // 画面の外まで流れたら終わり
     if (x < -tailLen || x > vw + tailLen || y > vh + sSize) {
       finish(0);
-      return;
+      return false;
     }
-    requestAnimationFrame(fly);
+    return true;
   };
-  requestAnimationFrame(fly);
+  simAdd(startAt, fly);
 }
 
 /**
@@ -2831,7 +2918,7 @@ function playReaction(p) {
     const prev = rand;
     rand = seededRandom(p.seed);
     try {
-      spawnReaction(p.emoji, { mark: !!p.mark, seed: p.seed });
+      spawnReaction(p.emoji, { mark: !!p.mark, seed: p.seed, at: p.at });
     } finally {
       rand = prev;
     }
@@ -2998,8 +3085,8 @@ function spawnReaction(emojiId, opts) {
     }
   }
 
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = stageW();
+  const vh = stageH();
   const path = computeMotionPath(motion, preset, size, vw, vh, duration);
 
   el.style.left = `${path.startX}px`;
@@ -3167,14 +3254,14 @@ function spawnReaction(emojiId, opts) {
   if (motion === 'prowl') el.dataset.cat = '1';
   const chaseTransform = (wp) => {
     if (wp.chase === 'run') {
-      const me = el.getBoundingClientRect();
+      const me = rectOf(el);
       const mx = me.left + me.width / 2;
       const my = me.top + me.height / 2;
       let best = null;
       let bestD = Infinity;
       for (const other of activeItems) {
         if (other === el || !other.isConnected || other.dataset.cat || other.dataset.noChase) continue;
-        const r = other.getBoundingClientRect();
+        const r = rectOf(other);
         if (r.width === 0) continue;
         const d = Math.hypot(r.left + r.width / 2 - mx, r.top + r.height / 2 - my);
         if (d < bestD) {
@@ -3185,8 +3272,8 @@ function spawnReaction(emojiId, opts) {
       playmate = best;
     }
     if (!playmate || !playmate.isConnected) return null;
-    const r = playmate.getBoundingClientRect();
-    const me = el.getBoundingClientRect();
+    const r = rectOf(playmate);
+    const me = rectOf(el);
     const tx = r.left + r.width / 2;
     const ty = r.top + r.height / 2;
     // 相手の横(今いる側)に並ぶ。🐈は左向きの絵文字なので、右を向く時は左右反転
