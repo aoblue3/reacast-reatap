@@ -2415,6 +2415,16 @@ const STAR_SCORES = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
 /** 無敵の状態の長さ(最後の少しは、点滅がゆっくりになって終わりが近いのが分かる) */
 const STAR_POWER_MS = 8000;
 const STAR_POWER_ENDING_MS = 1800;
+/**
+ * 無敵の間の虹色の点滅(80msごと。終わりかけは225msごと)。CSSのアニメーションにすると、
+ * 動いている子に毎コマ色の変化をかけ直すので重かった。決まった刻みで中身の色だけ替える
+ */
+const STAR_POWER_COLORS = [
+  'brightness(1.3) drop-shadow(0 0 8px #ff5a5a)',
+  'brightness(1.5) hue-rotate(90deg) drop-shadow(0 0 8px #ffe14d)',
+  'brightness(1.3) hue-rotate(180deg) drop-shadow(0 0 8px #5aff8c)',
+  'brightness(1.5) hue-rotate(270deg) drop-shadow(0 0 8px #5ac8ff)',
+];
 /** 今無敵の子(ほかの流れ星の場面の子とぶつかったら、両方消える) */
 const STAR_POWERED = new Set();
 
@@ -2434,14 +2444,6 @@ function addStarStyle() {
     }
     /* 毎コマ動かすものは、それぞれ別の層にする(動かすたびに周りまで描き直さないように) */
     .star-head, .star-tail, .star-power { will-change: transform; }
-    .star-power { animation: star-power 320ms steps(1) infinite; }
-    .star-power.ending { animation-duration: 900ms; }
-    @keyframes star-power {
-      0% { filter: brightness(1.3) drop-shadow(0 0 8px #ff5a5a); }
-      25% { filter: brightness(1.5) hue-rotate(90deg) drop-shadow(0 0 8px #ffe14d); }
-      50% { filter: brightness(1.3) hue-rotate(180deg) drop-shadow(0 0 8px #5aff8c); }
-      75% { filter: brightness(1.5) hue-rotate(270deg) drop-shadow(0 0 8px #5ac8ff); }
-    }
     .star-boom {
       position: absolute; border-radius: 50%; z-index: 4;
       background: radial-gradient(circle, #ffffff 0%, rgba(255, 250, 200, 0.95) 25%, rgba(255, 170, 255, 0.5) 50%, rgba(120, 200, 255, 0) 72%);
@@ -2456,7 +2458,7 @@ function addStarStyle() {
     @keyframes star-ring { 0% { opacity: 1; transform: scale(0.1); } 100% { opacity: 0; transform: scale(3.2); } }
     .star-run { display: inline-block; animation: star-run 150ms ease-in-out infinite alternate; }
     @keyframes star-run { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-14%) rotate(6deg); } }
-    .star-ghost { animation: star-ghost 420ms ease-out forwards; }
+    .star-ghost { animation: star-ghost 520ms ease-out forwards; }
     @keyframes star-ghost { from { opacity: 0.55; } to { opacity: 0; } }
     .star-score {
       position: absolute; white-space: nowrap; font-weight: 900; color: #ffffff; letter-spacing: 0.02em;
@@ -2514,24 +2516,34 @@ function addDust(cx, cy, size, color, dx, dy, life) {
     requestAnimationFrame(drawDust);
   }
 }
-/** CSSのease-out(cubic-bezier(0, 0, 0.58, 1))と同じ進み方 */
-function easeOut(p) {
-  // x(t) = 3(1-t)t²·0.58 + t³ が p になる t を二分法で求めて、y(t) = 3(1-t)t² + t³
-  let lo = 0;
-  let hi = 1;
-  for (let i = 0; i < 14; i++) {
-    const t = (lo + hi) / 2;
-    if (3 * (1 - t) * t * t * 0.58 + t * t * t < p) lo = t;
-    else hi = t;
+/** CSSのease-out(cubic-bezier(0, 0, 0.58, 1))と同じ進み方(最初に表にしておく) */
+const EASE_OUT_TABLE = (() => {
+  const t = new Float32Array(257);
+  for (let i = 0; i <= 256; i++) {
+    const p = i / 256;
+    // x(u) = 3(1-u)u²·0.58 + u³ が p になる u を二分法で求めて、y(u) = 3(1-u)u² + u³
+    let lo = 0;
+    let hi = 1;
+    for (let k = 0; k < 20; k++) {
+      const u = (lo + hi) / 2;
+      if (3 * (1 - u) * u * u * 0.58 + u * u * u < p) lo = u;
+      else hi = u;
+    }
+    const u = (lo + hi) / 2;
+    t[i] = 3 * (1 - u) * u * u + u * u * u;
   }
-  const t = (lo + hi) / 2;
-  return 3 * (1 - t) * t * t + t * t * t;
+  return t;
+})();
+function easeOut(p) {
+  return EASE_OUT_TABLE[Math.round(Math.min(1, Math.max(0, p)) * 256)];
 }
 function drawDust(now) {
   const L = dustLayer;
   const cv = L.canvas;
   // 縮めて映しているOBSでは、映る大きさで描く(無駄に大きく描かない)
-  const k = view.k * (window.devicePixelRatio || 1);
+  // 星くずはぼんやり光る粒なので、半分の細かさで描いて引き伸ばしても見た目は変わらない
+  // (画面全体の大きさで毎コマ描くと重い。描く量は1/4になる)
+  const k = view.k * (window.devicePixelRatio || 1) * 0.5;
   const w = stageW();
   const h = stageH();
   if (L.w !== w || L.h !== h || L.k !== k) {
@@ -2639,11 +2651,17 @@ function spawnStar(opts) {
   const tail = document.createElement('span');
   tail.className = 'hotel-part star-tail';
   tail.style.width = `${tailLen}px`;
+  // 最初から出てくる場所に置いておく(置く前の一瞬、左上に光る星と尾が見えていた)
+  tail.style.left = `${x}px`;
+  tail.style.top = `${y}px`;
+  tail.style.transform = `rotate(${tailDeg}deg)`;
   box.appendChild(tail);
   const star = document.createElement('span');
   star.className = 'hotel-part star-head';
   star.style.fontSize = `${sSize}px`;
   star.style.zIndex = '2';
+  star.style.left = `${x - sSize / 2}px`;
+  star.style.top = `${y - sSize / 2}px`;
   const starGlyph = document.createElement('span');
   starGlyph.className = 'reaction-glyph star-spin';
   setGlyph(starGlyph, '⭐');
@@ -2670,6 +2688,8 @@ function spawnStar(opts) {
       if (g) g.classList.remove('hotel-hop', 'mush-chew', 'star-run');
     }
     body.dataset.starred = '1';
+    const baseFilter = body.style.filter || '';
+    let colorIdx = -1;
     body.style.transition = 'none';
     body.style.position = 'relative';
     body.style.left = '0';
@@ -2722,6 +2742,7 @@ function spawnStar(opts) {
         STAR_POWERED.delete(me);
         holder.classList.remove('star-power', 'ending');
         hopper.classList.remove('star-run');
+        body.style.filter = baseFilter;
         holder.style.transition = 'transform 650ms cubic-bezier(.5, 0, .9, .4), opacity 650ms ease-in';
         holder.style.transformOrigin = '50% 50%';
         holder.style.filter = 'brightness(3) drop-shadow(0 0 12px #ffffff)';
@@ -2868,11 +2889,19 @@ function spawnStar(opts) {
         holder.classList.remove('star-power', 'ending');
         hopper.classList.remove('star-run');
         hopper.classList.add('hotel-hop');
+        body.style.filter = baseFilter;
         if (falling.length) return true;
         finish(900);
         return false;
       }
-      if (endAt - now < STAR_POWER_ENDING_MS) holder.classList.add('ending');
+      {
+        const ending = endAt - now < STAR_POWER_ENDING_MS;
+        const idx = Math.floor((now - startT) / (ending ? 225 : 80)) % STAR_POWER_COLORS.length;
+        if (idx !== colorIdx) {
+          colorIdx = idx;
+          body.style.filter = `${baseFilter} ${STAR_POWER_COLORS[idx]}`;
+        }
+      }
 
       // ほかの無敵の子とぶつかったら、両方消える
       const c0 = center();
@@ -2921,7 +2950,7 @@ function spawnStar(opts) {
       holder.style.top = `${py}px`;
       if (cat && Math.abs(dx) > 1) holder.style.transform = dx > 0 ? 'scaleX(-1)' : '';
       // 走った跡: 虹色の残像と光の粒
-      if (now - lastGhost > 70 && step > 0.5) {
+      if (now - lastGhost > 100 && step > 0.5) {
         lastGhost = now;
         // 残像は止まった写し。色の変化は中にかけて、薄くなる動きだけ外側で
         // (動いている要素に色の変化をかけると、消えるまで毎コマ描き直すので重かった)
@@ -2934,10 +2963,10 @@ function spawnStar(opts) {
         const copy = body.cloneNode(true);
         copy.style.animation = 'none';
         copy.querySelectorAll('*').forEach((e) => (e.style.animation = 'none'));
-        copy.style.filter = `${body.style.filter || ''} hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
+        copy.style.filter = `${baseFilter} hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
         g.appendChild(copy);
         box.insertBefore(g, holder);
-        setTimeout(() => g.remove(), 450);
+        setTimeout(() => g.remove(), 560);
         dust(c0.x, c0.y + c0.r * 0.7, 3 + Math.random() * 4, `hsl(${Math.round(now / 30) * 15 % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
       }
       // 触れたら倒す
@@ -2967,7 +2996,7 @@ function spawnStar(opts) {
     tail.style.top = `${y}px`;
     tail.style.transform = `rotate(${tailDeg}deg)`;
     // 通った跡に、きらきらした星くずを残す
-    if (now - lastDust > 28) {
+    if (now - lastDust > 36) {
       lastDust = now;
       for (let i = 0; i < 2; i++) {
         dust(
@@ -2983,15 +3012,21 @@ function spawnStar(opts) {
     }
     // 生き物に触れたら、その子が無敵になる(🕶️・🍄などの場面の途中の生き物も、その姿のまま)
     const touches = (r) => r.width > 0 && Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y) < sSize * 0.5 + r.width * 0.45;
-    let hit = activeItems
-      .filter((o) => o !== box && o.isConnected && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating)
-      .map((o) => ({ o, r: rectOf(o), isItem: true }))
-      .find((c) => touches(c.r));
+    // (毎刻み、星の数だけ確かめるので、安い確かめ方から順に。見えているかは触れている子だけ)
+    let hit = null;
+    for (const o of activeItems) {
+      if (o !== box && (o.dataset.creature || o.dataset.emojiId === 'baby') && !o.dataset.dating && o.isConnected && touches(rectOf(o))) {
+        hit = { o, isItem: true };
+        break;
+      }
+    }
     if (!hit) {
-      hit = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
-        .filter((o) => !o.dataset.starred && !o.dataset.noStar && sceneVisible(o) && !box.contains(o))
-        .map((o) => ({ o, r: rectOf(o), isItem: false }))
-        .find((c) => touches(c.r));
+      for (const o of stage.querySelectorAll('[data-actor][data-creature]')) {
+        if (!o.dataset.starred && !o.dataset.noStar && !box.contains(o) && touches(rectOf(o)) && sceneVisible(o)) {
+          hit = { o, isItem: false };
+          break;
+        }
+      }
     }
     if (hit) {
       if (hit.isItem) hit.o.dataset.dating = '1';
@@ -3014,12 +3049,11 @@ function spawnStar(opts) {
   simAdd(startAt, fly);
 }
 
-// ⚡ 雷: 画面の上のどこかに☁️が出て、⚡をつなげたギザギザの稲妻が一気に下まで落ちる。
+// ⚡ 雷: 画面の上のどこかから、⚡が1つ、カクカクと左右に折れ曲がりながら下まで落ちていく。
 // 光らせたり画面をピカッとさせたりはしない(画面がうるさくなるので)。
-// 稲妻に触れた生き物は、ブルブル震えながら骨(💀)と交互になってしびれ、黒こげになって
+// ⚡に触れた生き物は、ブルブル震えながら骨(💀)と交互になってしびれ、黒こげになって
 // 煙を出して消える。当たらなければ、そのまま消えるだけ。👶と、⭐で無敵の子はしびれない
 let thunderStyleAdded = false;
-const THUNDER_FALL_MS = 170;
 const ZAP_MS = 1100;
 
 function addThunderStyle() {
@@ -3082,95 +3116,63 @@ function spawnThunder(opts) {
     }, afterMs + 550);
   };
 
-  // ---- 稲妻の形: 左右に大きく折れ曲がる、上が太く下が細いギザギザ ----
+  // ---- ⚡の通り道: 左右に大きく折れ曲がりながら、上から下へ ----
   const x0 = vw * (0.1 + rnd() * 0.8);
   const n = 5 + Math.floor(rnd() * 3);
-  const amp = base * (0.7 + rnd() * 0.4);
+  const amp = base * (1.0 + rnd() * 0.6);
   const side = rnd() < 0.5 ? -1 : 1;
-  const pts = [[x0, -base * 0.6]];
+  const hSize = base * 1.4;
+  const pts = [[x0, -hSize * 0.6]];
   for (let i = 1; i <= n; i++) {
     const zig = (i % 2 ? 1 : -1) * side * amp * (0.7 + rnd() * 0.6);
-    const x = Math.max(base, Math.min(vw - base, x0 + zig + (rnd() - 0.5) * base * 0.6));
-    const y = i === n ? vh + base * 0.3 : (vh * (i - 0.2 + rnd() * 0.4)) / n;
+    const x = Math.max(hSize, Math.min(vw - hSize, x0 + zig + (rnd() - 0.5) * base * 0.6));
+    const y = i === n ? vh - hSize * 0.5 : (vh * (i - 0.2 + rnd() * 0.4)) / n;
     pts.push([x, y]);
   }
-  /** 稲妻の、高さyでの横の位置(真ん中の線) */
-  const boltX = (y) => {
-    for (let i = 1; i < pts.length; i++) {
-      if (y <= pts[i][1]) {
-        const [ax, ay] = pts[i - 1];
-        const [bx, by] = pts[i];
-        return ax + ((bx - ax) * (y - ay)) / Math.max(1, by - ay);
-      }
-    }
-    return pts[pts.length - 1][0];
-  };
   const tip = pts[pts.length - 1];
-  // ☁️から、⚡をつなげた稲妻が上から下へ一気に伸びる(⚡は折れ線の向きに合わせて傾け、
-  // 下に行くほど小さく)。少し見せてから、上から順にポンポンと消える
-  const cloudSize = base * 1.5;
-  const cloud = document.createElement('span');
-  cloud.className = 'hotel-part';
-  cloud.style.fontSize = `${cloudSize}px`;
-  cloud.style.left = `${x0 - cloudSize / 2}px`;
-  cloud.style.top = `${-cloudSize * 0.35}px`;
-  cloud.style.zIndex = '3';
-  const cg = document.createElement('span');
-  cg.className = 'reaction-glyph';
-  setGlyph(cg, '☁️');
-  cloud.appendChild(cg);
-  box.appendChild(cloud);
-  cloud.animate(
-    [
-      { transform: 'translateY(-60%) scale(0.6)', opacity: 0 },
-      { transform: 'translateY(0) scale(1)', opacity: 1, offset: 0.35 },
-      { transform: 'translateY(0) scale(1)', opacity: 1, offset: 0.85 },
-      { transform: 'translateY(-40%) scale(0.8)', opacity: 0 },
-    ],
-    { duration: THUNDER_FALL_MS + 1100, easing: 'ease-out', fill: 'forwards' },
-  );
-  const links = [];
-  for (let i = 1; i < pts.length; i++) {
-    const [ax, ay] = pts[i - 1];
-    const [bx, by] = pts[i];
-    const len = Math.hypot(bx - ax, by - ay);
-    const deg = (Math.atan2(bx - ax, by - ay) * -180) / Math.PI;
-    for (let d = 0; d < len; ) {
-      const y = ay + ((by - ay) * d) / len;
-      const size = base * (1.15 - 0.5 * Math.min(1, Math.max(0, y / vh)));
-      links.push({ x: ax + ((bx - ax) * d) / len, y, size, deg });
-      d += size * 0.62;
-    }
+  // カクカク: 折れ目ごとに一瞬止まって、次の折れ目までシュッと動く
+  const MOVE_MS = 75;
+  const PAUSE_MS = 55;
+  const fallMs = n * (MOVE_MS + PAUSE_MS);
+  /** 落ち始めからt ms後の⚡の真ん中 */
+  const posAt = (t) => {
+    const i = Math.min(n - 1, Math.floor(t / (MOVE_MS + PAUSE_MS)));
+    const u = Math.min(1, Math.max(0, (t - i * (MOVE_MS + PAUSE_MS)) / MOVE_MS));
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    return [ax + (bx - ax) * u, ay + (by - ay) * u];
+  };
+  // 進む向きに少し傾ける(⚡の絵の向きに合わせて)
+  const tilt = (i) => {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    return Math.max(-35, Math.min(35, (Math.atan2(bx - ax, by - ay) * -180) / Math.PI * 0.6));
+  };
+  const head = document.createElement('span');
+  head.className = 'hotel-part';
+  head.style.fontSize = `${hSize}px`;
+  head.style.left = '0';
+  head.style.top = '0';
+  head.style.zIndex = '2';
+  head.style.willChange = 'transform';
+  const hg = document.createElement('span');
+  hg.className = 'reaction-glyph';
+  setGlyph(hg, '⚡');
+  head.appendChild(hg);
+  const frames = [];
+  const at = (x, y, deg, t) => frames.push({ transform: `translate(${x - hSize / 2}px, ${y - hSize / 2}px) rotate(${deg}deg)`, offset: t / (fallMs + 250) });
+  for (let i = 0; i < n; i++) {
+    const t0 = i * (MOVE_MS + PAUSE_MS);
+    at(pts[i][0], pts[i][1], tilt(i), t0);
+    at(pts[i + 1][0], pts[i + 1][1], tilt(i), t0 + MOVE_MS);
+    if (i < n - 1) at(pts[i + 1][0], pts[i + 1][1], tilt(i + 1), t0 + MOVE_MS + PAUSE_MS);
   }
-  links.forEach((l, i) => {
-    const p = document.createElement('span');
-    p.className = 'hotel-part';
-    p.style.fontSize = `${l.size}px`;
-    p.style.left = `${l.x - l.size / 2}px`;
-    p.style.top = `${l.y - l.size / 2}px`;
-    p.style.zIndex = '2';
-    p.style.opacity = '0';
-    const g = document.createElement('span');
-    g.className = 'reaction-glyph';
-    setGlyph(g, '⚡');
-    p.appendChild(g);
-    box.appendChild(p);
-    const at = (THUNDER_FALL_MS * Math.max(0, l.y)) / vh;
-    const out = THUNDER_FALL_MS + 420 + i * 12;
-    const total = out + 220;
-    const rot = `rotate(${l.deg + (i % 2 ? 8 : -8)}deg)`;
-    p.animate(
-      [
-        { transform: `${rot} scale(0)`, opacity: 1, offset: 0 },
-        { transform: `${rot} scale(0)`, opacity: 1, offset: at / total },
-        { transform: `${rot} scale(1.2)`, opacity: 1, offset: (at + 70) / total },
-        { transform: `${rot} scale(1)`, opacity: 1, offset: (at + 130) / total },
-        { transform: `${rot} scale(1)`, opacity: 1, offset: out / total },
-        { transform: `${rot} scale(0)`, opacity: 1, offset: 1 },
-      ],
-      { duration: total, easing: 'linear', fill: 'forwards' },
-    );
-  });
+  // 下まで落ちたら、つぶれて消える
+  frames.push({ transform: `translate(${tip[0] - hSize / 2}px, ${tip[1] - hSize / 2}px) scale(1.3, 0.5)`, offset: (fallMs + 90) / (fallMs + 250) });
+  frames.push({ transform: `translate(${tip[0] - hSize / 2}px, ${tip[1] - hSize / 2}px) scale(0)`, offset: 1 });
+  head.style.transform = frames[0].transform;
+  box.appendChild(head);
+  head.animate(frames, { duration: fallMs + 250, easing: 'linear', fill: 'forwards' });
 
   /** 小さな⚡がぴょんと飛び出して消える(光らせない) */
   const bit = (cx, cy, size, dx, dy) => {
@@ -3201,33 +3203,34 @@ function spawnThunder(opts) {
       const a = Math.PI * (1.15 + (i / 3) * 0.7);
       bit(tip[0], vh - base * 0.3, base * 0.45, Math.cos(a) * base * 1.1, Math.sin(a) * base * 1.1);
     }
-  }, THUNDER_FALL_MS);
+  }, fallMs);
 
   // ---- しびれる生き物 ----
-  // 稲妻が下まで落ちた時に当たっているか、で決める(OBSと自分の画面で同じ刻みで確かめる)
+  // 落ちていく⚡に触れた生き物がしびれる(OBSと自分の画面で同じ刻みで確かめる)
   const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
   let zapped = 0;
-  simAdd(startAt + THUNDER_FALL_MS, () => {
+  const done = new Set();
+  simAdd(startAt, (now) => {
     if (!box.isConnected) return false;
-    const near = (r) => {
-      if (!(r.width > 0)) return false;
-      const cy = r.top + r.height / 2;
-      if (cy < 0 || cy > vh) return false;
-      return Math.abs(r.left + r.width / 2 - boltX(cy)) < base * 0.3 + r.width * 0.4;
-    };
-    const items = activeItems
-      .filter((o) => o !== box && o.isConnected && o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating)
-      .map((o) => ({ el: o, isItem: true }));
-    const scene = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
-      .filter((o) => !box.contains(o) && o.dataset.emojiId !== 'baby' && !o.dataset.starred && !o.dataset.noStar && !o.closest('.star-scene') && sceneVisible(o))
-      .map((o) => ({ el: o, isItem: false }));
-    for (const t of items.concat(scene)) {
-      if (near(rectOf(t.el))) {
-        zap(t);
+    const t = now - startAt;
+    const [hx, hy] = posAt(Math.min(t, fallMs));
+    const touches = (r) => r.width > 0 && Math.hypot(r.left + r.width / 2 - hx, r.top + r.height / 2 - hy) < hSize * 0.45 + r.width * 0.45;
+    for (const o of activeItems) {
+      if (o !== box && o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating && o.isConnected && touches(rectOf(o))) {
+        zap({ el: o, isItem: true });
         zapped += 1;
       }
     }
-    finish(zapped ? ZAP_MS + 1700 : 700);
+    for (const o of stage.querySelectorAll('[data-actor][data-creature]')) {
+      if (done.has(o) || box.contains(o) || o.dataset.emojiId === 'baby' || o.dataset.starred || o.dataset.noStar || o.closest('.star-scene')) continue;
+      if (touches(rectOf(o)) && sceneVisible(o)) {
+        done.add(o);
+        zap({ el: o, isItem: false });
+        zapped += 1;
+      }
+    }
+    if (t < fallMs) return true;
+    finish(zapped ? ZAP_MS + 1700 : 500);
     return false;
   });
 
