@@ -109,6 +109,19 @@ function simFrame() {
 
 const emojiById = window.EmojiSet.EMOJI_BY_ID;
 
+/**
+ * 絵文字(文字)を入れる。影(drop-shadow)は中の要素(.gin)に付ける。動いている絵文字そのものに
+ * 影を付けると、動いている間ずっと毎コマ影を描き直すので、たくさん出るとOBSのCPU・GPUが
+ * とても重くなっていた。中の要素に付ければ最初に1回描くだけで、見た目は同じ(overlay.html)
+ */
+function setGlyph(glyph, text) {
+  const inner = document.createElement('span');
+  inner.className = 'gin';
+  inner.textContent = text;
+  glyph.replaceChildren(inner);
+  glyph.classList.add('has-gin');
+}
+
 // Electron版 broadcaster-app/config.js の DEFAULT_OVERLAY_SETTINGS と同じ値。
 // baseSizePx/comboSizeStepPxは「絵文字の大きさ」設定(既定100%)からの
 // 倍率で毎回計算し直すため、ここでは基準値(BASE_*)として保持する。
@@ -1550,7 +1563,7 @@ function spawnHotel(opts) {
     p.style.fontSize = `${size}px`;
     const g = document.createElement('span');
     g.className = 'reaction-glyph';
-    g.textContent = char;
+    setGlyph(g, char);
     p.appendChild(g);
     box.appendChild(p);
     return p;
@@ -1682,7 +1695,7 @@ function takeOver(item, box) {
   if (item.style.filter) el.style.filter = item.style.filter;
   const glyph = document.createElement('span');
   glyph.className = 'reaction-glyph';
-  glyph.textContent = g ? g.textContent : '😂';
+  setGlyph(glyph, g ? g.textContent : '😂');
   el.appendChild(glyph);
   box.appendChild(el);
   return { el, glyph, size, x: r.left, y: r.top };
@@ -1911,7 +1924,7 @@ function sceneFx(box, char, size, cx, cy, dx, dy, delay = 0, end = 1, cls = 'mus
     p.style.zIndex = '2';
     const g = document.createElement('span');
     g.className = `reaction-glyph ${cls}`;
-    g.textContent = char;
+    setGlyph(g, char);
     g.style.setProperty('--dx', `${dx}px`);
     g.style.setProperty('--dy', `${dy}px`);
     g.style.setProperty('--end', String(end));
@@ -2029,7 +2042,7 @@ function spawnMushroom(opts) {
         w.el.style.transform = `${flip}rotate(${fromLeft ? -90 : 90}deg)`;
         setTimeout(() => {
           fx('💨', s * 0.7, cx, cy, 0, -s * 0.2, 0, 1.4);
-          w.glyph.textContent = '💀';
+          setGlyph(w.glyph, '💀');
           w.el.style.filter = '';
         }, 900);
         fx('👻', s * 0.8, cx, cy - s * 0.4, 0, -s * 2.2, 1300, 1.2);
@@ -2405,19 +2418,16 @@ function addStarStyle() {
   starStyleAdded = true;
   const st = document.createElement('style');
   st.textContent = `
-    .star-head { filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 10px #fff3a0) drop-shadow(0 0 20px #ffc93c); }
-    .star-spin { display: inline-block; animation: star-spin 900ms linear infinite; }
+    .star-head .gin { filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 10px #fff3a0) drop-shadow(0 0 20px #ffc93c); }
+    .star-spin { display: inline-block; animation: star-spin 900ms linear infinite; will-change: transform; }
     @keyframes star-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .star-tail {
       position: absolute; height: 8px; margin-top: -4px; border-radius: 4px; transform-origin: 0 50%;
       background: linear-gradient(to right, rgba(255, 255, 240, 0.95), rgba(255, 220, 110, 0.7) 18%, rgba(150, 190, 255, 0.35) 55%, rgba(150, 190, 255, 0));
       filter: blur(1.5px);
     }
-    .star-dust { position: absolute; border-radius: 50%; animation: star-dust var(--life, 900ms) ease-out forwards; }
-    @keyframes star-dust {
-      0% { opacity: 1; transform: translate(0, 0) scale(1); }
-      100% { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.2); }
-    }
+    /* 毎コマ動かすものは、それぞれ別の層にする(動かすたびに周りまで描き直さないように) */
+    .star-head, .star-tail, .star-power { will-change: transform; }
     .star-power { animation: star-power 320ms steps(1) infinite; }
     .star-power.ending { animation-duration: 900ms; }
     @keyframes star-power {
@@ -2457,6 +2467,102 @@ function addStarStyle() {
     }
   `;
   document.head.appendChild(st);
+}
+
+/**
+ * 星くず(光る小さな粒)は、1枚のcanvasにまとめて描く。1粒ずつ要素にしてぼかした影を付けて
+ * いた時は、⭐をたくさん出すとOBSのCPUがとても重くなっていた(粒の数だけ描き直していた)。
+ * 見た目は前と同じ: 光る丸が、ease-outで(dx, dy)だけ動きながら、小さく薄くなって消える
+ */
+const dustLayer = { canvas: null, ctx: null, list: [], sprites: new Map(), running: false, w: 0, h: 0, k: 1 };
+const DUST_SPRITE_R = 16;
+const DUST_SPRITE_PAD = 52;
+/** 色ごとの光る丸の絵(芯の直径32pxに、その1.5倍のぼかしの光) */
+function dustSprite(color) {
+  let c = dustLayer.sprites.get(color);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = (DUST_SPRITE_R + DUST_SPRITE_PAD) * 2;
+  const g = c.getContext('2d');
+  g.fillStyle = color;
+  g.shadowColor = color;
+  g.shadowBlur = DUST_SPRITE_R * 2 * 1.5;
+  g.beginPath();
+  g.arc(c.width / 2, c.height / 2, DUST_SPRITE_R, 0, Math.PI * 2);
+  g.fill();
+  dustLayer.sprites.set(color, c);
+  return c;
+}
+function addDust(cx, cy, size, color, dx, dy, life) {
+  if (!dustLayer.canvas) {
+    const cv = document.createElement('canvas');
+    cv.className = 'dust-layer';
+    cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:5;';
+    dustLayer.canvas = cv;
+    dustLayer.ctx = cv.getContext('2d');
+  }
+  if (!dustLayer.canvas.isConnected) stage.appendChild(dustLayer.canvas);
+  dustLayer.list.push({ cx, cy, size, img: dustSprite(color), dx, dy, life, born: performance.now() });
+  if (!dustLayer.running) {
+    dustLayer.running = true;
+    requestAnimationFrame(drawDust);
+  }
+}
+/** CSSのease-out(cubic-bezier(0, 0, 0.58, 1))と同じ進み方 */
+function easeOut(p) {
+  // x(t) = 3(1-t)t²·0.58 + t³ が p になる t を二分法で求めて、y(t) = 3(1-t)t² + t³
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 14; i++) {
+    const t = (lo + hi) / 2;
+    if (3 * (1 - t) * t * t * 0.58 + t * t * t < p) lo = t;
+    else hi = t;
+  }
+  const t = (lo + hi) / 2;
+  return 3 * (1 - t) * t * t + t * t * t;
+}
+function drawDust(now) {
+  const L = dustLayer;
+  const cv = L.canvas;
+  // 縮めて映しているOBSでは、映る大きさで描く(無駄に大きく描かない)
+  const k = view.k * (window.devicePixelRatio || 1);
+  const w = stageW();
+  const h = stageH();
+  if (L.w !== w || L.h !== h || L.k !== k) {
+    L.w = w;
+    L.h = h;
+    L.k = k;
+    cv.width = Math.max(1, Math.round(w * k));
+    cv.height = Math.max(1, Math.round(h * k));
+    cv.style.width = `${w}px`;
+    cv.style.height = `${h}px`;
+  }
+  const g = L.ctx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.setTransform(k, 0, 0, k, 0, 0);
+  const t = performance.now();
+  const full = (DUST_SPRITE_R + DUST_SPRITE_PAD) / DUST_SPRITE_R;
+  for (let i = L.list.length - 1; i >= 0; i--) {
+    const d = L.list[i];
+    const p = (t - d.born) / d.life;
+    if (p >= 1) {
+      L.list.splice(i, 1);
+      continue;
+    }
+    const e = easeOut(Math.max(0, p));
+    const r = (d.size / 2) * (1 - 0.8 * e) * full;
+    g.globalAlpha = (1 - e) * settings.glyphOpacity;
+    g.drawImage(d.img, d.cx + d.dx * e - r, d.cy + d.dy * e - r, r * 2, r * 2);
+  }
+  g.globalAlpha = 1;
+  if (L.list.length) {
+    requestAnimationFrame(drawDust);
+  } else {
+    L.running = false;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+  }
 }
 
 /** 場面の中の生き物・置いてある物が、今見えているか */
@@ -2500,21 +2606,7 @@ function spawnStar(opts) {
   };
 
   /** 消えていく光の粒(星くず)。cx, cyが真ん中 */
-  const dust = (cx, cy, size, color, dx, dy, life) => {
-    const d = document.createElement('span');
-    d.className = 'star-dust';
-    d.style.left = `${cx - size / 2}px`;
-    d.style.top = `${cy - size / 2}px`;
-    d.style.width = `${size}px`;
-    d.style.height = `${size}px`;
-    d.style.background = color;
-    d.style.boxShadow = `0 0 ${size * 1.5}px ${color}`;
-    d.style.setProperty('--dx', `${dx}px`);
-    d.style.setProperty('--dy', `${dy}px`);
-    d.style.setProperty('--life', `${life}ms`);
-    box.appendChild(d);
-    setTimeout(() => d.remove(), life + 50);
-  };
+  const dust = (cx, cy, size, color, dx, dy, life) => addDust(cx, cy, size, color, dx, dy, life);
   const DUST_COLORS = ['#ffffff', '#fff6b0', '#ffd75a', '#b9d4ff', '#ffe9fb'];
 
   // ---- 流れ星 ----
@@ -2548,7 +2640,7 @@ function spawnStar(opts) {
   star.style.zIndex = '2';
   const starGlyph = document.createElement('span');
   starGlyph.className = 'reaction-glyph star-spin';
-  starGlyph.textContent = '⭐';
+  setGlyph(starGlyph, '⭐');
   star.appendChild(starGlyph);
   box.appendChild(star);
 
@@ -2688,6 +2780,7 @@ function spawnStar(opts) {
         el.style.top = `${r0.top + (r0.top - r1.top)}px`;
       }
       el.style.zIndex = '1';
+      el.style.willChange = 'transform';
       el.dataset.starred = '1';
       el.style.transformOrigin = '50% 50%';
       el.style.transform = 'scaleY(-1)';
@@ -2824,16 +2917,22 @@ function spawnStar(opts) {
       // 走った跡: 虹色の残像と光の粒
       if (now - lastGhost > 70 && step > 0.5) {
         lastGhost = now;
-        const g = body.cloneNode(true);
-        g.classList.add('star-ghost');
+        // 残像は止まった写し。色の変化は中にかけて、薄くなる動きだけ外側で
+        // (動いている要素に色の変化をかけると、消えるまで毎コマ描き直すので重かった)
+        const g = document.createElement('span');
+        g.className = 'star-ghost';
         g.style.position = 'absolute';
         g.style.left = `${px}px`;
         g.style.top = `${py}px`;
-        g.style.filter = `${body.style.filter || ''} hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
-        if (holder.style.transform) g.style.transform = `${holder.style.transform} ${body.style.transform || ''}`;
+        if (holder.style.transform) g.style.transform = holder.style.transform;
+        const copy = body.cloneNode(true);
+        copy.style.animation = 'none';
+        copy.querySelectorAll('*').forEach((e) => (e.style.animation = 'none'));
+        copy.style.filter = `${body.style.filter || ''} hue-rotate(${Math.round(now / 3) % 360}deg) brightness(1.3)`;
+        g.appendChild(copy);
         box.insertBefore(g, holder);
         setTimeout(() => g.remove(), 450);
-        dust(c0.x, c0.y + c0.r * 0.7, 3 + Math.random() * 4, `hsl(${Math.round(now / 2) % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
+        dust(c0.x, c0.y + c0.r * 0.7, 3 + Math.random() * 4, `hsl(${Math.round(now / 30) * 15 % 360}, 100%, 70%)`, (-dx / (dist || 1)) * s * 0.4, -s * 0.2, 600);
       }
       // 触れたら倒す
       if (target) {
@@ -2909,6 +3008,309 @@ function spawnStar(opts) {
   simAdd(startAt, fly);
 }
 
+// ⚡ 雷: 画面の上のどこかから、ギザギザの稲妻が一気に下まで落ちる。稲妻に触れた生き物は
+// ビリビリしびれて(骨が透けて見えるのと交互にチカチカ)、黒こげになって煙を出して消える。
+// 生き物に当たらなければ、そのまま光って消えるだけ。👶と、⭐で無敵の子はしびれない
+let thunderStyleAdded = false;
+const THUNDER_FALL_MS = 170;
+const ZAP_MS = 1100;
+
+function addThunderStyle() {
+  addHotelStyle();
+  if (thunderStyleAdded) return;
+  thunderStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .thunder-svg { position: absolute; left: 0; top: 0; overflow: visible; animation: thunder-flicker 750ms linear forwards; }
+    .thunder-svg g { filter: drop-shadow(0 0 6px #fff7b0) drop-shadow(0 0 16px #ffd23c); }
+    .thunder-svg polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: thunder-draw ${THUNDER_FALL_MS}ms linear forwards; }
+    @keyframes thunder-draw { to { stroke-dashoffset: 0; } }
+    @keyframes thunder-flicker {
+      0%, 40% { opacity: 1; } 48% { opacity: 0.15; } 56% { opacity: 1; } 66% { opacity: 0.3; } 74% { opacity: 1; } 100% { opacity: 0; }
+    }
+    .thunder-flash { position: absolute; left: 0; top: 0; background: #fffbe0; pointer-events: none; animation: thunder-flash 380ms ease-out forwards; }
+    @keyframes thunder-flash { 0% { opacity: 0; } 12% { opacity: 0.32; } 30% { opacity: 0.06; } 42% { opacity: 0.22; } 100% { opacity: 0; } }
+    .thunder-head { will-change: transform; }
+    .thunder-head .gin { filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 12px #ffe14d); }
+    .zap-shake { animation: zap-shake 60ms linear infinite; }
+    @keyframes zap-shake {
+      0% { transform: translate(0, 0); } 25% { transform: translate(-5%, 3%); } 50% { transform: translate(4%, -3%); }
+      75% { transform: translate(-3%, -4%); } 100% { transform: translate(0, 0); }
+    }
+    .zap-body { animation: zap-body 180ms steps(1) infinite; }
+    @keyframes zap-body { 0% { opacity: 1; } 50% { opacity: 0.12; } }
+    .zap-xray {
+      position: absolute; left: 0; top: 0; width: 100%; text-align: center; line-height: 1;
+      animation: zap-xray 180ms steps(1) infinite;
+    }
+    .zap-xray .gin { filter: brightness(1.6) drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 10px #7fd4ff); }
+    @keyframes zap-xray { 0% { opacity: 0; } 50% { opacity: 1; } }
+    .zap-smoke { position: absolute; animation: zap-smoke 1100ms ease-out forwards; }
+    @keyframes zap-smoke {
+      0% { opacity: 0; transform: translate(0, 0) scale(0.6); } 20% { opacity: 0.9; }
+      100% { opacity: 0; transform: translate(var(--dx, 0px), -120%) scale(1.4); }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnThunder(opts) {
+  addThunderStyle();
+  // 落ちる場所・形は、OBSと自分の画面で同じになるように種から決める
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = stageW();
+  const vh = stageH();
+  const base = settings.baseSizePx;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item thunder-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 500ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 550);
+  };
+
+  // ---- 稲妻の形: 上から下まで、左右にギザギザ折れ曲がりながら ----
+  const x0 = vw * (0.1 + rnd() * 0.8);
+  const n = 9 + Math.floor(rnd() * 5);
+  const pts = [[x0, -base * 0.5]];
+  let x = x0;
+  for (let i = 1; i <= n; i++) {
+    x += (rnd() - 0.5) * base * 1.8;
+    x = Math.max(base * 0.5, Math.min(vw - base * 0.5, x));
+    const y = (vh * (i - 0.5 + rnd() * 0.6)) / n;
+    pts.push([x, i === n ? vh + base * 0.5 : y]);
+  }
+  // 枝分かれ(1〜2本。短く斜め下へ)
+  const branches = [];
+  const nb = 1 + Math.floor(rnd() * 2);
+  for (let b = 0; b < nb; b++) {
+    const from = pts[1 + Math.floor(rnd() * Math.max(1, n - 3))];
+    const dir = rnd() < 0.5 ? -1 : 1;
+    const bp = [from.slice()];
+    let bx = from[0];
+    let by = from[1];
+    const m = 2 + Math.floor(rnd() * 3);
+    for (let i = 0; i < m; i++) {
+      bx += dir * base * (0.4 + rnd() * 0.8);
+      by += vh / n * (0.5 + rnd() * 0.5);
+      bp.push([bx, by]);
+    }
+    branches.push(bp);
+  }
+  /** 稲妻の、高さyでの横の位置 */
+  const boltX = (y) => {
+    for (let i = 1; i < pts.length; i++) {
+      if (y <= pts[i][1]) {
+        const [ax, ay] = pts[i - 1];
+        const [bx, by] = pts[i];
+        return ax + ((bx - ax) * (y - ay)) / Math.max(1, by - ay);
+      }
+    }
+    return pts[pts.length - 1][0];
+  };
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'thunder-svg');
+  svg.setAttribute('width', String(vw));
+  svg.setAttribute('height', String(vh));
+  const g = document.createElementNS(svgNS, 'g');
+  const line = (list, color, width, delay) => {
+    const pl = document.createElementNS(svgNS, 'polyline');
+    pl.setAttribute('points', list.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '));
+    pl.setAttribute('pathLength', '1');
+    pl.style.stroke = color;
+    pl.style.strokeWidth = `${width}px`;
+    if (delay) pl.style.animationDelay = `${delay}ms`;
+    g.appendChild(pl);
+  };
+  for (const bp of branches) {
+    const delay = (THUNDER_FALL_MS * bp[0][1]) / vh;
+    line(bp, 'rgba(255, 236, 120, 0.55)', base * 0.14, delay);
+    line(bp, '#ffffff', base * 0.05, delay);
+  }
+  line(pts, 'rgba(255, 236, 120, 0.6)', base * 0.3);
+  line(pts, '#ffe94a', base * 0.15);
+  line(pts, '#ffffff', base * 0.07);
+  svg.appendChild(g);
+  box.appendChild(svg);
+
+  // ⚡が、稲妻の先っぽと一緒に一気に落ちる
+  const hSize = base * 1.1;
+  const head = document.createElement('span');
+  head.className = 'hotel-part thunder-head';
+  head.style.left = '0';
+  head.style.top = '0';
+  head.style.fontSize = `${hSize}px`;
+  head.style.zIndex = '2';
+  const hg = document.createElement('span');
+  hg.className = 'reaction-glyph';
+  setGlyph(hg, '⚡');
+  head.appendChild(hg);
+  box.appendChild(head);
+  const total = pts[pts.length - 1][1] - pts[0][1];
+  head.animate(
+    pts.map((p) => ({
+      transform: `translate(${p[0] - hSize / 2}px, ${p[1] - hSize / 2}px)`,
+      offset: (p[1] - pts[0][1]) / total,
+    })),
+    { duration: THUNDER_FALL_MS, easing: 'linear', fill: 'forwards' },
+  );
+  setTimeout(() => {
+    head.style.transition = 'opacity 200ms ease-out';
+    head.style.opacity = '0';
+  }, THUNDER_FALL_MS);
+
+  const flash = document.createElement('span');
+  flash.className = 'thunder-flash';
+  flash.style.width = `${vw}px`;
+  flash.style.height = `${vh}px`;
+  flash.style.animationDelay = `${THUNDER_FALL_MS * 0.6}ms`;
+  flash.style.opacity = '0';
+  box.insertBefore(flash, svg);
+
+  // 落ちた所(画面の下)に火花
+  setTimeout(() => {
+    const [bx] = pts[pts.length - 1];
+    for (let i = 0; i < 16; i++) {
+      const a = Math.PI + (i / 15) * Math.PI;
+      const d = base * (0.8 + Math.random() * 1.2);
+      addDust(bx, vh - 2, 3 + Math.random() * 5, i % 2 ? '#ffffff' : '#ffe14d', Math.cos(a) * d, Math.sin(a) * d, 500 + Math.random() * 300);
+    }
+  }, THUNDER_FALL_MS);
+
+  // ---- しびれる生き物 ----
+  // 稲妻がその高さまで来た時に当たっているか、で決める(OBSと自分の画面で同じ刻みで確かめる)
+  const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
+  const hitAt = startAt + THUNDER_FALL_MS;
+  let zapped = 0;
+  simAdd(hitAt, () => {
+    if (!box.isConnected) return false;
+    const near = (r) => {
+      if (!(r.width > 0)) return false;
+      const cy = r.top + r.height / 2;
+      if (cy < 0 || cy > vh) return false;
+      return Math.abs(r.left + r.width / 2 - boltX(cy)) < base * 0.25 + r.width * 0.4;
+    };
+    const items = activeItems
+      .filter((o) => o !== box && o.isConnected && o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating)
+      .map((o) => ({ el: o, isItem: true }));
+    const scene = Array.from(stage.querySelectorAll('[data-actor][data-creature]'))
+      .filter((o) => !box.contains(o) && o.dataset.emojiId !== 'baby' && !o.dataset.starred && !o.dataset.noStar && !o.closest('.star-scene') && sceneVisible(o))
+      .map((o) => ({ el: o, isItem: false }));
+    for (const t of items.concat(scene)) {
+      if (near(rectOf(t.el))) {
+        zap(t);
+        zapped += 1;
+      }
+    }
+    finish(zapped ? ZAP_MS + 1700 : 700);
+    return false;
+  });
+
+  /** ビリビリしびれる → 黒こげ → 煙を出して消える */
+  function zap(t) {
+    let el;
+    if (t.isItem) {
+      t.el.dataset.dating = '1';
+      el = takeOver(t.el, box).el;
+    } else {
+      const r0 = rectOf(t.el);
+      const copy = t.el.cloneNode(true);
+      t.el.dataset.starred = '1';
+      t.el.style.visibility = 'hidden';
+      copy.style.transition = 'none';
+      copy.style.position = 'relative';
+      copy.style.left = '0';
+      copy.style.top = '0';
+      copy.style.opacity = '1';
+      el = document.createElement('span');
+      el.className = 'hotel-part';
+      el.appendChild(copy);
+      box.appendChild(el);
+      el.style.left = `${r0.left}px`;
+      el.style.top = `${r0.top}px`;
+      const r1 = rectOf(copy);
+      el.style.left = `${r0.left + (r0.left - r1.left)}px`;
+      el.style.top = `${r0.top + (r0.top - r1.top)}px`;
+    }
+    el.dataset.starred = '1';
+    el.style.zIndex = '1';
+    const r = rectOf(el);
+    const size = Math.max(r.width, r.height) || base;
+    // 揺らす係(外側)と、骨が透けるのと交互にチカチカする中身
+    const shaker = document.createElement('span');
+    shaker.className = 'zap-shake';
+    shaker.style.display = 'inline-block';
+    shaker.style.position = 'relative';
+    while (el.firstChild) shaker.appendChild(el.firstChild);
+    const bodyWrap = document.createElement('span');
+    bodyWrap.className = 'zap-body';
+    bodyWrap.style.display = 'inline-block';
+    while (shaker.firstChild) bodyWrap.appendChild(shaker.firstChild);
+    shaker.appendChild(bodyWrap);
+    const xray = document.createElement('span');
+    xray.className = 'zap-xray reaction-glyph';
+    xray.style.fontSize = `${size * 0.85}px`;
+    xray.style.top = `${size * 0.06}px`;
+    setGlyph(xray, '💀');
+    shaker.appendChild(xray);
+    el.appendChild(shaker);
+    // まわりに火花
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    let sparks = 0;
+    const spark = () => {
+      if (!el.isConnected || sparks++ > ZAP_MS / 90) return;
+      const a = Math.random() * Math.PI * 2;
+      addDust(cx + Math.cos(a) * size * 0.45, cy + Math.sin(a) * size * 0.45, 3 + Math.random() * 4, Math.random() < 0.5 ? '#ffffff' : '#9fe4ff', Math.cos(a) * size * 0.5, Math.sin(a) * size * 0.5, 350);
+      setTimeout(spark, 90);
+    };
+    spark();
+    // しびれ終わったら黒こげになって、煙を出してから消える
+    setTimeout(() => {
+      if (!el.isConnected) return;
+      xray.remove();
+      shaker.classList.remove('zap-shake');
+      bodyWrap.classList.remove('zap-body');
+      bodyWrap.style.filter = 'brightness(0.28) saturate(0.5) contrast(1.2)';
+      for (let i = 0; i < 3; i++) {
+        const sm = document.createElement('span');
+        sm.className = 'zap-smoke reaction-glyph';
+        setGlyph(sm, '💨');
+        sm.style.fontSize = `${size * 0.5}px`;
+        sm.style.left = `${cx - size * 0.25 + (i - 1) * size * 0.3}px`;
+        sm.style.top = `${r.top - size * 0.1}px`;
+        sm.style.setProperty('--dx', `${(i - 1) * size * 0.2}px`);
+        sm.style.animationDelay = `${i * 160}ms`;
+        sm.style.opacity = '0';
+        box.appendChild(sm);
+      }
+      setTimeout(() => {
+        el.style.transition = 'opacity 500ms ease-in';
+        el.style.opacity = '0';
+      }, 1100);
+    }, ZAP_MS);
+  }
+}
+
 /**
  * ReaCastから届いたリアクションを表示する。自分の画面とOBSは届くのが少しずれることがある
  * ので、ReaCastが決めた時刻(at。少し先)に合わせて同時に出す。乱数も同じ種から作る
@@ -2955,6 +3357,10 @@ function spawnReaction(emojiId, opts) {
     spawnStar(opts);
     return;
   }
+  if (emojiId === 'thunder') {
+    spawnThunder(opts);
+    return;
+  }
 
   enforceMaxConcurrent();
 
@@ -2991,9 +3397,10 @@ function spawnReaction(emojiId, opts) {
   glyph.className = `reaction-glyph anim-${glyphAnimKey}`;
   // 草(id:kusa)のように、絵文字ではなく複数の文字からランダムに1つを選んで
   // 表示したいリアクション用。無ければ従来通りchar固定。
-  glyph.textContent = emoji.randomChars
-    ? emoji.randomChars[Math.floor(rand() * emoji.randomChars.length)]
-    : emoji.char;
+  setGlyph(
+    glyph,
+    emoji.randomChars ? emoji.randomChars[Math.floor(rand() * emoji.randomChars.length)] : emoji.char,
+  );
   glyph.style.fontSize = `${size}px`;
   glyph.style.lineHeight = '1';
   // 🐈のように、たまに黒猫にするもの(emoji-set.jsのblackChance)。黒猫の絵文字
@@ -3033,6 +3440,9 @@ function spawnReaction(emojiId, opts) {
   // CSSのanimation-name等はカンマ区切りで複数指定できるため、既存の値の後ろに
   // 追記するだけでよい(単純に上書きすると自己アニメーションが消えてしまう)。
   if (emoji.rainbow) {
+    // 文字の形で切り抜くので、文字はグリフに直接入れる(影もグリフに付ける)
+    glyph.textContent = glyph.textContent;
+    glyph.classList.remove('has-gin');
     glyph.style.background =
       'linear-gradient(90deg, #ff3b3b, #ffb03b, #f4ff3b, #3bff6b, #3bd4ff, #7a3bff, #ff3bd4, #ff3b3b)';
     glyph.style.backgroundSize = '400% 100%';

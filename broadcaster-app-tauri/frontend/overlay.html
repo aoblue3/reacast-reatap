@@ -31,8 +31,26 @@
   /* 話した言葉で飛んだリアクション(配信者自身の発言)の印: 周りが水色に光る。
      filterは黒猫などで外側の要素に使っているので、内側のグリフ・虹の絵にかける */
   .reaction-item.self-mark .reaction-glyph,
-  .reaction-item.self-mark svg {
+  .reaction-item.self-mark svg,
+  .reaction-item.self-mark .reaction-glyph.has-gin > .gin {
     filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 5px #3fd0ff) drop-shadow(0 0 9px #3fa0ff);
+  }
+  /* 影は、動く絵文字(.reaction-glyph)ではなく中の要素(.gin)に付ける(overlay.jsのsetGlyph)。
+     動いている要素そのものに影を付けると毎コマ描き直すので、たくさん出ると重かった */
+  .reaction-glyph.has-gin,
+  .reaction-item.self-mark .reaction-glyph.has-gin {
+    filter: none;
+  }
+  .gin {
+    vertical-align: top;
+    display: inline-block;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
+  }
+  /* 影そのものを光らせる動き(炎のチラつきなど)は、今まで通り絵文字にかける(中の影は消す) */
+  .reaction-item .reaction-glyph.anim-flicker.has-gin > .gin, .reaction-item .reaction-glyph.anim-plead.has-gin > .gin,
+  .reaction-item .reaction-glyph.anim-angry.has-gin > .gin, .reaction-item .reaction-glyph.anim-bomb.has-gin > .gin,
+  .reaction-item .reaction-glyph.anim-firework.has-gin > .gin {
+    filter: none;
   }
   .reaction-glyph {
     display: inline-block;

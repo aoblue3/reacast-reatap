@@ -209,6 +209,9 @@ pub struct CommentSettings {
     /// ⭐を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v9: bool,
+    /// ⚡を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v10: bool,
     pub ng_words: String,
     // ---- レス着信音 ----
     /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
@@ -388,6 +391,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "キノコ|きのこ|🍄/mushroom",
     "りんご|リンゴ|林檎|🍎|🍏/apple",
     "流れ星|⭐|🌟/star",
+    "雷|かみなり|カミナリ|⚡/thunder",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -502,6 +506,7 @@ impl Default for CommentSettings {
             reaction_presets_v7: true,
             reaction_presets_v8: true,
             reaction_presets_v9: true,
+            reaction_presets_v10: true,
             ng_words: String::new(),
             chime_enabled: false,
             chime_path: String::new(),
@@ -2212,7 +2217,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 || !s.reaction_presets_v9 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 || !s.reaction_presets_v9 || !s.reaction_presets_v10 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2267,6 +2272,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v7 = true;
     s.reaction_presets_v8 = true;
     s.reaction_presets_v9 = true;
+    s.reaction_presets_v10 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
