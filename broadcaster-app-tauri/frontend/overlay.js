@@ -3014,8 +3014,8 @@ function spawnStar(opts) {
   simAdd(startAt, fly);
 }
 
-// ⚡ 雷: 画面の上のどこかから、マンガのような太いギザギザの稲妻(黄色に黒いふち)が
-// 一気に下まで落ちる。光らせたり画面をピカッとさせたりはしない(画面がうるさくなるので)。
+// ⚡ 雷: 画面の上のどこかに☁️が出て、⚡をつなげたギザギザの稲妻が一気に下まで落ちる。
+// 光らせたり画面をピカッとさせたりはしない(画面がうるさくなるので)。
 // 稲妻に触れた生き物は、ブルブル震えながら骨(💀)と交互になってしびれ、黒こげになって
 // 煙を出して消える。当たらなければ、そのまま消えるだけ。👶と、⭐で無敵の子はしびれない
 let thunderStyleAdded = false;
@@ -3028,11 +3028,6 @@ function addThunderStyle() {
   thunderStyleAdded = true;
   const st = document.createElement('style');
   st.textContent = `
-    .thunder-svg { position: absolute; left: 0; top: 0; overflow: visible; }
-    .thunder-svg polygon { fill: #ffd93b; stroke: #3d2a00; stroke-linejoin: miter; stroke-miterlimit: 8; }
-    .thunder-drop { animation: thunder-drop ${THUNDER_FALL_MS}ms linear forwards; }
-    @keyframes thunder-drop { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
-    .thunder-gone { transition: opacity 250ms ease-in; opacity: 0; }
     .zap-shake { animation: zap-shake 60ms linear infinite; }
     @keyframes zap-shake {
       0% { transform: translate(0, 0); } 25% { transform: translate(-5%, 3%); } 50% { transform: translate(4%, -3%); }
@@ -3110,27 +3105,72 @@ function spawnThunder(opts) {
     }
     return pts[pts.length - 1][0];
   };
-  // 太さ(上は太く、下に行くほど細く、最後はとがる)
-  const width = (i) => base * 0.55 * (1 - (i / n) * 0.8);
-  const left = pts.map((p, i) => [p[0] - width(i) / 2, p[1]]);
-  const right = pts.map((p, i) => [p[0] + width(i) / 2, p[1]]);
   const tip = pts[pts.length - 1];
-  const poly = left.slice(0, -1).concat([tip], right.slice(0, -1).reverse());
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS, 'svg');
-  svg.setAttribute('class', 'thunder-svg thunder-drop');
-  svg.setAttribute('width', String(vw));
-  svg.setAttribute('height', String(vh));
-  const pg = document.createElementNS(svgNS, 'polygon');
-  pg.setAttribute('points', poly.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '));
-  pg.style.strokeWidth = `${Math.max(2, base * 0.07)}px`;
-  svg.appendChild(pg);
-  box.appendChild(svg);
-  // 少しの間そのまま見せてから、さっと消える
-  setTimeout(() => {
-    svg.classList.add('thunder-gone');
-  }, THUNDER_FALL_MS + 380);
+  // ☁️から、⚡をつなげた稲妻が上から下へ一気に伸びる(⚡は折れ線の向きに合わせて傾け、
+  // 下に行くほど小さく)。少し見せてから、上から順にポンポンと消える
+  const cloudSize = base * 1.5;
+  const cloud = document.createElement('span');
+  cloud.className = 'hotel-part';
+  cloud.style.fontSize = `${cloudSize}px`;
+  cloud.style.left = `${x0 - cloudSize / 2}px`;
+  cloud.style.top = `${-cloudSize * 0.35}px`;
+  cloud.style.zIndex = '3';
+  const cg = document.createElement('span');
+  cg.className = 'reaction-glyph';
+  setGlyph(cg, '☁️');
+  cloud.appendChild(cg);
+  box.appendChild(cloud);
+  cloud.animate(
+    [
+      { transform: 'translateY(-60%) scale(0.6)', opacity: 0 },
+      { transform: 'translateY(0) scale(1)', opacity: 1, offset: 0.35 },
+      { transform: 'translateY(0) scale(1)', opacity: 1, offset: 0.85 },
+      { transform: 'translateY(-40%) scale(0.8)', opacity: 0 },
+    ],
+    { duration: THUNDER_FALL_MS + 1100, easing: 'ease-out', fill: 'forwards' },
+  );
+  const links = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1];
+    const [bx, by] = pts[i];
+    const len = Math.hypot(bx - ax, by - ay);
+    const deg = (Math.atan2(bx - ax, by - ay) * -180) / Math.PI;
+    for (let d = 0; d < len; ) {
+      const y = ay + ((by - ay) * d) / len;
+      const size = base * (1.15 - 0.5 * Math.min(1, Math.max(0, y / vh)));
+      links.push({ x: ax + ((bx - ax) * d) / len, y, size, deg });
+      d += size * 0.62;
+    }
+  }
+  links.forEach((l, i) => {
+    const p = document.createElement('span');
+    p.className = 'hotel-part';
+    p.style.fontSize = `${l.size}px`;
+    p.style.left = `${l.x - l.size / 2}px`;
+    p.style.top = `${l.y - l.size / 2}px`;
+    p.style.zIndex = '2';
+    p.style.opacity = '0';
+    const g = document.createElement('span');
+    g.className = 'reaction-glyph';
+    setGlyph(g, '⚡');
+    p.appendChild(g);
+    box.appendChild(p);
+    const at = (THUNDER_FALL_MS * Math.max(0, l.y)) / vh;
+    const out = THUNDER_FALL_MS + 420 + i * 12;
+    const total = out + 220;
+    const rot = `rotate(${l.deg + (i % 2 ? 8 : -8)}deg)`;
+    p.animate(
+      [
+        { transform: `${rot} scale(0)`, opacity: 1, offset: 0 },
+        { transform: `${rot} scale(0)`, opacity: 1, offset: at / total },
+        { transform: `${rot} scale(1.2)`, opacity: 1, offset: (at + 70) / total },
+        { transform: `${rot} scale(1)`, opacity: 1, offset: (at + 130) / total },
+        { transform: `${rot} scale(1)`, opacity: 1, offset: out / total },
+        { transform: `${rot} scale(0)`, opacity: 1, offset: 1 },
+      ],
+      { duration: total, easing: 'linear', fill: 'forwards' },
+    );
+  });
 
   /** 小さな⚡がぴょんと飛び出して消える(光らせない) */
   const bit = (cx, cy, size, dx, dy) => {

@@ -305,6 +305,7 @@ fn create_subtitle_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // 開かれた時も、OBSと同じくobs_bridgeのWebSocketから字幕を受け取る
     // (表示のタイミングをOBS側と完全に揃えるため)。
     let win = WebviewWindowBuilder::new(app, "subtitle", WebviewUrl::App("subtitle.html".into()))
+        .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast 字幕")
         .decorations(false)
         .transparent(true)
@@ -369,6 +370,7 @@ fn open_stats_window(app: tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
     WebviewWindowBuilder::new(&app, "stats", WebviewUrl::App("stats.html".into()))
+        .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - 統計・盛り上がりマーカー")
         .inner_size(640.0, 720.0)
         .min_inner_size(420.0, 360.0)
@@ -385,6 +387,7 @@ fn open_comment_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         return Ok(());
     }
     WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App("comment_settings.html".into()))
+        .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コメント読み上げ・字幕")
         // コントロールパネル(ReaCastのアイコン)と見分けられるよう、この窓だけ別のアイコン
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/comment-settings.png"))?)?
@@ -555,6 +558,7 @@ fn open_region_picker(app: tauri::AppHandle, store: tauri::State<ConfigStore>) -
         "regionPicker",
         WebviewUrl::App("region_picker.html".into()),
     )
+    .additional_browser_args(WEBVIEW_ARGS)
     .title("ReaCast - 表示範囲を選択")
     .decorations(false)
     .transparent(true)
@@ -598,6 +602,7 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     let (pos, size) = apply_overlay_region(monitor_pos, monitor_size, region);
 
     let win = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
+        .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast overlay")
         .decorations(false)
         .transparent(true)
@@ -685,6 +690,7 @@ fn create_control_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         return Ok(());
     }
     let win = WebviewWindowBuilder::new(app, "control", WebviewUrl::App("control.html".into()))
+        .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コントロールパネル")
         // リアクションが増えるにつれてテスト送信ボタンの行数も増えていくため、
         // 画面に収まりやすい高さ(700px)にしつつ、それでも収まらない場合は
@@ -933,6 +939,13 @@ fn set_overlay_no_combo_growth_ids(
     obs_bridge.set_no_combo_growth_ids(ids);
     Ok(())
 }
+
+/// どの窓のWebView2にも同じものを渡す(窓ごとに違うと、後から開く窓が作れない)。
+/// 前半はTauriが既定で渡しているもの。ThrottleMainFrameTo60Hzは、リフレッシュレートの高い
+/// モニター(180Hzなど)でも描き直しを60Hzくらい(180Hzなら90回/秒)までにする。リアクションの
+/// 表示中、2560x1440の画面全体を毎秒180回描いていて、ゲーム中などに重かった(2026-10-30)
+const WEBVIEW_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=ThrottleMainFrameTo60Hz";
 
 /// オーバーレイ(overlay.js)が、自分の窓の大きさを伝えてくる。OBSのブラウザソースは
 /// この大きさで動かして縮めて映す(位置・当たり判定を自分の画面と同じにするため)
