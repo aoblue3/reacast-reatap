@@ -100,7 +100,13 @@ function simFrame() {
     for (let i = 0; i < simTasks.length; i++) {
       const task = simTasks[i];
       if (task.done || task.from > simTick) continue;
-      if (task.fn(t, SIM_STEP_MS / 1000) === false) task.done = true;
+      // 1つが失敗しても、ほかの動きが止まったままにならないように(その動きだけ終わらせる)
+      try {
+        if (task.fn(t, SIM_STEP_MS / 1000) === false) task.done = true;
+      } catch (e) {
+        task.done = true;
+        console.error(e);
+      }
     }
     for (let i = simTasks.length - 1; i >= 0; i--) if (simTasks[i].done) simTasks.splice(i, 1);
   }
@@ -3008,9 +3014,10 @@ function spawnStar(opts) {
   simAdd(startAt, fly);
 }
 
-// ⚡ 雷: 画面の上のどこかから、ギザギザの稲妻が一気に下まで落ちる。稲妻に触れた生き物は
-// ビリビリしびれて(骨が透けて見えるのと交互にチカチカ)、黒こげになって煙を出して消える。
-// 生き物に当たらなければ、そのまま光って消えるだけ。👶と、⭐で無敵の子はしびれない
+// ⚡ 雷: 画面の上のどこかから、マンガのような太いギザギザの稲妻(黄色に黒いふち)が
+// 一気に下まで落ちる。光らせたり画面をピカッとさせたりはしない(画面がうるさくなるので)。
+// 稲妻に触れた生き物は、ブルブル震えながら骨(💀)と交互になってしびれ、黒こげになって
+// 煙を出して消える。当たらなければ、そのまま消えるだけ。👶と、⭐で無敵の子はしびれない
 let thunderStyleAdded = false;
 const THUNDER_FALL_MS = 170;
 const ZAP_MS = 1100;
@@ -3021,30 +3028,24 @@ function addThunderStyle() {
   thunderStyleAdded = true;
   const st = document.createElement('style');
   st.textContent = `
-    .thunder-svg { position: absolute; left: 0; top: 0; overflow: visible; animation: thunder-flicker 750ms linear forwards; }
-    .thunder-svg g { filter: drop-shadow(0 0 6px #fff7b0) drop-shadow(0 0 16px #ffd23c); }
-    .thunder-svg polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: thunder-draw ${THUNDER_FALL_MS}ms linear forwards; }
-    @keyframes thunder-draw { to { stroke-dashoffset: 0; } }
-    @keyframes thunder-flicker {
-      0%, 40% { opacity: 1; } 48% { opacity: 0.15; } 56% { opacity: 1; } 66% { opacity: 0.3; } 74% { opacity: 1; } 100% { opacity: 0; }
-    }
-    .thunder-flash { position: absolute; left: 0; top: 0; background: #fffbe0; pointer-events: none; animation: thunder-flash 380ms ease-out forwards; }
-    @keyframes thunder-flash { 0% { opacity: 0; } 12% { opacity: 0.32; } 30% { opacity: 0.06; } 42% { opacity: 0.22; } 100% { opacity: 0; } }
-    .thunder-head { will-change: transform; }
-    .thunder-head .gin { filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 12px #ffe14d); }
+    .thunder-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+    .thunder-svg polygon { fill: #ffd93b; stroke: #3d2a00; stroke-linejoin: miter; stroke-miterlimit: 8; }
+    .thunder-drop { animation: thunder-drop ${THUNDER_FALL_MS}ms linear forwards; }
+    @keyframes thunder-drop { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+    .thunder-gone { transition: opacity 250ms ease-in; opacity: 0; }
     .zap-shake { animation: zap-shake 60ms linear infinite; }
     @keyframes zap-shake {
       0% { transform: translate(0, 0); } 25% { transform: translate(-5%, 3%); } 50% { transform: translate(4%, -3%); }
       75% { transform: translate(-3%, -4%); } 100% { transform: translate(0, 0); }
     }
     .zap-body { animation: zap-body 180ms steps(1) infinite; }
-    @keyframes zap-body { 0% { opacity: 1; } 50% { opacity: 0.12; } }
+    @keyframes zap-body { 0% { opacity: 1; } 50% { opacity: 0; } }
     .zap-xray {
       position: absolute; left: 0; top: 0; width: 100%; text-align: center; line-height: 1;
       animation: zap-xray 180ms steps(1) infinite;
     }
-    .zap-xray .gin { filter: brightness(1.6) drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 10px #7fd4ff); }
     @keyframes zap-xray { 0% { opacity: 0; } 50% { opacity: 1; } }
+    .zap-bit { position: absolute; }
     .zap-smoke { position: absolute; animation: zap-smoke 1100ms ease-out forwards; }
     @keyframes zap-smoke {
       0% { opacity: 0; transform: translate(0, 0) scale(0.6); } 20% { opacity: 0.9; }
@@ -3086,35 +3087,19 @@ function spawnThunder(opts) {
     }, afterMs + 550);
   };
 
-  // ---- 稲妻の形: 上から下まで、左右にギザギザ折れ曲がりながら ----
+  // ---- 稲妻の形: 左右に大きく折れ曲がる、上が太く下が細いギザギザ ----
   const x0 = vw * (0.1 + rnd() * 0.8);
-  const n = 9 + Math.floor(rnd() * 5);
-  const pts = [[x0, -base * 0.5]];
-  let x = x0;
+  const n = 5 + Math.floor(rnd() * 3);
+  const amp = base * (0.7 + rnd() * 0.4);
+  const side = rnd() < 0.5 ? -1 : 1;
+  const pts = [[x0, -base * 0.6]];
   for (let i = 1; i <= n; i++) {
-    x += (rnd() - 0.5) * base * 1.8;
-    x = Math.max(base * 0.5, Math.min(vw - base * 0.5, x));
-    const y = (vh * (i - 0.5 + rnd() * 0.6)) / n;
-    pts.push([x, i === n ? vh + base * 0.5 : y]);
+    const zig = (i % 2 ? 1 : -1) * side * amp * (0.7 + rnd() * 0.6);
+    const x = Math.max(base, Math.min(vw - base, x0 + zig + (rnd() - 0.5) * base * 0.6));
+    const y = i === n ? vh + base * 0.3 : (vh * (i - 0.2 + rnd() * 0.4)) / n;
+    pts.push([x, y]);
   }
-  // 枝分かれ(1〜2本。短く斜め下へ)
-  const branches = [];
-  const nb = 1 + Math.floor(rnd() * 2);
-  for (let b = 0; b < nb; b++) {
-    const from = pts[1 + Math.floor(rnd() * Math.max(1, n - 3))];
-    const dir = rnd() < 0.5 ? -1 : 1;
-    const bp = [from.slice()];
-    let bx = from[0];
-    let by = from[1];
-    const m = 2 + Math.floor(rnd() * 3);
-    for (let i = 0; i < m; i++) {
-      bx += dir * base * (0.4 + rnd() * 0.8);
-      by += vh / n * (0.5 + rnd() * 0.5);
-      bp.push([bx, by]);
-    }
-    branches.push(bp);
-  }
-  /** 稲妻の、高さyでの横の位置 */
+  /** 稲妻の、高さyでの横の位置(真ん中の線) */
   const boltX = (y) => {
     for (let i = 1; i < pts.length; i++) {
       if (y <= pts[i][1]) {
@@ -3125,89 +3110,70 @@ function spawnThunder(opts) {
     }
     return pts[pts.length - 1][0];
   };
+  // 太さ(上は太く、下に行くほど細く、最後はとがる)
+  const width = (i) => base * 0.55 * (1 - (i / n) * 0.8);
+  const left = pts.map((p, i) => [p[0] - width(i) / 2, p[1]]);
+  const right = pts.map((p, i) => [p[0] + width(i) / 2, p[1]]);
+  const tip = pts[pts.length - 1];
+  const poly = left.slice(0, -1).concat([tip], right.slice(0, -1).reverse());
 
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
-  svg.setAttribute('class', 'thunder-svg');
+  svg.setAttribute('class', 'thunder-svg thunder-drop');
   svg.setAttribute('width', String(vw));
   svg.setAttribute('height', String(vh));
-  const g = document.createElementNS(svgNS, 'g');
-  const line = (list, color, width, delay) => {
-    const pl = document.createElementNS(svgNS, 'polyline');
-    pl.setAttribute('points', list.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '));
-    pl.setAttribute('pathLength', '1');
-    pl.style.stroke = color;
-    pl.style.strokeWidth = `${width}px`;
-    if (delay) pl.style.animationDelay = `${delay}ms`;
-    g.appendChild(pl);
-  };
-  for (const bp of branches) {
-    const delay = (THUNDER_FALL_MS * bp[0][1]) / vh;
-    line(bp, 'rgba(255, 236, 120, 0.55)', base * 0.14, delay);
-    line(bp, '#ffffff', base * 0.05, delay);
-  }
-  line(pts, 'rgba(255, 236, 120, 0.6)', base * 0.3);
-  line(pts, '#ffe94a', base * 0.15);
-  line(pts, '#ffffff', base * 0.07);
-  svg.appendChild(g);
+  const pg = document.createElementNS(svgNS, 'polygon');
+  pg.setAttribute('points', poly.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '));
+  pg.style.strokeWidth = `${Math.max(2, base * 0.07)}px`;
+  svg.appendChild(pg);
   box.appendChild(svg);
-
-  // ⚡が、稲妻の先っぽと一緒に一気に落ちる
-  const hSize = base * 1.1;
-  const head = document.createElement('span');
-  head.className = 'hotel-part thunder-head';
-  head.style.left = '0';
-  head.style.top = '0';
-  head.style.fontSize = `${hSize}px`;
-  head.style.zIndex = '2';
-  const hg = document.createElement('span');
-  hg.className = 'reaction-glyph';
-  setGlyph(hg, '⚡');
-  head.appendChild(hg);
-  box.appendChild(head);
-  const total = pts[pts.length - 1][1] - pts[0][1];
-  head.animate(
-    pts.map((p) => ({
-      transform: `translate(${p[0] - hSize / 2}px, ${p[1] - hSize / 2}px)`,
-      offset: (p[1] - pts[0][1]) / total,
-    })),
-    { duration: THUNDER_FALL_MS, easing: 'linear', fill: 'forwards' },
-  );
+  // 少しの間そのまま見せてから、さっと消える
   setTimeout(() => {
-    head.style.transition = 'opacity 200ms ease-out';
-    head.style.opacity = '0';
-  }, THUNDER_FALL_MS);
+    svg.classList.add('thunder-gone');
+  }, THUNDER_FALL_MS + 380);
 
-  const flash = document.createElement('span');
-  flash.className = 'thunder-flash';
-  flash.style.width = `${vw}px`;
-  flash.style.height = `${vh}px`;
-  flash.style.animationDelay = `${THUNDER_FALL_MS * 0.6}ms`;
-  flash.style.opacity = '0';
-  box.insertBefore(flash, svg);
-
-  // 落ちた所(画面の下)に火花
+  /** 小さな⚡がぴょんと飛び出して消える(光らせない) */
+  const bit = (cx, cy, size, dx, dy) => {
+    const b = document.createElement('span');
+    b.className = 'hotel-part zap-bit';
+    b.style.fontSize = `${size}px`;
+    b.style.left = `${cx - size / 2}px`;
+    b.style.top = `${cy - size / 2}px`;
+    b.style.zIndex = '2';
+    const g = document.createElement('span');
+    g.className = 'reaction-glyph';
+    setGlyph(g, '⚡');
+    b.appendChild(g);
+    box.appendChild(b);
+    b.animate(
+      [
+        { transform: 'translate(0, 0) scale(0.4) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${dx * 0.7}px, ${dy * 0.7}px) scale(1) rotate(${dx > 0 ? 15 : -15}deg)`, opacity: 1, offset: 0.6 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.8) rotate(${dx > 0 ? 25 : -25}deg)`, opacity: 0 },
+      ],
+      { duration: 450, easing: 'ease-out', fill: 'forwards' },
+    );
+    setTimeout(() => b.remove(), 480);
+  };
+  // 落ちた所(画面の下)で、小さな⚡がはじける
   setTimeout(() => {
-    const [bx] = pts[pts.length - 1];
-    for (let i = 0; i < 16; i++) {
-      const a = Math.PI + (i / 15) * Math.PI;
-      const d = base * (0.8 + Math.random() * 1.2);
-      addDust(bx, vh - 2, 3 + Math.random() * 5, i % 2 ? '#ffffff' : '#ffe14d', Math.cos(a) * d, Math.sin(a) * d, 500 + Math.random() * 300);
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI * (1.15 + (i / 3) * 0.7);
+      bit(tip[0], vh - base * 0.3, base * 0.45, Math.cos(a) * base * 1.1, Math.sin(a) * base * 1.1);
     }
   }, THUNDER_FALL_MS);
 
   // ---- しびれる生き物 ----
-  // 稲妻がその高さまで来た時に当たっているか、で決める(OBSと自分の画面で同じ刻みで確かめる)
+  // 稲妻が下まで落ちた時に当たっているか、で決める(OBSと自分の画面で同じ刻みで確かめる)
   const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
-  const hitAt = startAt + THUNDER_FALL_MS;
   let zapped = 0;
-  simAdd(hitAt, () => {
+  simAdd(startAt + THUNDER_FALL_MS, () => {
     if (!box.isConnected) return false;
     const near = (r) => {
       if (!(r.width > 0)) return false;
       const cy = r.top + r.height / 2;
       if (cy < 0 || cy > vh) return false;
-      return Math.abs(r.left + r.width / 2 - boltX(cy)) < base * 0.25 + r.width * 0.4;
+      return Math.abs(r.left + r.width / 2 - boltX(cy)) < base * 0.3 + r.width * 0.4;
     };
     const items = activeItems
       .filter((o) => o !== box && o.isConnected && o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating)
@@ -3225,7 +3191,7 @@ function spawnThunder(opts) {
     return false;
   });
 
-  /** ビリビリしびれる → 黒こげ → 煙を出して消える */
+  /** ビリビリしびれる(骨と交互) → 黒こげ → 煙を出して消える */
   function zap(t) {
     let el;
     if (t.isItem) {
@@ -3255,16 +3221,15 @@ function spawnThunder(opts) {
     el.style.zIndex = '1';
     const r = rectOf(el);
     const size = Math.max(r.width, r.height) || base;
-    // 揺らす係(外側)と、骨が透けるのと交互にチカチカする中身
+    // 揺らす係(外側)と、骨と交互にパッパッと入れ替わる中身
     const shaker = document.createElement('span');
     shaker.className = 'zap-shake';
     shaker.style.display = 'inline-block';
     shaker.style.position = 'relative';
-    while (el.firstChild) shaker.appendChild(el.firstChild);
     const bodyWrap = document.createElement('span');
     bodyWrap.className = 'zap-body';
     bodyWrap.style.display = 'inline-block';
-    while (shaker.firstChild) bodyWrap.appendChild(shaker.firstChild);
+    while (el.firstChild) bodyWrap.appendChild(el.firstChild);
     shaker.appendChild(bodyWrap);
     const xray = document.createElement('span');
     xray.className = 'zap-xray reaction-glyph';
@@ -3273,17 +3238,16 @@ function spawnThunder(opts) {
     setGlyph(xray, '💀');
     shaker.appendChild(xray);
     el.appendChild(shaker);
-    // まわりに火花
+    // まわりに小さな⚡
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height / 2;
-    let sparks = 0;
-    const spark = () => {
-      if (!el.isConnected || sparks++ > ZAP_MS / 90) return;
-      const a = Math.random() * Math.PI * 2;
-      addDust(cx + Math.cos(a) * size * 0.45, cy + Math.sin(a) * size * 0.45, 3 + Math.random() * 4, Math.random() < 0.5 ? '#ffffff' : '#9fe4ff', Math.cos(a) * size * 0.5, Math.sin(a) * size * 0.5, 350);
-      setTimeout(spark, 90);
-    };
-    spark();
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => {
+        if (!el.isConnected) return;
+        const a = (i / 3) * Math.PI * 2 - Math.PI / 2 + i * 0.5;
+        bit(cx + Math.cos(a) * size * 0.45, cy + Math.sin(a) * size * 0.45, size * 0.35, Math.cos(a) * size * 0.5, Math.sin(a) * size * 0.5);
+      }, i * 300);
+    }
     // しびれ終わったら黒こげになって、煙を出してから消える
     setTimeout(() => {
       if (!el.isConnected) return;
