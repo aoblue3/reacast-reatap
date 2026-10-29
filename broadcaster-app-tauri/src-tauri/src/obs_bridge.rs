@@ -199,6 +199,11 @@ impl ObsBridge {
         self.update_and_broadcast(|s| s.no_combo_growth_ids = ids);
     }
 
+    /// オーバーレイの窓の大きさ(まだ分からなければ0, 0)
+    pub fn stage_size(&self) -> (f64, f64) {
+        self.settings.lock().map(|s| (s.stage_w, s.stage_h)).unwrap_or((0.0, 0.0))
+    }
+
     /// オーバーレイの窓の大きさが分かった(変わった)時に呼ぶ。同じなら何も送らない
     pub fn set_stage_size(&self, w: f64, h: f64) {
         let same = self

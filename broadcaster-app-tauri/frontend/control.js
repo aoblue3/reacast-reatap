@@ -248,6 +248,26 @@ function renderStatus({ relayConnected, viewerCount, relayHost, relayPort }) {
   relayAddrEl.textContent = `${relayHost}:${relayPort}`;
 }
 
+// OBSのブラウザソースのおすすめの大きさ。OBSは自分の画面(リアクションを出す場所)を縮めて
+// 映すので、同じ縦横比で、配信画面(多くは横1920)くらいの大きさにすると、くっきり・軽い
+const obsSizeHintEl = document.getElementById('obsSizeHint');
+async function updateObsSizeHint() {
+  try {
+    const size = await invoke('get_overlay_stage_size');
+    if (!size || !(size.w > 0 && size.h > 0)) {
+      obsSizeHintEl.textContent = '';
+      return;
+    }
+    const w = Math.round(size.w);
+    const h = Math.round(size.h);
+    const ow = Math.min(1920, w);
+    const oh = Math.round((ow * h) / w / 2) * 2;
+    obsSizeHintEl.textContent = `ブラウザソースの幅・高さのおすすめ: ${ow}×${oh}(リアクションを出す場所 ${w}×${h} と同じ縦横比)`;
+  } catch {
+    obsSizeHintEl.textContent = '';
+  }
+}
+
 function showPassphraseMsg(text, ok) {
   passphraseMsgEl.textContent = text;
   passphraseMsgEl.className = ok ? 'ok' : 'ng';
@@ -1012,6 +1032,9 @@ async function connectRelay(creds, relayAddress, passphrase) {
   renderReactionToggleList();
   await loadMonitorSelect();
   await loadRegionSettings();
+  updateObsSizeHint();
+  // モニターや表示する範囲を変えると大きさも変わるので、時々見直す
+  setInterval(updateObsSizeHint, 3000);
   await loadGlyphSize();
   await loadGlyphOpacity();
   await loadDisplayRate();

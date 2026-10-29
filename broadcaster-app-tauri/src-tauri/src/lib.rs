@@ -943,6 +943,13 @@ fn set_overlay_stage_size(obs_bridge: tauri::State<obs_bridge::ObsBridge>, w: f6
     }
 }
 
+/// 設定パネルに出す、OBSのブラウザソースのおすすめの大きさの元(オーバーレイの窓の大きさ)
+#[tauri::command]
+fn get_overlay_stage_size(obs_bridge: tauri::State<obs_bridge::ObsBridge>) -> serde_json::Value {
+    let (w, h) = obs_bridge.stage_size();
+    serde_json::json!({ "w": w, "h": h })
+}
+
 // 視聴者アプリ(viewer-app-tauri)側で見つかった不具合と同種の予防策として、
 // こちらもcfg_get/cfg_setを非同期化しておく。ConfigStore::set()は呼ばれる
 // たびに設定ファイル全体を同期的にディスクへ書き込む実装で、素の`fn`の
@@ -1277,6 +1284,7 @@ pub fn run() {
             get_relay_address,
             get_overlay_settings,
             set_overlay_stage_size,
+            get_overlay_stage_size,
             set_overlay_glyph_scale,
             set_overlay_glyph_opacity,
             set_overlay_combo_growth,
