@@ -258,9 +258,22 @@ fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
 /// デスクトップ字幕ウィンドウ(コメント機能)の本来の位置・サイズ。
 fn subtitle_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
     let s = app.state::<Arc<comments::CommentEngine>>().settings();
-    // マウスで動かして決めた位置があればそれを使う
+    // マウスで動かして決めた位置があればそれを使う。ただし、その位置が今あるどのモニターの
+    // 上にも無い(モニターを外した・並びや解像度を変えた)時は、画面の外に出て見えなく
+    // なるので、既定の位置に出す
     if let Some(r) = s.desktop_rect {
-        return (PhysicalPosition::new(r.x, r.y), PhysicalSize::new(r.width.max(50), r.height.max(30)));
+        let size = PhysicalSize::new(r.width.max(50), r.height.max(30));
+        let cx = r.x as i64 + size.width as i64 / 2;
+        let cy = r.y as i64 + size.height as i64 / 2;
+        let on_screen = app.available_monitors().map_or(true, |ms| {
+            ms.iter().any(|m| {
+                let (p, z) = (m.position(), m.size());
+                cx >= p.x as i64 && cx < p.x as i64 + z.width as i64 && cy >= p.y as i64 && cy < p.y as i64 + z.height as i64
+            })
+        });
+        if on_screen {
+            return (PhysicalPosition::new(r.x, r.y), size);
+        }
     }
     let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, s.desktop_monitor_id.as_deref());
     let region = RegionSpec::clamped(s.desktop_x, s.desktop_y, s.desktop_width, s.desktop_height);

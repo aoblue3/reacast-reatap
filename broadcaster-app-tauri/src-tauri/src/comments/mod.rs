@@ -2671,6 +2671,15 @@ pub fn comments_desktop_adjust(
     if on {
         if let Some(win) = app.get_webview_window("subtitle") {
             let _ = win.destroy();
+            // 窓が本当に消えるまで待つ。destroyはすぐには終わらないので、待たずに作り直すと
+            // 消えかけの窓をそのまま使ってしまい、何も出なかった(モニターを変えるなど、
+            // 後でもう一度作り直されると出ていた)
+            for _ in 0..60 {
+                if app.get_webview_window("subtitle").is_none() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
         }
     }
     engine.set_adjusting(on);
