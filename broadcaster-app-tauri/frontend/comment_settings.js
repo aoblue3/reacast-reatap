@@ -1080,7 +1080,7 @@ function renderPresetSelects() {
   }
 }
 
-// 「デスクトップに出す」タブのプリセットの欄は、元のタブの欄と同じ選択肢にする
+// 「デスクトップに表示」タブのプリセットの欄は、元のタブの欄と同じ選択肢にする
 for (const sel of document.querySelectorAll('[data-preset-mirror]')) {
   sel.innerHTML = document.getElementById(sel.dataset.presetMirror).innerHTML;
 }
