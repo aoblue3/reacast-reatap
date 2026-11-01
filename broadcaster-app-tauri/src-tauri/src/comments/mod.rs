@@ -212,6 +212,9 @@ pub struct CommentSettings {
     /// ⚡を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v10: bool,
+    /// AAになる条件の文字列を増やした時の、既定の文字列の追加
+    #[serde(default)]
+    pub aa_presets_v2: bool,
     pub ng_words: String,
     // ---- レス着信音 ----
     /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
@@ -301,6 +304,13 @@ pub struct CommentSettings {
     /// マウスで動かして決めた位置・大きさ(物理ピクセル)。あればモニター・割合の
     /// 指定より優先する。
     pub desktop_rect: Option<DesktopRect>,
+    // ---- デスクトップに出す右のレス一覧(OBSの画面キャプチャで配信する人向け) ----
+    pub desktop_list_enabled: bool,
+    pub desktop_list_x: f64,
+    pub desktop_list_y: f64,
+    pub desktop_list_width: f64,
+    pub desktop_list_height: f64,
+    pub desktop_list_rect: Option<DesktopRect>,
     /// 見た目の設定(フォント・色・縁など)。Rust側では中身を解釈せず、そのまま
     /// 字幕・レス一覧の画面に渡す(画面側が既定値を補う)。
     pub style: serde_json::Value,
@@ -314,6 +324,9 @@ pub struct DesktopRect {
     pub width: u32,
     pub height: u32,
 }
+
+/// 既定のAAになる条件の文字列。後から足した行は、既存の人にはadd_aa_presetsで一度だけ足される。
+const DEFAULT_AA_PATTERNS: &[&str] = &["д", "（●）", "从", "）)ﾉヽ", "∀", "<●>", "（__人__）", "／￣￣￣", "ω", "●", "/ (ﾟ)/", "／", "^o^"];
 
 /// 既定の読み方(上から順に置き換える)。先頭2つはURLで、以前の既定(OLD_URL_READINGS)と
 /// 同じ並び。行を足したら、既存の人にはadd_reading_presetsで一度だけ足される。
@@ -507,6 +520,7 @@ impl Default for CommentSettings {
             reaction_presets_v8: true,
             reaction_presets_v9: true,
             reaction_presets_v10: true,
+            aa_presets_v2: true,
             ng_words: String::new(),
             chime_enabled: false,
             chime_path: String::new(),
@@ -546,7 +560,7 @@ impl Default for CommentSettings {
             aa_display_ms: 6000,
             aa_enabled: true,
             aa_threshold_chars: 300,
-            aa_patterns: ["д", "（●）", "从", "）)ﾉヽ", "∀", "<●>", "（__人__）"].join("\n"),
+            aa_patterns: DEFAULT_AA_PATTERNS.join("\n"),
             aa_read_quoted_only: true,
             aa_read_res_number: false,
             aa_fixed_reading: "アスキーアート".into(),
@@ -558,6 +572,13 @@ impl Default for CommentSettings {
             desktop_width: 1.0,
             desktop_height: 0.22,
             desktop_rect: None,
+            // 画面の右上(タスクバー・下の字幕に重ならない所)
+            desktop_list_enabled: false,
+            desktop_list_x: 0.72,
+            desktop_list_y: 0.05,
+            desktop_list_width: 0.27,
+            desktop_list_height: 0.6,
+            desktop_list_rect: None,
             style: serde_json::json!({}),
         }
     }
@@ -826,6 +847,8 @@ struct State {
     status: CommentStatus,
     /// デスクトップ字幕をマウスで動かしている最中か
     adjusting: bool,
+    /// デスクトップのレス一覧をマウスで動かしている最中か
+    adjusting_list: bool,
     /// テスト表示のために、取得していなくてもデスクトップ字幕を出しておく期限
     desktop_hold_until: Option<std::time::Instant>,
     /// 読み上げの一時停止中(開始・停止をまたいで保つ)
@@ -857,6 +880,7 @@ impl CommentEngine {
                 thread_posts: Vec::new(),
                 status: CommentStatus::default(),
                 adjusting: false,
+                adjusting_list: false,
                 desktop_hold_until: None,
                 paused: false,
                 progress: None,
@@ -948,12 +972,26 @@ impl CommentEngine {
         st.settings.desktop_enabled && (st.status.running || st.adjusting || held)
     }
 
-    pub fn adjusting(&self) -> bool {
-        self.state.lock().unwrap().adjusting
+    /// デスクトップのレス一覧のウィンドウを今出しておくべきか(desktop_wantedと同じ条件)。
+    pub fn desktop_list_wanted(&self) -> bool {
+        let st = self.state.lock().unwrap();
+        let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
+        st.settings.desktop_list_enabled && (st.status.running || st.adjusting_list || held)
     }
 
-    pub fn set_adjusting(&self, on: bool) {
-        self.state.lock().unwrap().adjusting = on;
+    /// list: falseならデスクトップ字幕、trueならデスクトップのレス一覧
+    pub fn adjusting(&self, list: bool) -> bool {
+        let st = self.state.lock().unwrap();
+        if list { st.adjusting_list } else { st.adjusting }
+    }
+
+    pub fn set_adjusting(&self, list: bool, on: bool) {
+        let mut st = self.state.lock().unwrap();
+        if list {
+            st.adjusting_list = on;
+        } else {
+            st.adjusting = on;
+        }
     }
 
     pub fn hold_desktop(&self, dur: Duration) {
@@ -2221,6 +2259,10 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
+    if !s.aa_presets_v2 {
+        add_aa_presets(&mut s);
+        let _ = save_settings(store, &s);
+    }
     // v1.5.12はexeの場所が1つだけだった
     let legacy = std::mem::take(&mut s.tts_exe_path);
     if !legacy.trim().is_empty() {
@@ -2247,6 +2289,23 @@ fn add_reading_presets(s: &mut CommentSettings) {
     }
     s.reading_rules = lines.join("\n");
     s.reading_presets_v2 = true;
+}
+
+/// 以前から使っている人のAAになる条件に、後から増やした既定の文字列を一度だけ足す
+/// (同じ行が既にあれば足さない)。
+fn add_aa_presets(s: &mut CommentSettings) {
+    const ADDED_IN_V2: &[&str] = &["／￣￣￣", "ω", "●", "/ (ﾟ)/", "／", "^o^"];
+    let mut lines: Vec<String> = s.aa_patterns.lines().map(str::to_string).collect();
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    for p in ADDED_IN_V2 {
+        if !lines.iter().any(|l| l == p) {
+            lines.push(p.to_string());
+        }
+    }
+    s.aa_patterns = lines.join("\n");
+    s.aa_presets_v2 = true;
 }
 
 /// 以前から使っている人のリアクション連動に、まだルールが1つも無いリアクションの
@@ -2459,6 +2518,20 @@ pub fn comments_search_web(text: String) -> Result<(), String> {
         return Ok(());
     }
     let url = reqwest::Url::parse_with_params("https://www.google.com/search", &[("q", text)]).map_err(|e| e.to_string())?;
+    open_in_browser(&url)
+}
+
+/// OBSでの設定方法の説明ページ(GitHub)
+const OBS_GUIDE_URL: &str = "https://github.com/aoblue3/reacast-reatap/blob/main/OBSの設定方法.md";
+
+/// 「OBSでの設定方法(説明ページ)」: いつものブラウザで説明ページを開く
+#[tauri::command]
+pub fn comments_open_obs_guide() -> Result<(), String> {
+    let url = reqwest::Url::parse(OBS_GUIDE_URL).map_err(|e| e.to_string())?;
+    open_in_browser(&url)
+}
+
+fn open_in_browser(url: &reqwest::Url) -> Result<(), String> {
     // explorerにURLを渡すと「ドキュメント」フォルダが開いてしまう(本人のPCで発生)ので、
     // URLを既定のブラウザで開く標準の方法(url.dllのFileProtocolHandler)を使う
     #[cfg(target_os = "windows")]
@@ -2641,12 +2714,21 @@ pub fn comments_switch_thread(engine: Engine, url: String) -> Result<(), String>
 }
 
 
-#[tauri::command]
-pub fn comments_desktop_adjusting(engine: Engine) -> bool {
-    engine.adjusting()
+/// target: "list"ならデスクトップのレス一覧、それ以外(省略)はデスクトップ字幕
+fn desktop_target(target: &Option<String>) -> (bool, &'static str, &'static str) {
+    if target.as_deref() == Some("list") {
+        (true, crate::DESKTOP_LIST_LABEL, "dlist:adjust")
+    } else {
+        (false, "subtitle", "subtitle:adjust")
+    }
 }
 
-/// デスクトップ字幕をマウスで動かすモードの開始/終了。終了した時点の
+#[tauri::command]
+pub fn comments_desktop_adjusting(engine: Engine, target: Option<String>) -> bool {
+    engine.adjusting(desktop_target(&target).0)
+}
+
+/// デスクトップ字幕(またはレス一覧)をマウスで動かすモードの開始/終了。終了した時点の
 /// ウィンドウの位置・大きさを保存する。
 #[tauri::command(async)]
 pub fn comments_desktop_adjust(
@@ -2654,45 +2736,56 @@ pub fn comments_desktop_adjust(
     engine: Engine,
     store: tauri::State<ConfigStore>,
     on: bool,
+    target: Option<String>,
 ) -> Result<(), String> {
+    let (list, label, event) = desktop_target(&target);
     if !on {
-        if let Some(win) = app.get_webview_window("subtitle") {
+        if let Some(win) = app.get_webview_window(label) {
             if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
                 let mut s = engine.settings();
-                s.desktop_rect = Some(DesktopRect { x: pos.x, y: pos.y, width: size.width, height: size.height });
+                let rect = Some(DesktopRect { x: pos.x, y: pos.y, width: size.width, height: size.height });
+                if list {
+                    s.desktop_list_rect = rect;
+                } else {
+                    s.desktop_rect = rect;
+                }
                 save_settings(&store, &s)?;
                 engine.apply_settings(s.clone());
                 let _ = app.emit("comments:settings", &s);
             }
         }
     }
-    // 位置の調整を始める時は、字幕の窓を作り直す(窓が見えないままになっていた時でも、
+    // 位置の調整を始める時は、窓を作り直す(窓が見えないままになっていた時でも、
     // 「マウスで位置を調整」を押せば必ず出るように)
     if on {
-        if let Some(win) = app.get_webview_window("subtitle") {
+        if let Some(win) = app.get_webview_window(label) {
             let _ = win.destroy();
             // 窓が本当に消えるまで待つ。destroyはすぐには終わらないので、待たずに作り直すと
             // 消えかけの窓をそのまま使ってしまい、何も出なかった(モニターを変えるなど、
             // 後でもう一度作り直されると出ていた)
             for _ in 0..60 {
-                if app.get_webview_window("subtitle").is_none() {
+                if app.get_webview_window(label).is_none() {
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
     }
-    engine.set_adjusting(on);
+    engine.set_adjusting(list, on);
     crate::sync_subtitle_window(&app);
-    let _ = app.emit("subtitle:adjust", on);
+    let _ = app.emit(event, on);
     Ok(())
 }
 
-/// デスクトップ字幕の位置を、モニター・割合の指定(既定の位置)に戻す。
+/// デスクトップ字幕(またはレス一覧)の位置を、モニター・割合の指定(既定の位置)に戻す。
 #[tauri::command(async)]
-pub fn comments_desktop_reset(app: AppHandle, engine: Engine, store: tauri::State<ConfigStore>) -> Result<(), String> {
+pub fn comments_desktop_reset(app: AppHandle, engine: Engine, store: tauri::State<ConfigStore>, target: Option<String>) -> Result<(), String> {
     let mut s = engine.settings();
-    s.desktop_rect = None;
+    if desktop_target(&target).0 {
+        s.desktop_list_rect = None;
+    } else {
+        s.desktop_rect = None;
+    }
     save_settings(&store, &s)?;
     engine.apply_settings(s.clone());
     let _ = app.emit("comments:settings", &s);

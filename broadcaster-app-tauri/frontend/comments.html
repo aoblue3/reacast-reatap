@@ -64,10 +64,60 @@
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: none; }
   }
+  /* デスクトップのレス一覧の位置調整モード(ReaCastの設定画面から切り替える) */
+  #adjust {
+    display: none;
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    border: 3px dashed #ffd23f;
+    background: rgba(20, 22, 30, 0.35);
+    cursor: move;
+    font-family: 'Yu Gothic UI', 'ReaCast Emoji', sans-serif;
+    color: #fff;
+  }
+  body.adjusting #adjust { display: block; }
+  #adjust .msg {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 8px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+  #adjust button {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    font: inherit;
+    font-size: 14px;
+    padding: 4px 14px;
+    border: none;
+    border-radius: 4px;
+    background: #3b6df0;
+    color: #fff;
+    cursor: pointer;
+  }
+  #adjust .grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 22px;
+    height: 22px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #ffd23f 50%);
+  }
 </style>
 </head>
 <body>
   <div id="list"></div>
+  <div id="adjust">
+    <div class="msg">ドラッグで移動 / 右下の角をドラッグで大きさを変更</div>
+    <button id="adjustDone">完了</button>
+    <div class="grip" id="grip"></div>
+  </div>
   <script src="shared/error-log.js"></script>
   <script src="shared/comment-common.js"></script>
   <script>
@@ -76,6 +126,9 @@
     const listEl = document.getElementById('list');
     let style = C.mergeStyle(null);
     let items = [];
+    const PREVIEW = new URLSearchParams(location.search).has('preview');
+    // ReaCastがデスクトップに出す窓として開いた時(OBSの画面キャプチャで配信する人向け)
+    const DESKTOP = !PREVIEW && !!(window.__TAURI__ && window.__TAURI__.core);
 
     function applyListStyle() {
       const s = style.list;
@@ -136,7 +189,9 @@
       if (s.showIcon && res.icon) {
         const img = document.createElement('img');
         img.className = 'icon';
-        img.src = res.icon;
+        // デスクトップに出す窓(ReaCastの中)では、ReaCastの中の画面のURLになってしまうので、
+        // OBSに出しているのと同じ所から読む
+        img.src = DESKTOP && res.icon.startsWith('/') ? `http://127.0.0.1:18772${res.icon}` : res.icon;
         const size = Math.max(12, Number(s.iconSize) || 40);
         img.style.width = img.style.height = `${size}px`;
         img.onerror = () => img.remove();
@@ -246,7 +301,7 @@
 
     // ?preview: ReaCastの設定画面に埋め込むプレビュー用。ブリッジには繋がず、
     // 設定画面から送られてくる見た目とサンプルのレスで描画する。
-    if (new URLSearchParams(location.search).has('preview')) {
+    if (PREVIEW) {
       window.addEventListener('message', (e) => {
         if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
         handle(e.data);
@@ -255,6 +310,45 @@
       C.connectBridge(handle);
     }
     applyListStyle();
+
+    // ---- デスクトップのレス一覧の位置調整(ReaCastの中で開かれた時だけ) ----
+    let adjusting = false;
+    const SAMPLE = [
+      { no: 121, name: '名無しさん', date: '', body: 'レス一覧の表示位置サンプル', source: 'bbs' },
+      { no: 122, name: '名無しさん', date: '', body: 'ドラッグで動かせます', source: 'bbs' },
+      { no: 123, name: '名無しさん', date: '', body: '右下の角で大きさを変えられます', source: 'bbs' },
+    ];
+    function setAdjusting(on) {
+      adjusting = !!on;
+      document.body.classList.toggle('adjusting', adjusting);
+      // まだレスが無い時は、大きさの目安になるようにサンプルを出す
+      if (adjusting && !items.length) {
+        const real = items;
+        items = SAMPLE.slice();
+        render();
+        items = real;
+      } else {
+        render();
+      }
+    }
+    const tauri = window.__TAURI__;
+    if (DESKTOP) {
+      const win = tauri.window.getCurrentWindow();
+      document.getElementById('adjust').addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.target.closest('button') || e.target.id === 'grip') return;
+        win.startDragging();
+      });
+      document.getElementById('grip').addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        win.startResizeDragging('SouthEast');
+      });
+      document.getElementById('adjustDone').addEventListener('click', () => {
+        tauri.core.invoke('comments_desktop_adjust', { on: false, target: 'list' });
+      });
+      tauri.event.listen('dlist:adjust', (e) => setAdjusting(e.payload));
+      tauri.core.invoke('comments_desktop_adjusting', { target: 'list' }).then(setAdjusting).catch(() => {});
+    }
   </script>
 </body>
 </html>

@@ -255,13 +255,22 @@ fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
     }
 }
 
+/// デスクトップに出すレス一覧の窓のラベル(OBSの画面キャプチャで配信する人向け)
+pub(crate) const DESKTOP_LIST_LABEL: &str = "dlist";
+
 /// デスクトップ字幕ウィンドウ(コメント機能)の本来の位置・サイズ。
-fn subtitle_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
+/// list: trueならデスクトップのレス一覧の窓。
+fn subtitle_target_geometry(app: &tauri::AppHandle, list: bool) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
     let s = app.state::<Arc<comments::CommentEngine>>().settings();
+    let (rect, x, y, w, h) = if list {
+        (s.desktop_list_rect, s.desktop_list_x, s.desktop_list_y, s.desktop_list_width, s.desktop_list_height)
+    } else {
+        (s.desktop_rect, s.desktop_x, s.desktop_y, s.desktop_width, s.desktop_height)
+    };
     // マウスで動かして決めた位置があればそれを使う。ただし、その位置が今あるどのモニターの
     // 上にも無い(モニターを外した・並びや解像度を変えた)時は、画面の外に出て見えなく
     // なるので、既定の位置に出す
-    if let Some(r) = s.desktop_rect {
+    if let Some(r) = rect {
         let size = PhysicalSize::new(r.width.max(50), r.height.max(30));
         let cx = r.x as i64 + size.width as i64 / 2;
         let cy = r.y as i64 + size.height as i64 / 2;
@@ -276,20 +285,29 @@ fn subtitle_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, P
         }
     }
     let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, s.desktop_monitor_id.as_deref());
-    let region = RegionSpec::clamped(s.desktop_x, s.desktop_y, s.desktop_width, s.desktop_height);
+    let region = RegionSpec::clamped(x, y, w, h);
     apply_overlay_region(monitor_pos, monitor_size, Some(region))
 }
 
-/// デスクトップ字幕ウィンドウを、設定と取得状態に合わせて作る/閉じる/動かす。
-/// 「デスクトップに字幕を表示する」がONで、かつコメントの取得中(または位置の
-/// 調整中・テスト表示の直後)の間だけウィンドウを作る(使っていない間は
+/// デスクトップ字幕・デスクトップのレス一覧のウィンドウを、設定と取得状態に合わせて
+/// 作る/閉じる/動かす。「デスクトップに表示する」がONで、かつコメントの取得中(または
+/// 位置の調整中・テスト表示の直後)の間だけウィンドウを作る(使っていない間は
 /// WebViewを1つも増やさない=軽さ優先)。
 /// ウィンドウを作るので、メインスレッド以外(async指定のコマンド等)から呼ぶこと。
 pub(crate) fn sync_subtitle_window(app: &tauri::AppHandle) {
+    sync_desktop_window(app, false);
+    sync_desktop_window(app, true);
+}
+
+fn desktop_label(list: bool) -> &'static str {
+    if list { DESKTOP_LIST_LABEL } else { "subtitle" }
+}
+
+fn sync_desktop_window(app: &tauri::AppHandle, list: bool) {
     let engine = app.state::<Arc<comments::CommentEngine>>();
-    let wanted = engine.desktop_wanted();
-    let adjusting = engine.adjusting();
-    let existing = app.get_webview_window("subtitle");
+    let wanted = if list { engine.desktop_list_wanted() } else { engine.desktop_wanted() };
+    let adjusting = engine.adjusting(list);
+    let existing = app.get_webview_window(desktop_label(list));
     match (wanted, existing) {
         (false, Some(win)) => {
             let _ = win.destroy();
@@ -298,28 +316,29 @@ pub(crate) fn sync_subtitle_window(app: &tauri::AppHandle) {
             // 位置の調整中はマウスで掴めるようにし、それ以外はクリックを透過する
             let _ = win.set_ignore_cursor_events(!adjusting);
             if !adjusting {
-                let (pos, size) = subtitle_target_geometry(app);
+                let (pos, size) = subtitle_target_geometry(app, list);
                 let _ = win.set_position(tauri::Position::Physical(pos));
                 let _ = win.set_size(tauri::Size::Physical(size));
             }
         }
         (true, None) => {
-            if let Err(e) = create_subtitle_window(app) {
-                log::warn!("デスクトップ字幕ウィンドウの作成に失敗しました: {e}");
+            if let Err(e) = create_subtitle_window(app, list) {
+                log::warn!("デスクトップ{}ウィンドウの作成に失敗しました: {e}", if list { "のレス一覧" } else { "字幕" });
             }
         }
         (false, None) => {}
     }
 }
 
-fn create_subtitle_window(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let (pos, size) = subtitle_target_geometry(app);
-    // 字幕の画面(subtitle.html)はOBSのブラウザソースと同じファイル。Tauriの中で
-    // 開かれた時も、OBSと同じくobs_bridgeのWebSocketから字幕を受け取る
-    // (表示のタイミングをOBS側と完全に揃えるため)。
-    let win = WebviewWindowBuilder::new(app, "subtitle", WebviewUrl::App("subtitle.html".into()))
+fn create_subtitle_window(app: &tauri::AppHandle, list: bool) -> tauri::Result<()> {
+    let (pos, size) = subtitle_target_geometry(app, list);
+    // 字幕の画面(subtitle.html)・レス一覧の画面(comments.html)はOBSのブラウザソースと
+    // 同じファイル。Tauriの中で開かれた時も、OBSと同じくobs_bridgeのWebSocketから
+    // 受け取る(表示のタイミングをOBS側と完全に揃えるため)。
+    let (page, title) = if list { ("comments.html", "ReaCast レス一覧") } else { ("subtitle.html", "ReaCast 字幕") };
+    let win = WebviewWindowBuilder::new(app, desktop_label(list), WebviewUrl::App(page.into()))
         .additional_browser_args(WEBVIEW_ARGS)
-        .title("ReaCast 字幕")
+        .title(title)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
@@ -333,18 +352,18 @@ fn create_subtitle_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         .build()?;
     win.set_position(tauri::Position::Physical(pos))?;
     win.set_size(tauri::Size::Physical(size))?;
-    let adjusting = app.state::<Arc<comments::CommentEngine>>().adjusting();
+    let adjusting = app.state::<Arc<comments::CommentEngine>>().adjusting(list);
     let _ = win.set_ignore_cursor_events(!adjusting);
     Ok(())
 }
 
 /// デスクトップ字幕ウィンドウのずれを直す(realign_overlay_windowと同じ理由)。
-fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
+fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, list: bool) {
     // マウスで動かしている最中は戻さない
-    if app.state::<Arc<comments::CommentEngine>>().adjusting() {
+    if app.state::<Arc<comments::CommentEngine>>().adjusting(list) {
         return;
     }
-    let (pos, size) = subtitle_target_geometry(app);
+    let (pos, size) = subtitle_target_geometry(app, list);
     let (Ok(cur_pos), Ok(cur_size)) = (win.outer_position(), win.outer_size()) else {
         return;
     };
@@ -679,13 +698,15 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                 // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
                 // 最前面ウィンドウに隠される)で、2秒おきに位置と最前面を直す
                 if !bursting {
-                    if let Some(sub) = reassert_handle.get_webview_window("subtitle") {
-                        realign_subtitle_window(&reassert_handle, &sub);
-                        // 何かの拍子に隠れたままになっていたら出し直す
-                        if matches!(sub.is_visible(), Ok(false)) {
-                            let _ = sub.show();
+                    for list in [false, true] {
+                        if let Some(sub) = reassert_handle.get_webview_window(desktop_label(list)) {
+                            realign_subtitle_window(&reassert_handle, &sub, list);
+                            // 何かの拍子に隠れたままになっていたら出し直す
+                            if matches!(sub.is_visible(), Ok(false)) {
+                                let _ = sub.show();
+                            }
+                            reassert_topmost(&sub);
                         }
-                        reassert_topmost(&sub);
                     }
                 }
             }
@@ -1018,6 +1039,9 @@ fn set_reactions_enabled(app: tauri::AppHandle, store: tauri::State<ConfigStore>
         _ => {}
     }
     log::info!("リアクション機能を{}", if enabled { "ON" } else { "OFF" });
+    // コントロールパネルとコメント設定の「かんたん設定」の両方から切り替えられるので、
+    // もう一方のチェックも合わせる
+    let _ = app.emit("reactions:enabled", enabled);
     Ok(())
 }
 
@@ -1372,6 +1396,7 @@ pub fn run() {
             comments::comments_replay,
             comments::comments_read_from,
             comments::comments_search_web,
+            comments::comments_open_obs_guide,
             comments::comments_desktop_adjusting,
             comments::comments_desktop_adjust,
             comments::comments_desktop_reset,

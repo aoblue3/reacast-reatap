@@ -41,7 +41,7 @@
     const params = new URLSearchParams(location.search);
     // マイク・声の増幅・自動音量調整(ReaCastの設定)
     const micName = params.get('mic') || '';
-    const gain = Math.min(4, Math.max(1, Number(params.get('gain')) || 1));
+    const gain = Math.min(4, Math.max(0.1, Number(params.get('gain')) || 1));
     const agc = params.get('agc') !== '0';
     // Chromeの時だけ、マイクの音をこの画面で受け取って加工してから音声認識に渡す
     // (Edgeは渡すと「network」のエラーになって聞き取れなかった。2026-10-28に確認)。

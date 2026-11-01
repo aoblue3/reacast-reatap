@@ -71,10 +71,10 @@ function renderFields() {
   if (typeof renderFontPickers === 'function') renderFontPickers();
   renderPresetSelects();
   monitorSelect.value = settings.desktopMonitorId || '';
-  const r = settings.desktopRect;
-  document.getElementById('desktopRectInfo').textContent = r
-    ? `マウスで決めた位置: ${r.x}, ${r.y}(${r.width}×${r.height})`
-    : '既定の位置(下の設定)';
+  for (const el of document.querySelectorAll('[data-desktop-rect]')) {
+    const r = el.dataset.desktopRect === 'list' ? settings.desktopListRect : settings.desktopRect;
+    el.textContent = r ? `マウスで決めた位置: ${r.x}, ${r.y}(${r.width}×${r.height})` : '既定の位置(下の「既定の位置」の設定)';
+  }
   renderPreview();
 }
 
@@ -251,6 +251,8 @@ const COMMAND_PRESETS = {
   tamiyasu: { commandPath: 'C:\\tamiyasuex\\vrx.exe', commandArgs: '#Res#' },
   // /X:1=SofTalkの画面を出さない、/W:は最後に置く(それ以降が読み上げる文字)
   softalk: { commandPath: 'C:\\softalk\\softalkw.exe', commandArgs: '/X:1 /W:#Res#' },
+  // AquesTalkPlayerは/Tで渡した文字を読み上げて終わる(画面は出ない)。声を変える時は/P "プリセット名"
+  aquestalk: { commandPath: 'C:\\aquestalkplayer\\AquesTalkPlayer.exe', commandArgs: '/T #Res#' },
 };
 let ttsListedFor = null; // 声の一覧を取得した接続先(取り直しを避ける)
 let ttsDevicesListed = false;
@@ -1073,11 +1075,15 @@ function rememberPresetEdit(key) {
 
 function renderPresetSelects() {
   for (const [group, g] of Object.entries(PRESET_GROUPS)) {
-    const sel = document.getElementById(g.select);
-    if (sel) sel.value = presetState(group).current in g.presets ? presetState(group).current : 'default';
+    const value = presetState(group).current in g.presets ? presetState(group).current : 'default';
+    for (const sel of document.querySelectorAll(`[data-preset-group="${group}"]`)) sel.value = value;
   }
 }
 
+// 「デスクトップに出す」タブのプリセットの欄は、元のタブの欄と同じ選択肢にする
+for (const sel of document.querySelectorAll('[data-preset-mirror]')) {
+  sel.innerHTML = document.getElementById(sel.dataset.presetMirror).innerHTML;
+}
 for (const sel of document.querySelectorAll('[data-preset-group]')) {
   sel.addEventListener('change', () => applyPreset(sel.dataset.presetGroup, sel.value, true));
 }
@@ -1287,25 +1293,50 @@ document.getElementById('presetImportOk').addEventListener('click', () => {
   presetMsg(data.group, '読み込みました');
 });
 
-// ---- デスクトップ字幕の位置調整 ----
-const adjustBtn = document.getElementById('adjustDesktopBtn');
-let adjusting = false;
+// ---- デスクトップ字幕・デスクトップのレス一覧の位置調整 ----
+// target: 'subtitle'(下の字幕) / 'list'(右のレス一覧)
+const adjusting = { subtitle: false, list: false };
 function renderAdjust() {
-  adjustBtn.textContent = adjusting ? '位置の調整を終了(保存)' : 'マウスで位置を調整する';
+  for (const btn of document.querySelectorAll('[data-desktop-adjust]')) {
+    btn.textContent = adjusting[btn.dataset.desktopAdjust] ? '位置の調整を終了(保存)' : 'マウスで位置を調整する';
+  }
 }
-adjustBtn.addEventListener('click', async () => {
-  if (!settings.desktopEnabled && !adjusting) {
-    showStatusError('「デスクトップに字幕を表示する」をONにしてください');
-    return;
-  }
-  try {
-    await invoke('comments_desktop_adjust', { on: !adjusting });
-  } catch (e) {
-    showStatusError(String(e));
-  }
+for (const btn of document.querySelectorAll('[data-desktop-adjust]')) {
+  const target = btn.dataset.desktopAdjust;
+  btn.addEventListener('click', async () => {
+    const enabled = target === 'list' ? settings.desktopListEnabled : settings.desktopEnabled;
+    if (!enabled && !adjusting[target]) {
+      showStatusError(`「${target === 'list' ? '右のレス一覧' : '下の字幕'}」の「デスクトップに表示する」をONにしてください`);
+      return;
+    }
+    try {
+      await invoke('comments_desktop_adjust', { on: !adjusting[target], target });
+    } catch (e) {
+      showStatusError(String(e));
+    }
+  });
+}
+for (const btn of document.querySelectorAll('[data-desktop-reset]')) {
+  btn.addEventListener('click', () => {
+    invoke('comments_desktop_reset', { target: btn.dataset.desktopReset }).catch((e) => showStatusError(String(e)));
+  });
+}
+
+// ---- OBSでの設定方法(GitHubの説明ページをいつものブラウザで開く) ----
+for (const btn of document.querySelectorAll('[data-open-guide]')) {
+  btn.addEventListener('click', () => invoke('comments_open_obs_guide').catch((e) => showStatusError(String(e))));
+}
+
+// ---- かんたん設定の「リアクションを表示する」(コントロールパネルの「リアクション機能を使う」と同じ) ----
+const easyReactions = document.getElementById('easyReactionsEnabled');
+invoke('cfg_get', { key: 'reactionsEnabled' }).then((v) => {
+  easyReactions.checked = v !== false;
 });
-document.getElementById('resetDesktopBtn').addEventListener('click', () => {
-  invoke('comments_desktop_reset').catch((e) => showStatusError(String(e)));
+easyReactions.addEventListener('change', () => {
+  invoke('set_reactions_enabled', { enabled: easyReactions.checked }).catch((e) => showStatusError(String(e)));
+});
+listen('reactions:enabled', (e) => {
+  easyReactions.checked = !!e.payload;
 });
 
 // ---- 次スレの>>1のテンプレート編集(右側に建てた時の見え方をすぐ出す) ----
@@ -2365,10 +2396,15 @@ document.getElementById('testBtn').addEventListener('click', () => {
     settings.style = C.mergeStyle(settings.style);
     renderFields();
   });
-  adjusting = await invoke('comments_desktop_adjusting');
+  adjusting.subtitle = await invoke('comments_desktop_adjusting', { target: 'subtitle' });
+  adjusting.list = await invoke('comments_desktop_adjusting', { target: 'list' });
   renderAdjust();
   listen('subtitle:adjust', (e) => {
-    adjusting = !!e.payload;
+    adjusting.subtitle = !!e.payload;
+    renderAdjust();
+  });
+  listen('dlist:adjust', (e) => {
+    adjusting.list = !!e.payload;
     renderAdjust();
   });
   const thread = await invoke('comments_get_thread');

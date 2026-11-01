@@ -898,6 +898,12 @@ async function initReactionsToggle(relayAddress) {
     }
     await apply(checkbox.checked);
   });
+  // コメント設定の「かんたん設定」で切り替えられた時
+  listen('reactions:enabled', (event) => {
+    if (checkbox.checked === !!event.payload) return;
+    checkbox.checked = !!event.payload;
+    apply(checkbox.checked);
+  });
   await apply(checkbox.checked);
 }
 

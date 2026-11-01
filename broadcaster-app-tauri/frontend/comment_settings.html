@@ -271,12 +271,13 @@
     <div class="nav-group">読み上げ</div>
     <button data-tab="speech">声・速さ</button>
     <button data-tab="words">NGワード・荒らし対策</button>
+    <button data-tab="chime">レス着信音</button>
     <div class="nav-group">見た目</div>
     <button data-tab="subtitle">下の字幕</button>
     <button data-tab="list">右のレス一覧</button>
     <button data-tab="nico">ニコ生風</button>
     <button data-tab="aa">AA</button>
-    <button data-tab="output">デスクトップ字幕</button>
+    <button data-tab="output">デスクトップに出す</button>
     <div class="nav-group">連動</div>
     <button data-tab="reactions">リアクション連動</button>
     <button data-tab="voice">話した字幕</button>
@@ -290,6 +291,13 @@
     <!-- ================= かんたん設定 ================= -->
     <section data-tab="easy" class="active">
       <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。</p>
+      <div class="note easy-guide">
+        <div><b>OBSの「画面キャプチャ」で配信している方</b>(URLを貼らない方)は、③の代わりに「デスクトップに出す」タブで、字幕やレス一覧をPCの画面に出してください。</div>
+        <div class="inline" style="margin-top:6px">
+          <button class="secondary" data-open-tab="output">デスクトップに出す設定へ</button>
+          <button class="secondary" data-open-guide>OBSでの設定方法(説明ページ)</button>
+        </div>
+      </div>
 
       <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにしてください。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
       <div class="field"><label>掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
@@ -311,13 +319,13 @@
           </optgroup>
           <optgroup label="ソフトに読ませる">
             <option value="bouyomi">棒読みちゃん(HTTP連携)</option>
-            <option value="command">コマンドで渡す(民安★TALK・SofTalk・その他)</option>
+            <option value="command">コマンドで渡す(民安★TALK・SofTalk・AquesTalk・その他)</option>
           </optgroup>
         </select>
         <button class="secondary" data-open-tab="speech">声・速さを選ぶ</button>
       </div></div>
 
-      <h3>③ OBSに貼るURL<span class="help" data-help="OBSで「ブラウザ」ソースを追加して、URLに下のものを貼ります(「ローカルファイル」のチェックは入れません)。幅・高さは配信画面に合わせてください。ReaCastの起動中だけ表示されます。表示範囲を変えたい時は、ソースの角をドラッグせずに、プロパティの「幅」「高さ」を変えてから「変換をリセット」(Ctrl+R)すると、文字の大きさが変わりません。"></span></h3>
+      <h3>③ OBSに貼るURL(ブラウザソースで配信する方)<span class="help" data-help="OBSで「ブラウザ」ソースを追加して、URLに下のものを貼ります(「ローカルファイル」のチェックは入れません)。幅・高さは配信画面に合わせてください。ReaCastの起動中だけ表示されます。表示範囲を変えたい時は、ソースの角をドラッグせずに、プロパティの「幅」「高さ」を変えてから「変換をリセット」(Ctrl+R)すると、文字の大きさが変わりません。"></span></h3>
       <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
       <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
       <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
@@ -325,7 +333,12 @@
       <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
       <div class="copy-row"><span style="width:110px">アンケート</span><code id="urlPoll">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="urlPoll">コピー</button></div>
 
-      <h3>④ 試してみる</h3>
+      <h3>④ 表示</h3>
+      <div class="field"><label>リアクションを表示する<span class="help" data-help="視聴者からのリアクション(絵文字)を配信画面に出します。コントロールパネルの「リアクション機能を使う」と同じです。"></span></label><div><input type="checkbox" id="easyReactionsEnabled" /></div></div>
+      <div class="field"><label>コメントでリアクションを飛ばす<span class="help" data-help="「www」で草、「888」で拍手のように、コメントの言葉に合わせてリアクションを飛ばします。言葉とリアクションの組み合わせは「リアクション連動」タブで変えられます。"></span></label><div><input type="checkbox" data-key="reactionLink" /></div></div>
+      <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(下の字幕・右のレス一覧・ニコ生風・話した字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
+
+      <h3>⑤ 試してみる</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button><span class="help" data-help="順番待ちの先頭に割り込んで、字幕に表示して読み上げます。取得を開始していなくても使えます。"></span></div>
       <p class="lead" style="margin-top:14px">準備ができたら、一番上の「開始」を押してください。</p>
     </section>
@@ -406,7 +419,7 @@
           </optgroup>
           <optgroup label="ソフトに読ませる">
             <option value="bouyomi">棒読みちゃん(HTTP連携)</option>
-            <option value="command">コマンドで渡す(民安★TALK・SofTalk・その他)</option>
+            <option value="command">コマンドで渡す(民安★TALK・SofTalk・AquesTalk・その他)</option>
           </optgroup>
         </select>
       </div></div>
@@ -462,7 +475,7 @@
       <div class="engine-box" data-engine="command">
         <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
         <div class="field"><label>引数<span class="help" data-help="#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。"></span></label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
-        <div class="field"><label>よく使う設定<span class="help" data-help="SofTalkは「SofTalk」を押してから、ソフトの場所をsoftalkw.exe(またはSofTalk.exe)に合わせてください。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button></div></div>
+        <div class="field"><label>よく使う設定<span class="help" data-help="押したら、ソフトの場所を自分のPCに入っている場所に合わせてください(SofTalkはsoftalkw.exe(またはSofTalk.exe)、AquesTalkはAquesTalkPlayer.exe)。AquesTalkの声を変える時は、引数を「/P &quot;プリセット名&quot; /T #Res#」のようにします(プリセット名はAquesTalkPlayerの画面に出ている名前。例: れいむ、まりさ)。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button><button class="secondary" data-command-preset="aquestalk">AquesTalk(AquesTalkPlayer)</button></div></div>
         <div class="note">民安★TALKを使う時は、民安★TALKの設定の「ただちに再生」をOFFにしてください(ONだと、長いレスの途中で次のレスが届いた時に読み上げが打ち切られます)。</div>
       </div>
 
@@ -480,8 +493,11 @@
         <div class="field"><label>文字数制限</label><div><input type="number" min="0" data-key="maxChars" /><span class="unit">文字(読み上げる文字数。0で無制限)</span></div></div>
         <div class="field"><label>読み上げ時間の目安<span class="help" data-help="文字数からおおよその読み上げ時間を見積もって、読み終わるまで次のレスに進まない(字幕もその間は出しておく)ようにします。VOICEVOXなどReaCastが直接鳴らすソフトでは本当の長さを使うので、長いレスを「以下略」で打ち切る時だけに使います。既定の160はVOICEVOXの標準の速さの目安です。"></span></label><div><input type="number" min="0" step="10" data-key="speechMsPerChar" /><span class="unit">ミリ秒/1文字(0で使わない)</span></div></div>
       </details>
+    </section>
 
-      <h3>レス着信音<span class="help" data-help="レスを字幕に出す前に、選んだ音を鳴らします(鳴り終わるまで、長くても1.5秒待ってから読み上げます)。音のファイルはwav・mp3・oggが使えます。鳴らす先は「音の出力先」と同じです。"></span></h3>
+    <!-- ================= レス着信音 ================= -->
+    <section data-tab="chime">
+      <p class="lead">レスを字幕に出す前に、選んだ音を鳴らします。<span class="help" data-help="鳴り終わるまで、長くても1.5秒待ってから読み上げます。音のファイルはwav・mp3・oggが使えます。鳴らす先は「声・速さ」タブの「音の出力先」と同じです。"></span></p>
       <div class="field"><label>着信音を鳴らす</label><div><input type="checkbox" data-key="chimeEnabled" /></div></div>
       <div class="field"><label>音のファイル</label><div class="path-row"><input type="text" data-key="chimePath" placeholder="wav・mp3・oggのファイル" /><button class="secondary" id="chimePickBtn">参照...</button><button class="secondary" id="chimeTestBtn">試しに鳴らす</button></div></div>
       <div class="hint" id="chimeMsg"></div>
@@ -531,10 +547,7 @@
       </div></div>
       <div class="field"><label>この見た目を共有<span class="help" data-help="今の見た目(プリセットと手直しした内容)を、共有コード(文字)かファイルにして、ほかの配信者に渡せます。もらった共有コードやファイルは「読み込む」から使えます。文字の大きさ・位置・件数など、その人ごとの設定は入りません。"></span></label><div class="inline"><button class="secondary" data-preset-share="subtitle">共有コードをコピー</button><button class="secondary" data-preset-export="subtitle">ファイルに書き出す</button><button class="secondary" data-preset-import="subtitle">読み込む</button><span class="unit" data-preset-msg="subtitle"></span></div></div>
       <iframe id="subtitlePreview" class="preview-frame subtitle-frame" src="subtitle.html?preview"></iframe>
-      <div class="field" style="margin-top:8px"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
-      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
-      <div class="field"><label>字幕の出し方</label><div class="inline"><select data-key="style.subtitle.appear">
+      <div class="field" style="margin-top:8px"><label>字幕の出し方</label><div class="inline"><select data-key="style.subtitle.appear">
         <option value="instant">瞬間表示</option>
         <option value="typewriter">1文字ずつ(左から右へ)</option>
         <option value="fade">フェードイン</option>
@@ -551,6 +564,7 @@
         <option value="aurora-rise">ぼかしからふわっと浮かぶ(オーロラ)</option>
         <option value="bbs-load">上から少しずつ読み込まれる(掲示板風)</option>
       </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
+      <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
       <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
       <div class="field"><label>スレッドのタイトルを出す<span class="help" data-help="今読んでいる掲示板のスレッドのタイトルを、OBSの下の字幕の画面の隅に小さく出します(取得中だけ。デスクトップ字幕には出しません)。位置・大きさ・色は「詳しい設定」で変えられます。"></span></label><div class="inline"><input type="checkbox" data-key="style.subtitle.threadTitleShow" /><select data-key="style.subtitle.threadTitlePos">
         <option value="top-left">左上</option>
@@ -560,7 +574,6 @@
         <option value="bottom-center">下の真ん中</option>
         <option value="bottom-right">右下</option>
       </select></div></div>
-      <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(下の字幕・右のレス一覧・ニコ生風・話した字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
       <div class="field"><label>レスを翻訳して下に出す<span class="help" data-help="日本語のレスは「翻訳先」の言語に、それ以外のレスは日本語に翻訳して、本文の下に添えます(翻訳は読み上げません。AAや「草」「w」のような短いレスは翻訳しません)。翻訳のしかたは下の「翻訳のしかた」で選べます。"></span></label><div class="inline">
         <input type="checkbox" data-key="subtitleTranslate" />
         <span class="unit">翻訳先</span>
@@ -587,7 +600,10 @@
       <div class="field"><label>翻訳の状態</label><div class="inline"><span class="unit translate-status" style="margin-left:0">-</span></div></div>
       <div class="field"><label>アンカー先のレスを先に表示する<span class="help" data-help="新しいレスに「>>12」のようなアンカーがあれば、まず12番のレスを斜体で表示してから、新しいレスを表示・読み上げます(アンカー先は読み上げません。順番待ちが溜まっている時は省きます)。"></span></label><div><input type="checkbox" data-key="anchorPreview" /></div></div>
       <details class="adv">
-        <summary>詳しい設定(縁・背景・位置・表示時間・翻訳の見た目)</summary>
+        <summary>詳しい設定(フォント・色・縁・背景・位置・表示時間・翻訳の見た目)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.subtitle.fontFamily" /></div></div>
+        <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.subtitle.fontSize" /><span class="unit">px</span></div></div>
+        <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.subtitle.color" /><input type="color" data-key="style.subtitle.outlineColor" /></div></div>
         <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.subtitle.outlineWidth" /><span class="unit">px</span></div></div>
         <div class="field"><label>太字 / 斜体 / 縦書き</label><div class="inline">
           <label><input type="checkbox" data-key="style.subtitle.bold" /> 太字</label>
@@ -596,12 +612,11 @@
         </div></div>
         <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.bgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
         <div class="field"><label>背景の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="60" data-key="style.subtitle.padding" /><span class="unit">px(0で既定)</span><input type="number" min="0" max="60" data-key="style.subtitle.radius" /><span class="unit">px</span></div></div>
-        <div class="field"><label>見出しに表示するもの</label><div class="inline">
+        <div class="field" style="margin-top:10px"><label>見出しに表示するもの</label><div class="inline">
           <label><input type="checkbox" data-key="style.subtitle.showResNumber" /> レス番号</label>
           <label><input type="checkbox" data-key="style.subtitle.showName" /> 名前</label>
           <label><input type="checkbox" data-key="style.subtitle.showTime" /> 時刻</label>
         </div></div>
-        <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
         <div class="field"><label>縦の位置</label><div><select data-key="style.subtitle.valign"><option value="top">上から(表示範囲の上端から下へ表示)</option><option value="bottom">下から(表示範囲の下端に揃えて上へ)</option></select></div></div>
         <div class="field"><label>字幕表示位置の微調整</label><div class="inline">
           <div class="arrows">
@@ -618,7 +633,6 @@
         <div class="field"><label>スレッドのタイトルの大きさ / 色</label><div class="inline"><input type="number" min="8" max="80" data-key="style.subtitle.threadTitleSize" /><span class="unit">px</span><input type="color" data-key="style.subtitle.threadTitleColor" /></div></div>
         <div class="field"><label>スレッドのタイトルの背景 / 不透明度</label><div class="inline"><input type="color" data-key="style.subtitle.threadTitleBgColor" /><input type="number" min="0" max="100" data-key="style.subtitle.threadTitleBgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
         <div class="field"><label>スレッドのタイトルの位置の微調整</label><div class="inline"><span class="unit">X</span><input type="number" data-key="style.subtitle.threadTitleOffsetX" /><span class="unit">Y</span><input type="number" data-key="style.subtitle.threadTitleOffsetY" /><span class="unit">px(右・下がプラス)</span></div></div>
-        <div class="field"><label>デスクトップ字幕もプリセットの見た目にする<span class="help" data-help="OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします。"></span></label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.subtitle.customCss" placeholder="#box { letter-spacing: 0.05em; }  /* #box=字幕全体 .res-head=見出し */"></textarea>
       </details>
@@ -629,19 +643,19 @@
       <p class="lead">アスキーアートのレスを、専用のフォントで崩れないように表示します。</p>
       <div class="field"><label>AAモードを使う</label><div><input type="checkbox" data-key="aaEnabled" /></div></div>
       <div class="field"><label>AAモードで字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="aaDisplayMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.aa.fontFamily" /></div></div>
-      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.aa.fontSize" /><span class="unit">px</span></div></div>
       <div class="field"><label>字幕枠に合わせて縮小する</label><div class="inline">
         <label><input type="checkbox" data-key="style.aa.shrinkToWidth" /> 幅に合わせる</label>
         <label><input type="checkbox" data-key="style.aa.shrinkToHeight" /> 高さに合わせる</label>
       </div></div>
+      <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
+      <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
+      <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
       <details class="adv">
-        <summary>詳しい設定(色・読み上げ・AAになる条件)</summary>
+        <summary>詳しい設定(フォント・色・AAになる条件)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.aa.fontFamily" /></div></div>
+        <div class="field"><label>サイズ</label><div><input type="number" min="6" max="300" data-key="style.aa.fontSize" /><span class="unit">px</span></div></div>
         <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.aa.color" /><input type="color" data-key="style.aa.outlineColor" /></div></div>
         <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.aa.outlineWidth" /><span class="unit">px</span></div></div>
-        <div class="field"><label>「」の中だけ読み上げる</label><div><input type="checkbox" data-key="aaReadQuotedOnly" /></div></div>
-        <div class="field"><label>レス番号も読み上げる</label><div><input type="checkbox" data-key="aaReadResNumber" /></div></div>
-        <div class="field"><label>固定読み上げ文字列</label><div><input type="text" data-key="aaFixedReading" /><span class="unit">「」が無い場合に読み上げます</span></div></div>
         <h3>AAモードになる条件</h3>
         <div class="inline"><input type="number" min="0" data-key="aaThresholdChars" /><span>文字以上(0で文字数では判定しない)、または下記の文字列を含む場合(1行に1つ)</span></div>
         <textarea data-key="aaPatterns" style="margin-top:6px"></textarea>
@@ -701,7 +715,7 @@
       <div class="field"><label>使うマイク<span class="help" data-help="聞き取りに使うマイクです。「Windowsの既定のマイク」が、Webカメラのマイクなど配信用ではないものになっていると、声を拾いにくくなります。一覧は、音声認識の窓が開いている時に出ます。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><select data-key="voiceMic" data-keep-unknown id="voiceMicSelect">
         <option value="">Windowsの既定のマイク</option>
       </select></div></div>
-      <div class="field"><label>声を大きくする<span class="help" data-help="聞き取る前に声を大きくします(1倍で今まで通り)。小さい声やマイクから離れた時に拾いやすくなりますが、上げすぎると周りの音も拾いやすくなります。上の「声の大きさ」を見ながら、話した時に棒が半分〜8割くらいになるのが目安です。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><input type="number" min="1" max="4" step="0.5" data-key="voiceGain" /><span class="unit">倍</span></div></div>
+      <div class="field"><label>声を大きくする<span class="help" data-help="聞き取る前に声を大きくします(1倍で今まで通り)。小さい声やマイクから離れた時に拾いやすくなりますが、上げすぎると周りの音も拾いやすくなります。周りの音(ゲームの音・キーボードの音など)を拾いすぎる時は、1倍より小さく(例: 0.5倍)すると拾いにくくなります。上の「声の大きさ」を見ながら、話した時に棒が半分〜8割くらいになるのが目安です。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><input type="number" min="0.1" max="4" step="0.1" data-key="voiceGain" /><span class="unit">倍</span></div></div>
       <div class="field"><label>声の大きさを自動でそろえる<span class="help" data-help="ブラウザの自動音量調整です(ONで今まで通り)。声の大きさのばらつきをならします。「声を大きくする」で調整したい時や、自動調整で声が小さくなる時はOFFにしてください。Google Chromeで聞き取っている時だけ効きます(Edgeは、加工した音を渡すと聞き取れなかったため)。"></span></label><div><input type="checkbox" data-key="voiceAgc" /></div></div>
       <div class="field"><label>聞き取る言葉</label><div><select data-key="voiceLang">
         <option value="ja-JP">日本語</option>
@@ -747,11 +761,11 @@
         <option value="original">話した言葉だけ</option>
         <option value="translation">翻訳だけ</option>
       </select></div></div>
-      <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.voice.fontFamily" /></div></div>
-      <div class="field"><label>話した言葉の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.fontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.color" /></div></div>
-      <div class="field"><label>翻訳の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.translationFontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.translationColor" /></div></div>
       <details class="adv">
-        <summary>詳しい設定(縁・位置・表示時間・カスタムCSS)</summary>
+        <summary>詳しい設定(フォント・大きさ・色・縁・位置・表示時間・カスタムCSS)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.voice.fontFamily" /></div></div>
+        <div class="field"><label>話した言葉の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.fontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.color" /></div></div>
+        <div class="field"><label>翻訳の大きさ / 色</label><div class="inline"><input type="number" min="8" max="200" data-key="style.voice.translationFontSize" /><span class="unit">px</span><input type="color" data-key="style.voice.translationColor" /></div></div>
         <div class="field"><label>太字</label><div><input type="checkbox" data-key="style.voice.bold" /></div></div>
         <div class="field"><label>縁のサイズ / 色</label><div class="inline"><input type="number" min="0" max="20" step="0.5" data-key="style.voice.outlineWidth" /><span class="unit">px</span><input type="color" data-key="style.voice.outlineColor" /></div></div>
         <div class="field"><label>文字揃え</label><div><select data-key="style.voice.align"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div></div>
@@ -791,9 +805,14 @@
         <button class="secondary" id="listTestBtn">テスト表示</button>
         <span class="help" data-help="テスト表示は、OBSの右のレス一覧とニコ生風の画面にだけ出ます(字幕・読み上げはしません)。"></span>
       </div>
-      <div class="field" style="margin-top:10px"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
-      <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
-      <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
+      <div class="field" style="margin-top:10px"><label>見出しに表示するもの</label><div class="inline">
+        <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
+        <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
+        <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
+      </div></div>
+      <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
+      <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
+      <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
       <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのレス一覧を別々の場所に出せます。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
@@ -803,15 +822,12 @@
       </div></div>
       <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイドを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
       <details class="adv">
-        <summary>詳しい設定(見出し・色・背景・間隔・サムネイル)</summary>
+        <summary>詳しい設定(フォント・見出し・色・背景・間隔・サムネイル)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
+        <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
+        <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
         <div class="field"><label>見出しの大きさ</label><div class="inline"><input type="number" min="0" max="200" data-key="style.list.headFontSize" /><span class="unit">px(0なら本文の80%)</span><label><input type="checkbox" data-key="style.list.headBold" /> 太字</label></div></div>
         <div class="field"><label>レス番号 / 名前 / 時刻の色</label><div class="inline"><input type="color" data-key="style.list.numberColor" /><input type="color" data-key="style.list.nameColor" /><input type="color" data-key="style.list.dateColor" /></div></div>
-        <div class="field"><label>見出しに表示するもの</label><div class="inline">
-          <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
-          <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
-          <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
-        </div></div>
-        <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
         <div class="field"><label>レスごとの背景</label><div class="inline">
           <input type="color" data-key="style.list.itemBgColor" />
           不透明度 <input type="number" min="0" max="100" data-key="style.list.itemBgOpacity" />%
@@ -821,8 +837,6 @@
         <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
         <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(既定1.3)</span></div></div>
         <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
-        <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
-        <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
         <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
           <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">レス一覧に表示</option></select>
           <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
@@ -857,23 +871,53 @@
       </details>
     </section>
 
-    <!-- ================= デスクトップ字幕 ================= -->
+    <!-- ================= デスクトップに出す ================= -->
     <section data-tab="output">
-      <p class="lead">配信者のPCの画面に、読み上げ中のレスを重ねて表示します。<span class="help" data-help="字幕は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。フォント・色などは「下の字幕」タブの設定を使います。"></span></p>
-      <div class="field"><label>デスクトップに字幕を表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
+      <p class="lead">OBSの「画面キャプチャ」「ウィンドウキャプチャ」で配信している方向けです。字幕やレス一覧をPCの画面に重ねて出すので、OBSにURLを貼らなくても、そのまま配信に映ります。<span class="help" data-help="字幕・レス一覧は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。OBSの「ウィンドウキャプチャ」でゲームの窓だけを映している時は、字幕は映らないので、「画面キャプチャ」を使ってください。OBSのブラウザソースで配信している方は、ここをOFFにしておくと、自分の画面に字幕が出ません。"></span></p>
+      <div class="inline" style="margin-bottom:6px"><button class="secondary" data-open-guide>OBSでの設定方法(説明ページ)</button></div>
+
+      <h3>下の字幕</h3>
+      <div class="field"><label>デスクトップに表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
       <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、字幕の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
-        <button id="adjustDesktopBtn">マウスで位置を調整する</button>
-        <button class="secondary" id="resetDesktopBtn">既定の位置に戻す</button>
-        <span class="unit" id="desktopRectInfo"></span>
+        <button data-desktop-adjust="subtitle">マウスで位置を調整する</button>
+        <button class="secondary" data-desktop-reset="subtitle">既定の位置に戻す</button>
+        <span class="unit" data-desktop-rect="subtitle"></span>
       </div></div>
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="「下の字幕」タブのプリセットと同じです(ここで変えると、OBSの下の字幕も変わります)。フォント・大きさ・色などは「下の字幕」タブで変えられます。"></span></label><div class="inline">
+        <select data-preset-group="subtitle" data-preset-mirror="subtitlePreset"></select>
+        <button class="secondary" data-open-tab="subtitle">「下の字幕」タブで細かく変える</button>
+      </div></div>
+      <div class="field"><label>プリセットの見た目にする<span class="help" data-help="OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします。"></span></label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /></div></div>
+
+      <h3>右のレス一覧</h3>
+      <div class="field"><label>デスクトップに表示する</label><div><input type="checkbox" data-key="desktopListEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
+      <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、レス一覧の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
+        <button data-desktop-adjust="list">マウスで位置を調整する</button>
+        <button class="secondary" data-desktop-reset="list">既定の位置に戻す</button>
+        <span class="unit" data-desktop-rect="list"></span>
+      </div></div>
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="「右のレス一覧」タブのプリセットと同じです(ここで変えると、OBSの右のレス一覧も変わります)。フォント・大きさ・件数などは「右のレス一覧」タブで変えられます。"></span></label><div class="inline">
+        <select data-preset-group="list" data-preset-mirror="listPreset"></select>
+        <button class="secondary" data-open-tab="list">「右のレス一覧」タブで細かく変える</button>
+      </div></div>
+
+      <h3>リアクション</h3>
+      <div class="hint" style="margin-top:0">視聴者からのリアクションは、いつもPCの画面に出ています(出すモニター・範囲はコントロールパネルの「表示する場所」で変えられます)。</div>
+
       <details class="adv">
         <summary>既定の位置(マウスで位置を決めていない時に使います)</summary>
         <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
-        <div class="field"><label>表示範囲(モニターに対する割合)</label><div class="inline">
+        <div class="field"><label>下の字幕の範囲(モニターに対する割合)</label><div class="inline">
           左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
           上 <input type="number" min="0" max="95" data-key="desktopY" data-percent />%
           幅 <input type="number" min="5" max="100" data-key="desktopWidth" data-percent />%
           高さ <input type="number" min="5" max="100" data-key="desktopHeight" data-percent />%
+        </div></div>
+        <div class="field"><label>右のレス一覧の範囲</label><div class="inline">
+          左 <input type="number" min="0" max="95" data-key="desktopListX" data-percent />%
+          上 <input type="number" min="0" max="95" data-key="desktopListY" data-percent />%
+          幅 <input type="number" min="5" max="100" data-key="desktopListWidth" data-percent />%
+          高さ <input type="number" min="5" max="100" data-key="desktopListHeight" data-percent />%
         </div></div>
       </details>
     </section>

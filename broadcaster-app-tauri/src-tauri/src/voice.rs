@@ -356,7 +356,7 @@ fn browser_path(choice: &str) -> Option<(PathBuf, &'static str, &'static str)> {
 fn input_url(s: &CommentSettings) -> String {
     let lang: String = s.voice_lang.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     // マイク・声の増幅・自動音量調整(音声認識の画面がChromeの時だけ使う)
-    let gain = if s.voice_gain.is_finite() { s.voice_gain.clamp(1.0, 4.0) } else { 1.0 };
+    let gain = if s.voice_gain.is_finite() { s.voice_gain.clamp(0.1, 4.0) } else { 1.0 };
     format!(
         "http://127.0.0.1:{OBS_HTTP_PORT}/voice_input.html?lang={lang}&mic={}&gain={gain}&agc={}",
         encode_query(s.voice_mic.trim()),
