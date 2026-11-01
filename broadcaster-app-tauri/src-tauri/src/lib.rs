@@ -1397,6 +1397,7 @@ pub fn run() {
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,
+            comments::comments_default_settings,
             comments::comments_desktop_adjusting,
             comments::comments_desktop_adjust,
             comments::comments_desktop_reset,

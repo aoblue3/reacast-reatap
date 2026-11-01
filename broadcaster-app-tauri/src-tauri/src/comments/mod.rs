@@ -2385,6 +2385,12 @@ pub fn comments_reset_settings(app: AppHandle, engine: Engine, store: tauri::Sta
     Ok(settings)
 }
 
+/// 初めて使う時の設定(タブごとの「このタブの設定を最初の状態に戻す」が、そのタブの項目だけを取り出して使う)。
+#[tauri::command(async)]
+pub fn comments_default_settings() -> CommentSettings {
+    initial_settings()
+}
+
 /// 次スレのタイトルと>>1の本文を、設定のテンプレートと今のスレッドから作る。
 fn build_draft(s: &CommentSettings, cur_title: &str, cur_url: &str) -> Result<(String, String), String> {
     let tmpl = if s.create_title_template.trim().is_empty() { "{next}" } else { s.create_title_template.as_str() };

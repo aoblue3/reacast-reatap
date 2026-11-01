@@ -651,6 +651,82 @@ document.getElementById('ttsTestBtn').addEventListener('click', async () => {
   });
 })();
 
+// ---- タブごとの「このタブの設定を最初の状態に戻す」 ----
+// 戻すのは、そのタブにある欄の設定だけ(ほかのタブの設定はそのまま)。欄が無くてもそのタブの
+// 設定とみなすものは下の表に書く。見た目のタブは、プリセットとその手直しも含めて見た目を丸ごと戻す。
+const TAB_RESET_EXTRA = {
+  speech: ['ttsEngineParams', 'ttsRandomVoices', 'ttsExePaths', ...Object.values(PARAM_LEGACY)],
+  output: ['desktopRect', 'desktopListRect', 'desktopMonitorId'],
+};
+const TAB_RESET_STYLE = { subtitle: 'subtitle', list: 'list', nico: 'nico', aa: 'aa', voice: 'voice' };
+
+async function resetTab(section) {
+  const tab = section.dataset.tab;
+  const defaults = await invoke('comments_default_settings');
+  defaults.style = C.mergeStyle(null);
+  const keyOf = (el) => el.dataset.key || el.dataset.hotkey;
+  const inTab = (el) => el.closest('section') === section;
+  const all = Array.from(document.querySelectorAll('[data-key], [data-hotkey]'));
+  // 話速などのスライダーはソフトごとの欄(ttsEngineParams.<ソフト>.…)なので、ttsEngineParamsごと戻す
+  const keys = new Set(all.filter(inTab).map(keyOf).filter((k) => !k.startsWith('ttsEngineParams.')));
+  for (const k of TAB_RESET_EXTRA[tab] || []) keys.add(k);
+  const part = TAB_RESET_STYLE[tab];
+  if (part) {
+    // 見た目を丸ごと戻す。ただし、ほかのタブにある欄の値(「デスクトップに表示」タブの
+    // 「プリセットの見た目にする」など)は残す
+    const keep = all.filter((el) => !inTab(el) && keyOf(el).startsWith(`style.${part}.`)).map((el) => [keyOf(el), getPath(settings, keyOf(el))]);
+    settings.style[part] = JSON.parse(JSON.stringify(defaults.style[part]));
+    if (settings.style.presets && settings.style.presets[part]) delete settings.style.presets[part];
+    for (const [k, v] of keep) setPath(settings, k, v);
+    for (const k of keys) if (k.startsWith(`style.${part}.`)) keys.delete(k);
+  }
+  for (const k of keys) {
+    const v = getPath(defaults, k);
+    setPath(settings, k, v === undefined ? null : JSON.parse(JSON.stringify(v)));
+  }
+  renderFields();
+  scheduleSave();
+  if (section.querySelector('[data-hotkey]')) setTimeout(() => applyHotkeys(), 400);
+}
+
+for (const section of document.querySelectorAll('main > section[data-tab]')) {
+  if (['thread', 'misc'].includes(section.dataset.tab)) continue;
+  const row = document.createElement('div');
+  row.className = 'inline tab-reset';
+  const btn = document.createElement('button');
+  btn.className = 'secondary';
+  const LABEL = 'このタブの設定を最初の状態に戻す';
+  btn.textContent = LABEL;
+  const msg = document.createElement('span');
+  msg.className = 'unit';
+  row.append(btn, msg);
+  section.appendChild(row);
+  let armedUntil = 0;
+  let timer = null;
+  btn.addEventListener('click', async () => {
+    if (Date.now() > armedUntil) {
+      armedUntil = Date.now() + 5000;
+      btn.textContent = '本当に戻す(もう一度押す)';
+      msg.textContent = 'このタブの設定だけが最初の状態に戻ります。戻す時は5秒以内にもう一度押してください';
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        btn.textContent = LABEL;
+        msg.textContent = '';
+      }, 5000);
+      return;
+    }
+    armedUntil = 0;
+    clearTimeout(timer);
+    btn.textContent = LABEL;
+    try {
+      await resetTab(section);
+      msg.textContent = 'このタブの設定を最初の状態に戻しました';
+    } catch (e) {
+      msg.textContent = `戻せませんでした: ${e}`;
+    }
+  });
+}
+
 // ---- 参照ボタン ----
 document.getElementById('pickExeBtn').addEventListener('click', async () => {
   const path = await invoke('comments_pick_exe').catch(() => null);
