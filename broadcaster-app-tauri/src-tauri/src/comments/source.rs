@@ -118,18 +118,31 @@ pub struct ThreadReader {
     pub last_no: u32,
     /// 2ch互換のdatで、ここまで(改行で終わる完全な行まで)読んだバイト数
     bytes_read: u64,
+    /// タイトルをスレッド一覧から探したか(1回だけ)
+    title_looked_up: bool,
 }
 
 impl ThreadReader {
     pub fn new(thread: ThreadRef) -> Self {
-        Self { thread, title: None, last_no: 0, bytes_read: 0 }
+        Self { thread, title: None, last_no: 0, bytes_read: 0, title_looked_up: false }
     }
 
     pub async fn poll(&mut self, client: &reqwest::Client) -> Result<Vec<RawPost>, String> {
-        match self.thread.board.clone() {
+        let posts = match self.thread.board.clone() {
             Board::Nch { origin, board } => self.poll_nch(client, &origin, &board).await,
             Board::Shitaraba { category, board } => self.poll_shitaraba(client, &category, &board).await,
+        }?;
+        // タイトルは>>1にしか入っていないので、>>1が削除されている時などは取れない(したらば
+        // では削除されたレスは返ってこない)。その時は板のスレッド一覧から探す(1回だけ)
+        if self.title.is_none() && !self.title_looked_up {
+            self.title_looked_up = true;
+            if let Ok(list) = list_threads(client, &self.thread.board).await {
+                if let Some(t) = list.into_iter().find(|t| t.key == self.thread.key) {
+                    self.title = Some(t.title);
+                }
+            }
         }
+        Ok(posts)
     }
 
     async fn poll_nch(

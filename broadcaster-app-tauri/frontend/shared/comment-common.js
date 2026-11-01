@@ -26,7 +26,7 @@
       // 'slide-left'=左からスライド / 'slide-up'=下からスライド
       appear: 'instant',
       vertical: false,
-      align: 'center',
+      align: 'left',
       // 縦の基準: 'top'=表示範囲の上端から下へ(1行目の位置が毎回同じ) / 'bottom'=下端に揃えて上へ
       valign: 'top',
       showResNumber: true,
