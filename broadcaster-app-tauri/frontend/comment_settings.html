@@ -375,7 +375,7 @@
         <button id="postBtn">書き込む</button>
         <label class="unit" style="display:inline-flex; align-items:center; gap:4px"><input type="checkbox" data-key="postShiftEnter" /> Shift+Enterで書き込む</label>
         <span id="postMsg" class="unit"></span>
-        <span class="help" data-help="jpnkn等の2ちゃんねる互換の掲示板だけに書き込めます(したらば掲示板には書き込めません)。"></span>
+        <span class="help" data-help="jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に書き込めます。"></span>
       </div>
       <div id="postMenu"></div>
       <div id="readingDialog">
@@ -650,7 +650,7 @@
 
     <!-- ================= 次スレ作成 ================= -->
     <section data-tab="create">
-      <p class="lead">指定したレス数に達したら、同じ板に次スレを自動で建てます。<span class="help" data-help="取得中のスレッドと同じ掲示板に建てます(今のところjpnkn等の2ちゃんねる互換の掲示板のみ)。既に次スレが建っている場合は建てません。1000を超えた後は「掲示板」タブの設定どおり次スレへ自動で移ります。"></span></p>
+      <p class="lead">指定したレス数に達したら、同じ板に次スレを自動で建てます。<span class="help" data-help="取得中のスレッドと同じ掲示板に建てます(jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板)。既に次スレが建っている場合は建てません。1000を超えた後は「掲示板」タブの設定どおり次スレへ自動で移ります。"></span></p>
       <div class="field"><label>次スレを自動で建てる</label><div><input type="checkbox" data-key="autoCreateThread" /></div></div>
       <div class="field"><label>建てるレス数</label><div><input type="number" min="1" max="999" data-key="createThreadCount" /></div></div>
       <div class="field"><label>次スレのタイトル<span class="help" data-help="{next} = 今のタイトルの最後の数字を1増やしたもの(「539」→「540」、「雑談 part9」→「雑談 part10」)、{n} = その数字だけ。例: 「配信スレ{n}」"></span></label><div><input type="text" class="wide" data-key="createTitleTemplate" /></div></div>

@@ -322,8 +322,9 @@ pub fn pick_next(threads: &[ThreadInfo], current_key: &str, keyword: &str) -> Op
         .cloned()
 }
 
-/// 次スレを建てる(2ch互換の掲示板のみ。`/test/bbs.cgi`にShift_JISのフォームで
-/// POSTする、ブラウザの「スレッド作成」ボタンと同じ送り方)。
+/// 次スレを建てる。2ch互換の掲示板は`/test/bbs.cgi`にShift_JISのフォームで、したらばは
+/// `/bbs/write.cgi/{カテゴリ}/{板}/new/`にEUC-JPのフォームでPOSTする(どちらもブラウザの
+/// 「スレッド作成」ボタンと同じ送り方)。
 pub async fn create_thread(
     client: &reqwest::Client,
     board: &Board,
@@ -332,13 +333,33 @@ pub async fn create_thread(
     mail: &str,
     body: &str,
 ) -> Result<(), String> {
-    let Board::Nch { origin, board } = board else {
-        return Err("スレッドの自動作成は、今のところ2ちゃんねる互換の掲示板(jpnkn等)だけに対応しています".into());
-    };
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let (origin, board) = match board {
+        Board::Nch { origin, board } => (origin, board),
+        Board::Shitaraba { category, board } => {
+            let form = [
+                ("DIR", category.as_str()),
+                ("BBS", board.as_str()),
+                ("TIME", &time.to_string()),
+                ("SUBJECT", title),
+                ("NAME", name),
+                ("MAIL", mail),
+                ("MESSAGE", body),
+                ("submit", "新規書き込み"),
+            ];
+            return shitaraba_write(
+                client,
+                &format!("{SHITARABA}/bbs/write.cgi/{category}/{board}/new/"),
+                &format!("{SHITARABA}/{category}/{board}/"),
+                &form,
+                "スレッドの作成",
+            )
+            .await;
+        }
+    };
     let form = [
         ("bbs", board.as_str()),
         ("subject", title),
@@ -366,7 +387,7 @@ pub async fn create_thread(
     check_post_result(status.is_success(), &html, "スレッドの作成")
 }
 
-/// スレッドにレスを書き込む(2ch互換の掲示板のみ)。
+/// スレッドにレスを書き込む(2ch互換の掲示板と、したらば)。
 pub async fn post_reply(
     client: &reqwest::Client,
     thread: &ThreadRef,
@@ -374,13 +395,33 @@ pub async fn post_reply(
     mail: &str,
     body: &str,
 ) -> Result<(), String> {
-    let Board::Nch { origin, board } = &thread.board else {
-        return Err("書き込みは、今のところ2ちゃんねる互換の掲示板(jpnkn等)だけに対応しています".into());
-    };
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let (origin, board) = match &thread.board {
+        Board::Nch { origin, board } => (origin, board),
+        Board::Shitaraba { category, board } => {
+            let form = [
+                ("DIR", category.as_str()),
+                ("BBS", board.as_str()),
+                ("KEY", thread.key.as_str()),
+                ("TIME", &time.to_string()),
+                ("NAME", name),
+                ("MAIL", mail),
+                ("MESSAGE", body),
+                ("submit", "書き込む"),
+            ];
+            return shitaraba_write(
+                client,
+                &format!("{SHITARABA}/bbs/write.cgi/{category}/{board}/{}/", thread.key),
+                &thread.read_url(),
+                &form,
+                "書き込み",
+            )
+            .await;
+        }
+    };
     let form = [
         ("bbs", board.as_str()),
         ("key", thread.key.as_str()),
@@ -408,6 +449,37 @@ pub async fn post_reply(
     check_post_result(status.is_success(), &html, "書き込み")
 }
 
+/// したらばのwrite.cgiにEUC-JPのフォームで送る(書き込み・スレッド作成)。成功すると
+/// 「書きこみました」のページか、スレッドのページへの移動が返ってくる
+async fn shitaraba_write(
+    client: &reqwest::Client,
+    url: &str,
+    referer: &str,
+    form: &[(&str, &str)],
+    what: &str,
+) -> Result<(), String> {
+    let body = form
+        .iter()
+        .map(|(k, v)| format!("{k}={}", form_encode(EUC_JP, v)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let resp = client
+        .post(url)
+        .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(reqwest::header::REFERER, referer)
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("{what}に失敗しました: {e}"))?;
+    let status = resp.status();
+    let moved_to_thread = resp.url().path().contains("/read.cgi/");
+    let bytes = resp.bytes().await.map_err(|e| format!("{what}に失敗しました: {e}"))?;
+    if status.is_success() && moved_to_thread {
+        return Ok(());
+    }
+    check_post_result(status.is_success(), &decode(EUC_JP, &bytes), what)
+}
+
 /// bbs.cgiの応答から成功/失敗を判定する(2ch互換の掲示板は、成功時に
 /// タイトルが「書きこみました」のページを返す)。whatはエラー文言用(「書き込み」等)。
 fn check_post_result(http_ok: bool, html: &str, what: &str) -> Result<(), String> {
@@ -425,7 +497,12 @@ fn check_post_result(http_ok: bool, html: &str, what: &str) -> Result<(), String
 
 /// Shift_JISにしてからパーセントエンコードする(2ch互換のbbs.cgiの送り方)。
 fn sjis_form_encode(s: &str) -> String {
-    let (bytes, _, _) = SHIFT_JIS.encode(s);
+    form_encode(SHIFT_JIS, s)
+}
+
+/// 掲示板の文字コードにしてからパーセントエンコードする。
+fn form_encode(enc: &'static Encoding, s: &str) -> String {
+    let (bytes, _, _) = enc.encode(s);
     let mut out = String::with_capacity(bytes.len() * 3);
     for &b in bytes.iter() {
         match b {
@@ -512,6 +589,12 @@ mod tests {
                 posts.last().map(|p| super::super::text::html_to_text(&p.body_html))
             );
         });
+    }
+
+    #[test]
+    fn euc_form_encoding() {
+        assert_eq!(form_encode(EUC_JP, "あ a&"), "%A4%A2+a%26");
+        assert_eq!(form_encode(EUC_JP, "新規書き込み"), "%BF%B7%B5%AC%BD%F1%A4%AD%B9%FE%A4%DF");
     }
 
     #[test]

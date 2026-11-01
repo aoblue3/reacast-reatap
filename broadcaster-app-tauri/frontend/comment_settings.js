@@ -1315,7 +1315,7 @@ let draftTimer = null;
 /** 入力途中の設定でタイトルと>>1を作って表示する(実際には建てない)。 */
 async function renderDraft() {
   const text = templateEl.value;
-  // 2ちゃんねる互換の掲示板の本文はShift_JISで数えるので、全角は2バイトとして数える
+  // 掲示板の本文はShift_JIS(したらばはEUC-JP)で数えるので、全角は2バイトとして数える
   const bytes = Array.from(text).reduce((n, c) => n + (c.charCodeAt(0) < 0x80 ? 1 : 2), 0);
   document.getElementById('templateCount').textContent =
     `${text.split('\n').length}行 / ${Array.from(text).length}文字(約${bytes}バイト)`;
