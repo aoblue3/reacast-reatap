@@ -315,6 +315,7 @@ fn sync_desktop_window(app: &tauri::AppHandle, list: bool) {
         (true, Some(win)) => {
             // 位置の調整中はマウスで掴めるようにし、それ以外はクリックを透過する
             let _ = win.set_ignore_cursor_events(!adjusting);
+            let _ = win.set_always_on_top(engine.settings().desktop_topmost || adjusting);
             if !adjusting {
                 let (pos, size) = subtitle_target_geometry(app, list);
                 let _ = win.set_position(tauri::Position::Physical(pos));
@@ -335,13 +336,14 @@ fn create_subtitle_window(app: &tauri::AppHandle, list: bool) -> tauri::Result<(
     // 字幕の画面(subtitle.html)・レス一覧の画面(comments.html)はOBSのブラウザソースと
     // 同じファイル。Tauriの中で開かれた時も、OBSと同じくobs_bridgeのWebSocketから
     // 受け取る(表示のタイミングをOBS側と完全に揃えるため)。
+    let topmost = app.state::<Arc<comments::CommentEngine>>().settings().desktop_topmost;
     let (page, title) = if list { ("comments.html", "ReaCast レス一覧") } else { ("subtitle.html", "ReaCast 字幕") };
     let win = WebviewWindowBuilder::new(app, desktop_label(list), WebviewUrl::App(page.into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title(title)
         .decorations(false)
         .transparent(true)
-        .always_on_top(true)
+        .always_on_top(topmost || app.state::<Arc<comments::CommentEngine>>().adjusting(list))
         .skip_taskbar(true)
         // 位置の調整中に右下を掴んで大きさを変えられるようにする(枠なしなので、
         // 普段はOSの枠からは大きさを変えられない)
@@ -705,7 +707,10 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                             if matches!(sub.is_visible(), Ok(false)) {
                                 let _ = sub.show();
                             }
-                            reassert_topmost(&sub);
+                            // 「最前面に表示する」がOFFの時は前に出し直さない
+                            if reassert_handle.state::<Arc<comments::CommentEngine>>().settings().desktop_topmost {
+                                reassert_topmost(&sub);
+                            }
                         }
                     }
                 }

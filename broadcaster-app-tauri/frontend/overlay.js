@@ -3319,6 +3319,300 @@ function spawnThunder(opts) {
 }
 
 /**
+ * 💴 お金: 下から放り投げられたお札が、くるくる裏返りながら左右に揺れて舞い落ちる。
+ * 落ちた時に、画面に🐷がいれば、お札がそこへ吸い込まれて🐷が貯金箱のようにぷくっと
+ * 膨らむ(続けて入れるとだんだん丸くなる)。🐷がいなくてほかの生き物がいれば、一番近い子が
+ * 走ってきてくわえて持っていく。誰もいなければ、しばらく置かれてから消える。
+ * 動きはtransformだけ(光らせない)。
+ */
+let moneyStyleAdded = false;
+const MONEY_FLOOR_WAIT_MS = 1600;
+const PIGGY_STAY_MS = 2600;
+
+function addMoneyStyle() {
+  addHotelStyle();
+  if (moneyStyleAdded) return;
+  moneyStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .money-coin { animation: money-coin 900ms ease-out forwards; }
+    @keyframes money-coin {
+      0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+      20% { opacity: 1; transform: translate(0, -60%) scale(1); }
+      100% { opacity: 0; transform: translate(var(--dx, 0px), -170%) scale(0.8) rotate(var(--rot, 0deg)); }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnMoney(opts) {
+  addMoneyStyle();
+  // 舞い方は、OBSと自分の画面で同じになるように種から決める
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = stageW();
+  const vh = stageH();
+  const base = settings.baseSizePx;
+  const size = base * 1.1;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item money-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 500ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+  let finished = false;
+  const removeBox = () => {
+    box.remove();
+    const idx = activeItems.indexOf(box);
+    if (idx !== -1) activeItems.splice(idx, 1);
+  };
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(removeBox, afterMs + 550);
+  };
+
+  const part = (char, sz) => {
+    const p = document.createElement('span');
+    p.className = 'hotel-part';
+    p.style.fontSize = `${sz}px`;
+    p.style.left = '0';
+    p.style.top = '0';
+    const g = document.createElement('span');
+    g.className = 'reaction-glyph';
+    setGlyph(g, char);
+    p.appendChild(g);
+    return p;
+  };
+
+  // ---- 放り投げて、ひらひら舞い落ちる ----
+  const x0 = vw * (0.12 + rnd() * 0.76);
+  const peakY = vh * (0.15 + rnd() * 0.25);
+  const floorY = vh - size * 0.75;
+  const tossMs = 520;
+  const fallMs = Math.round(2200 + rnd() * 700);
+  const swayAmp = base * (0.7 + rnd() * 0.6);
+  const swayHz = 0.55 + rnd() * 0.3;
+  const flipHz = 1.1 + rnd() * 0.6;
+  const phase = rnd() * Math.PI * 2;
+  const total = tossMs + fallMs;
+  const tr = (x, y, rot, flip) => `translate(${x - size / 2}px, ${y - size / 2}px) rotate(${rot}deg) scaleX(${flip})`;
+  const swayX = (t) => Math.max(size, Math.min(vw - size, x0 + (Math.sin(phase + t * swayHz * Math.PI * 2) - Math.sin(phase)) * swayAmp));
+  const frames = [];
+  // 投げ上げ: 下から頂上まで(だんだん遅く)、回りながら
+  for (let i = 0; i <= 8; i++) {
+    const u = i / 8;
+    const e = 1 - (1 - u) * (1 - u);
+    const y = vh + size + (peakY - vh - size) * e;
+    frames.push({ transform: tr(x0, y, -200 * (1 - e), 1), offset: (u * tossMs) / total });
+  }
+  // 舞い落ち: 左右に揺れて、揺れに合わせて傾き、ときどき裏返る(scaleXで紙が回って見える)。
+  // 落ち始めはゆっくり、すぐに一定の速さになる
+  const STEPS = 36;
+  for (let i = 1; i <= STEPS; i++) {
+    const u = i / STEPS;
+    const t = (u * fallMs) / 1000;
+    const c = Math.cos(phase + t * swayHz * Math.PI * 2);
+    const fallU = u < 0.15 ? (u * u) / 0.3 : u - 0.075;
+    const y = peakY + ((floorY - peakY) * fallU) / 0.925;
+    let flip = u === 1 ? 1 : Math.cos(t * flipHz * Math.PI * 2);
+    if (Math.abs(flip) < 0.15) flip = flip < 0 ? -0.15 : 0.15;
+    frames.push({ transform: tr(swayX(t), y, u === 1 ? 0 : c * 28, flip), offset: (tossMs + u * fallMs) / total });
+  }
+  const landX = swayX(fallMs / 1000);
+  const bill = part('💴', size);
+  bill.style.zIndex = '2';
+  bill.style.willChange = 'transform';
+  bill.style.transform = frames[0].transform;
+  box.appendChild(bill);
+  bill.animate(frames, { duration: total, easing: 'linear', fill: 'forwards' });
+
+  // ---- 落ちたら、誰が持っていくか決める(OBSと自分の画面で同じ刻みで決める) ----
+  const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
+  // 投げ上げの頂上で🐷がいれば、そのまま🐷へ吸い込まれる(貯金中の🐷がいればその子)。
+  // いなければ舞い落ちて、落ちた時に拾いに来る子を探す
+  let pigChecked = false;
+  simAdd(startAt, (now) => {
+    if (!box.isConnected) return false;
+    const t = now - startAt;
+    if (!pigChecked && t >= tossMs) {
+      pigChecked = true;
+      const pig = findPiggy() || adoptPig();
+      if (pig) {
+        bill.getAnimations().forEach((a) => a.cancel());
+        bill.style.transform = tr(x0, peakY, 0, 1);
+        deposit(pig, x0, peakY);
+        return false;
+      }
+    }
+    if (t < total) return true;
+    land();
+    return false;
+  });
+
+  function land() {
+    bill.getAnimations().forEach((a) => a.cancel());
+    bill.style.transform = tr(landX, floorY, 0, 1);
+    // 落ちた時に🐷が来ていれば、やっぱり貯金
+    const pig = findPiggy() || adoptPig();
+    if (pig) {
+      deposit(pig, landX, floorY);
+      return;
+    }
+    // ほかの生き物が拾いに来る(一番近い子)
+    const near = activeItems
+      .filter((o) => o !== box && o.isConnected && o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating && !o.dataset.starred)
+      .map((o) => ({ o, r: rectOf(o) }))
+      .filter((c) => c.r.width > 0)
+      .sort((a, b) => Math.hypot(a.r.left - landX, a.r.top - floorY) - Math.hypot(b.r.left - landX, b.r.top - floorY))[0];
+    if (near) {
+      fetchBy(near.o);
+      return;
+    }
+    // 誰もいなければ、置かれたまま消える
+    finish(MONEY_FLOOR_WAIT_MS);
+  }
+
+  /** 貯金中の🐷(ほかの💴の演出の中にいる) */
+  function findPiggy() {
+    return Array.from(stage.querySelectorAll('[data-piggy]')).find((p) => p.isConnected && !p.dataset.leaving && !p.dataset.starred) || null;
+  }
+
+  /** 画面の🐷を、この演出の中の貯金箱役にする。この演出は、🐷が帰るまで残す */
+  function adoptPig() {
+    const item = activeItems.find((o) => o !== box && o.isConnected && o.dataset.emojiId === 'pig' && !o.dataset.dating && !o.dataset.starred && rectOf(o).width > 0);
+    if (!item) return null;
+    item.dataset.dating = '1';
+    const t = takeOver(item, box);
+    const pig = t.el;
+    pig.dataset.piggy = '1';
+    pig.dataset.fat = '0';
+    pig.style.transformOrigin = '50% 90%';
+    pig.style.zIndex = '1';
+    finished = true;
+    let until = Date.now() + PIGGY_STAY_MS;
+    pig.extendStay = () => (until = Date.now() + PIGGY_STAY_MS);
+    const check = setInterval(() => {
+      if (!box.isConnected) return clearInterval(check);
+      if (Date.now() < until) return;
+      clearInterval(check);
+      // 満足して、とことこ画面の外へ帰る
+      pig.dataset.leaving = '1';
+      const r = rectOf(pig);
+      const toRight = r.left + r.width / 2 > vw / 2;
+      pig.firstChild.classList.add('hotel-hop');
+      pig.style.transition = 'left 1400ms linear';
+      pig.style.left = `${toRight ? vw + r.width : -r.width * 2}px`;
+      setTimeout(() => (box.style.opacity = '0'), 1000);
+      setTimeout(removeBox, 1550);
+    }, 250);
+    return pig;
+  }
+
+  /** お札が🐷に吸い込まれて、🐷がぷくっと膨らむ */
+  function deposit(pig, fx, fy) {
+    if (pig.extendStay) pig.extendStay();
+    const r = rectOf(pig);
+    const px = r.left + r.width / 2;
+    const py = r.top + r.height * 0.3;
+    const midX = (fx + px) / 2;
+    const midY = Math.min(fy, py) - base * 1.2;
+    bill.animate(
+      [
+        { transform: tr(fx, fy, 0, 1) },
+        { transform: `${tr(midX, midY, 180, 1)} scale(0.8)`, offset: 0.5 },
+        { transform: `${tr(px, py, 360, 1)} scale(0.15)` },
+      ],
+      { duration: 620, easing: 'ease-in', fill: 'forwards' },
+    );
+    setTimeout(() => {
+      bill.remove();
+      if (!box.contains(pig)) finish(300);
+      if (!pig.isConnected) return;
+      if (pig.extendStay) pig.extendStay();
+      // だんだん丸くなる(5枚まで)
+      const fat = Math.min(5, Number(pig.dataset.fat || 0) + 1);
+      pig.dataset.fat = String(fat);
+      const sx = 1 + fat * 0.09;
+      const sy = 1 + fat * 0.04;
+      pig.animate(
+        [
+          { transform: `scale(${sx - 0.09}, ${sy - 0.04})` },
+          { transform: `scale(${sx + 0.25}, ${sy + 0.12})`, offset: 0.35 },
+          { transform: `scale(${sx - 0.05}, ${sy + 0.06})`, offset: 0.65 },
+          { transform: `scale(${sx}, ${sy})` },
+        ],
+        { duration: 420, easing: 'ease-out', fill: 'forwards' },
+      );
+      // チャリン: 小さな🪙がぴょんと飛び出す
+      const coin = part('🪙', base * 0.45);
+      coin.style.left = `${px - base * 0.22}px`;
+      coin.style.top = `${r.top - base * 0.3}px`;
+      coin.style.zIndex = '3';
+      coin.firstChild.classList.add('money-coin');
+      coin.firstChild.style.setProperty('--dx', `${(rnd() - 0.5) * base}px`);
+      coin.firstChild.style.setProperty('--rot', `${(rnd() - 0.5) * 120}deg`);
+      pig.parentNode.appendChild(coin);
+      setTimeout(() => coin.remove(), 950);
+    }, 620);
+  }
+
+  /** 生き物が走ってきて、お札をくわえて画面の外へ持っていく */
+  function fetchBy(item) {
+    item.dataset.dating = '1';
+    const t = takeOver(item, box);
+    const w = t.el;
+    w.style.zIndex = '1';
+    w.firstChild.classList.add('hotel-hop');
+    const cs = t.size;
+    const tx = landX - cs / 2;
+    const ty = floorY + size * 0.45 - cs;
+    // 🐈は左向きの絵文字なので、右へ走る時は左右反転する
+    const face = (right) => {
+      if (t.glyph.textContent === '🐈') w.style.transform = right ? 'scaleX(-1)' : '';
+    };
+    face(tx > t.x);
+    const runMs = Math.round(Math.min(1600, Math.max(600, Math.hypot(tx - t.x, ty - t.y) * 1.4)));
+    w.style.transition = `left ${runMs}ms linear, top ${runMs}ms linear`;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        w.style.left = `${tx}px`;
+        w.style.top = `${ty}px`;
+      }),
+    );
+    setTimeout(() => {
+      if (!w.isConnected) return finish(0);
+      // くわえる: お札を生き物の口のあたりに付けて、一緒に動かす
+      bill.getAnimations().forEach((a) => a.cancel());
+      bill.style.left = '0';
+      bill.style.top = '0';
+      // 🐈(横向き)は顔の前(絵の左。右へ走る時は窓ごと反転する)、ほかの子(正面向き)は口の下
+      bill.style.fontSize = `${cs * 0.55}px`;
+      bill.style.transform =
+        t.glyph.textContent === '🐈'
+          ? `translate(${-cs * 0.28}px, ${cs * 0.42}px) rotate(-14deg)`
+          : `translate(${cs * 0.22}px, ${cs * 0.62}px) rotate(-10deg)`;
+      w.appendChild(bill);
+      // 近い方の画面の端へ走って帰る
+      const right = landX > vw / 2;
+      face(right);
+      const outX = right ? vw + cs : -cs * 2;
+      const outMs = Math.round(Math.min(2200, Math.max(700, Math.abs(outX - tx) * 1.3)));
+      w.style.transition = `left ${outMs}ms linear`;
+      requestAnimationFrame(() => (w.style.left = `${outX}px`));
+      finish(outMs);
+    }, runMs + 120);
+  }
+}
+
+/**
  * ReaCastから届いたリアクションを表示する。自分の画面とOBSは届くのが少しずれることがある
  * ので、ReaCastが決めた時刻(at。少し先)に合わせて同時に出す。乱数も同じ種から作る
  */
@@ -3366,6 +3660,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'thunder') {
     spawnThunder(opts);
+    return;
+  }
+  if (emojiId === 'money') {
+    spawnMoney(opts);
     return;
   }
 
