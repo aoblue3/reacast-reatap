@@ -10,11 +10,15 @@ use encoding_rs::{Encoding, EUC_JP, SHIFT_JIS};
 use reqwest::header::{HeaderValue, RANGE};
 use reqwest::{StatusCode, Url};
 
+/// したらばのサーバー。以前のjbbs.shitaraba.jpは無くなっていて(名前が引けない)、今は
+/// jbbs.shitaraba.netだけ(2026-11-01に確認。古いURLを貼られても、こちらで読む)
+const SHITARABA: &str = "https://jbbs.shitaraba.net";
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Board {
     /// 2ch互換。origin例: `https://bbs.jpnkn.com`、board例: `example`
     Nch { origin: String, board: String },
-    /// したらば。`https://jbbs.shitaraba.jp/bbs/read.cgi/{category}/{board}/{key}/`
+    /// したらば。`https://jbbs.shitaraba.net/bbs/read.cgi/{category}/{board}/{key}/`
     Shitaraba { category: String, board: String },
 }
 
@@ -29,7 +33,7 @@ impl ThreadRef {
         match &self.board {
             Board::Nch { origin, board } => format!("{origin}/test/read.cgi/{board}/{}/", self.key),
             Board::Shitaraba { category, board } => {
-                format!("https://jbbs.shitaraba.jp/bbs/read.cgi/{category}/{board}/{}/", self.key)
+                format!("{SHITARABA}/bbs/read.cgi/{category}/{board}/{}/", self.key)
             }
         }
     }
@@ -45,10 +49,10 @@ pub fn parse_url(input: &str) -> Result<(Board, Option<String>), String> {
         .map(|s| s.filter(|x| !x.is_empty()).collect())
         .unwrap_or_default();
 
-    if host == "jbbs.shitaraba.jp" || host == "jbbs.livedoor.jp" {
-        // /bbs/read.cgi/{cat}/{board}/{key}/  または  /{cat}/{board}/
+    if matches!(host.as_str(), "jbbs.shitaraba.net" | "jbbs.shitaraba.jp" | "jbbs.livedoor.jp") {
+        // /bbs/read.cgi/{cat}/{board}/{key}/  (スマホ版は/bbs/lite/read.cgi/…)  または  /{cat}/{board}/
         let rest: Vec<&str> = match segs.as_slice() {
-            ["bbs", "read.cgi" | "rawmode.cgi", rest @ ..] => rest.to_vec(),
+            ["bbs", "lite", "read.cgi" | "rawmode.cgi", rest @ ..] | ["bbs", "read.cgi" | "rawmode.cgi", rest @ ..] => rest.to_vec(),
             rest => rest.to_vec(),
         };
         return match rest.as_slice() {
@@ -190,7 +194,7 @@ impl ThreadReader {
         board: &str,
     ) -> Result<Vec<RawPost>, String> {
         let url = format!(
-            "https://jbbs.shitaraba.jp/bbs/rawmode.cgi/{category}/{board}/{}/{}-",
+            "{SHITARABA}/bbs/rawmode.cgi/{category}/{board}/{}/{}-",
             self.thread.key,
             self.last_no + 1
         );
@@ -240,7 +244,7 @@ pub async fn list_threads(client: &reqwest::Client, board: &Board) -> Result<Vec
     let (url, enc) = match board {
         Board::Nch { origin, board } => (format!("{origin}/{board}/subject.txt"), SHIFT_JIS),
         Board::Shitaraba { category, board } => {
-            (format!("https://jbbs.shitaraba.jp/{category}/{board}/subject.txt"), EUC_JP)
+            (format!("{SHITARABA}/{category}/{board}/subject.txt"), EUC_JP)
         }
     };
     let resp = client.get(&url).send().await.map_err(|e| format!("スレッド一覧の取得に失敗しました: {e}"))?;
@@ -461,7 +465,12 @@ mod tests {
         let (_, k) = parse_url("https://jbbs.shitaraba.jp/game/12345/").unwrap();
         assert_eq!(k, None);
         let t = ThreadRef { board: b, key: "1700000000".into() };
-        assert_eq!(t.read_url(), "https://jbbs.shitaraba.jp/bbs/read.cgi/game/12345/1700000000/");
+        assert_eq!(t.read_url(), "https://jbbs.shitaraba.net/bbs/read.cgi/game/12345/1700000000/");
+        // 今のURL(.net)とスマホ版
+        let (b2, k2) = parse_url("https://jbbs.shitaraba.net/bbs/read.cgi/game/12345/1700000000/l50").unwrap();
+        assert_eq!((b2, k2.as_deref()), (t.board.clone(), Some("1700000000")));
+        let (_, k3) = parse_url("https://jbbs.shitaraba.net/bbs/lite/read.cgi/game/12345/1700000000/").unwrap();
+        assert_eq!(k3.as_deref(), Some("1700000000"));
     }
 
     #[test]
@@ -473,6 +482,7 @@ mod tests {
     /// 実際の2ch互換の掲示板からスレッド一覧とレスを取得する(ネットワークに
     /// 繋ぐので普段は実行しない)。使う板は環境変数で指定する:
     /// `REACAST_TEST_BOARD_URL=https://bbs.jpnkn.com/板名/ cargo test -- --ignored`
+    /// (したらばなら`https://jbbs.shitaraba.net/computer/10298/`(公式のサポート板)など)
     /// 差分取得(2回目のpollで新着が無ければ空)も確認する。
     #[test]
     #[ignore]
@@ -490,7 +500,8 @@ mod tests {
             let posts = reader.poll(&client).await.unwrap();
             assert!(!posts.is_empty());
             assert_eq!(posts[0].no, 1);
-            assert_eq!(reader.last_no as usize, posts.len());
+            // 削除されたレスがあると番号が飛ぶ(したらば)ので、数ではなく最後の番号で確かめる
+            assert_eq!(reader.last_no, posts.last().unwrap().no);
             assert!(reader.title.is_some());
             let again = reader.poll(&client).await.unwrap();
             assert!(again.is_empty(), "新着が無ければ差分は空");
