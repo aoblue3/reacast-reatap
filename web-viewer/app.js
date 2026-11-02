@@ -283,6 +283,26 @@ iconScaleRange.addEventListener('change', () => {
   lsSet('iconScale', iconScale);
 });
 
+/* ------------------------- Googleの絵文字 ------------------------- */
+// ONの時だけGoogle Fontsから読み込む(ブラウザに合った形式で、使う絵文字の分だけ届く)
+const googleEmojiBox = document.getElementById('googleEmojiBox');
+function applyGoogleEmoji(on) {
+  googleEmojiBox.checked = on;
+  document.documentElement.classList.toggle('google-emoji', on);
+  if (on && !document.getElementById('googleEmojiCss')) {
+    const link = document.createElement('link');
+    link.id = 'googleEmojiCss';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap';
+    document.head.appendChild(link);
+  }
+}
+applyGoogleEmoji(lsGet('googleEmoji', false) === true);
+googleEmojiBox.addEventListener('change', () => {
+  lsSet('googleEmoji', googleEmojiBox.checked);
+  applyGoogleEmoji(googleEmojiBox.checked);
+});
+
 resetOrderBtn.addEventListener('click', () => {
   reactionOrder = null;
   hiddenReactionIds = [];
