@@ -1579,6 +1579,10 @@ async function loadMonitors() {
 
 // ---- 開始・停止・状態表示 ----
 function showStatusError(text) {
+  // シンプルモードでは上の状態表示が隠れているので、そちらにも出す
+  const simple = document.getElementById('simpleStatus');
+  simple.className = 'simple-status ng';
+  simple.textContent = text;
   statusEl.textContent = '';
   const span = document.createElement('span');
   span.className = 'ng';
@@ -2477,24 +2481,40 @@ for (const btn of document.querySelectorAll('#simpleModeOn, [data-simple-on]')) 
 document.getElementById('simpleModeOff').addEventListener('click', () => setSimpleMode(false));
 document.getElementById('simpleStart').addEventListener('click', () => startBtn.click());
 document.getElementById('simpleStop').addEventListener('click', () => stopBtn.click());
+document.getElementById('simplePause').addEventListener('click', () => pauseBtn.click());
+document.getElementById('simpleSkip').addEventListener('click', () => document.getElementById('skipBtn').click());
 document.getElementById('simpleTest').addEventListener('click', () => {
-  invoke('comments_test', { text: 'テスト表示です。字幕と読み上げを確認できます' });
+  const text = document.getElementById('simpleTestText').value.trim();
+  if (text) invoke('comments_test', { text });
 });
-document.getElementById('simpleCopyUrl').addEventListener('click', async (e) => {
-  const btn = e.currentTarget;
-  try {
-    await navigator.clipboard.writeText(document.getElementById('urlSubtitle').textContent);
-    btn.textContent = 'コピーしました';
-    setTimeout(() => (btn.textContent = '字幕のURLをコピー'), 1500);
-  } catch {
-    // 無視(かんたん設定の「OBSに貼るURL」からもコピーできる)
-  }
+// 細かい設定のボタンは、普通の画面に戻ってそのタブを開く
+for (const btn of document.querySelectorAll('[data-simple-open]')) {
+  btn.addEventListener('click', () => {
+    setSimpleMode(false);
+    showTab(btn.dataset.simpleOpen);
+  });
+}
+// 読み上げソフトの選択肢は「声・速さ」タブのものを使い回す
+for (const sel of document.querySelectorAll('[data-engine-mirror]')) sel.innerHTML = document.getElementById('speechEngine').innerHTML;
+for (const btn of document.querySelectorAll('[data-simple-fetch-speakers]')) btn.addEventListener('click', () => fetchSpeakers(false));
+// 「視聴者のリアクションを表示する」(かんたん設定・コントロールパネルと同じ)
+const simpleReactions = document.getElementById('simpleReactionsEnabled');
+invoke('cfg_get', { key: 'reactionsEnabled' }).then((v) => {
+  simpleReactions.checked = v !== false;
+});
+simpleReactions.addEventListener('change', () => {
+  invoke('set_reactions_enabled', { enabled: simpleReactions.checked }).catch((e) => showStatusError(String(e)));
+});
+listen('reactions:enabled', (e) => {
+  simpleReactions.checked = !!e.payload;
 });
 
 function renderSimpleStatus(s) {
   const el = document.getElementById('simpleStatus');
   document.getElementById('simpleStop').disabled = !s.running;
   document.getElementById('simpleStart').textContent = s.running ? '▶ 再開始' : '▶ 開始';
+  document.getElementById('simplePause').textContent = s.paused ? '再開' : '一時停止';
+  document.getElementById('simpleSkip').disabled = !s.running;
   el.className = 'simple-status';
   if (!s.running) {
     el.textContent = '停止中';

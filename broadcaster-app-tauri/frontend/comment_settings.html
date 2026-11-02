@@ -255,7 +255,16 @@
   .simple-status { text-align: center; font-size: 16px; font-weight: bold; padding: 12px; border-radius: 10px; background: var(--c-24262d); border: 2px solid var(--c-3a3d47); }
   .simple-status.on { color: var(--c-7dff9a); border-color: var(--c-7dff9a); }
   .simple-status.ng { color: var(--c-ff8a8a); border-color: var(--c-ff8a8a); }
-  .simple-main-buttons { display: flex; gap: 12px; margin: 12px 0 18px; }
+  .simple-main-buttons { display: flex; gap: 12px; margin: 12px 0 8px; }
+  .simple-sub-buttons { display: flex; gap: 8px; justify-content: center; margin-bottom: 18px; }
+  .simple-grid { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px 10px; align-items: center; margin: 10px 0 4px; }
+  .simple-grid > span { color: var(--c-c4c6cf); }
+  .simple-grid select { max-width: 100%; }
+  .simple-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .simple-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .simple-url { display: grid; grid-template-columns: 7.5em 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .simple-url code { background: var(--c-15161a); padding: 4px 6px; border-radius: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .simple-link { margin-top: 8px; font-size: 12px; }
   .simple-main-buttons button { flex: 1; font-size: 18px; font-weight: bold; padding: 12px 0; border-radius: 10px; }
   .simple-go { background: #2e9a4b; } /* theme-keep: 開始は緑 */
   .simple-stop { background: #c94444; } /* theme-keep: 停止は赤 */
@@ -296,6 +305,11 @@
         <button id="simpleStart" class="simple-go">▶ 開始</button>
         <button id="simpleStop" class="simple-stop">■ 停止</button>
       </div>
+      <div class="simple-sub-buttons">
+        <button class="secondary" id="simplePause">一時停止</button>
+        <button class="secondary" id="simpleSkip">スキップ</button>
+        <button class="secondary" data-simple-open="thread">スレッドのレス</button>
+      </div>
 
       <div class="simple-card">
         <div class="simple-num">1</div>
@@ -316,26 +330,81 @@
         <div class="simple-body">
           <div class="simple-title">読み上げ</div>
           <label class="simple-check"><input type="checkbox" data-key="speechEnabled" /> コメントを読み上げる</label>
+          <div class="simple-grid">
+            <span>読み上げソフト</span>
+            <select data-key="speechEngine" data-engine-select data-engine-mirror></select>
+          </div>
+          <div class="simple-grid" data-engine="http">
+            <span>声</span>
+            <div class="simple-inline"><select data-key="ttsSpeaker" data-speaker-select data-keep-unknown></select><button class="secondary" data-simple-fetch-speakers>一覧を更新</button></div>
+            <span>話速</span>
+            <div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-param="speed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div>
+            <span>音量</span>
+            <div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-param="volume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div>
+          </div>
+          <div class="simple-sub" data-engine="bouyomi" style="margin-top:8px">声・速さは棒読みちゃんの設定どおりに読みます。</div>
+          <div class="simple-sub" data-engine="command" style="margin-top:8px">ソフトの場所と引数は「声・速さ」の設定で決めてください。</div>
+          <button class="secondary simple-link" data-simple-open="speech">声・速さの細かい設定 ›</button>
         </div>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">3</div>
         <div class="simple-body">
-          <div class="simple-title">配信画面に出す</div>
-          <div class="simple-sub">OBSの「ブラウザ」ソースを使う場合は、URLをコピーして貼り付けます。</div>
-          <button id="simpleCopyUrl" class="secondary simple-mid">字幕のURLをコピー</button>
-          <div class="simple-sub" style="margin-top:12px">画面キャプチャで配信する場合は、字幕をデスクトップに表示します。</div>
-          <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> 字幕をデスクトップに表示する</label>
+          <div class="simple-title">OBSに出す(ブラウザソース)</div>
+          <div class="simple-sub">OBSで「ブラウザ」ソースを追加して、URLを貼り付けます。</div>
+          <div class="simple-url"><span>下の字幕</span><code id="simpleUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="simpleUrlSubtitle">コピー</button></div>
+          <div class="simple-url"><span>右のレス一覧</span><code id="simpleUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="simpleUrlComments">コピー</button></div>
+          <div class="simple-url"><span>リアクション</span><code id="simpleUrlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="simpleUrlReaction">コピー</button></div>
+          <div class="simple-inline" style="margin-top:6px">
+            <button class="secondary simple-link" data-open-guide>OBSでの設定方法 ›</button>
+            <button class="secondary simple-link" data-simple-open="easy">ほかのURL(ニコ生風・話した字幕・アンケート) ›</button>
+          </div>
         </div>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">4</div>
         <div class="simple-body">
+          <div class="simple-title">デスクトップに表示(画面キャプチャ)</div>
+          <div class="simple-sub">OBSの「画面キャプチャ」で配信する場合は、PCの画面に直接出します(取得中だけ表示されます)。</div>
+          <div class="simple-row">
+            <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> 下の字幕</label>
+            <button class="secondary" data-desktop-adjust="subtitle">マウスで位置を調整する</button>
+          </div>
+          <div class="simple-row">
+            <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> 右のレス一覧</label>
+            <button class="secondary" data-desktop-adjust="list">マウスで位置を調整する</button>
+          </div>
+          <label class="simple-check"><input type="checkbox" data-key="desktopTopmost" /> ほかの窓より前に出す</label>
+          <button class="secondary simple-link" data-simple-open="output">デスクトップ表示の細かい設定 ›</button>
+        </div>
+      </div>
+
+      <div class="simple-card">
+        <div class="simple-num">5</div>
+        <div class="simple-body">
+          <div class="simple-title">見た目</div>
+          <div class="simple-grid">
+            <span>下の字幕</span>
+            <select data-preset-group="subtitle" data-preset-mirror="subtitlePreset"></select>
+            <span>右のレス一覧</span>
+            <select data-preset-group="list" data-preset-mirror="listPreset"></select>
+          </div>
+          <label class="simple-check"><input type="checkbox" id="simpleReactionsEnabled" /> 視聴者のリアクションを表示する</label>
+          <label class="simple-check"><input type="checkbox" data-key="reactionLink" /> コメントの言葉でリアクションを飛ばす(wwwで草など)</label>
+        </div>
+      </div>
+
+      <div class="simple-card">
+        <div class="simple-num">6</div>
+        <div class="simple-body">
           <div class="simple-title">テスト</div>
           <div class="simple-sub">字幕の表示と読み上げを確認できます。</div>
-          <button id="simpleTest" class="secondary simple-mid">テスト表示</button>
+          <div class="simple-inline">
+            <input type="text" id="simpleTestText" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" />
+            <button id="simpleTest" class="secondary simple-mid">テスト表示</button>
+          </div>
         </div>
       </div>
 
