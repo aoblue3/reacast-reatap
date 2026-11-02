@@ -247,28 +247,28 @@
   .tab-reset { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
   details.adv[open] > summary { margin-bottom: 10px; }
   h3 .help, .lead .help { font-weight: normal; }
-  /* 超シンプルモード: 上の操作欄とタブを隠して、使うものだけを大きく出す */
+  /* シンプルモード: 上の操作欄とタブを隠して、使うものだけを大きく出す */
   #simpleView { display: none; flex: 1; min-height: 0; overflow-y: auto; }
   body.simple header, body.simple .layout { display: none; }
   body.simple #simpleView { display: block; }
-  .simple-wrap { max-width: 640px; margin: 0 auto; padding: 18px 18px 30px; font-size: 16px; }
-  .simple-status { text-align: center; font-size: 20px; font-weight: bold; padding: 12px; border-radius: 10px; background: var(--c-24262d); border: 2px solid var(--c-3a3d47); }
+  .simple-wrap { max-width: 640px; margin: 0 auto; padding: 18px 18px 30px; font-size: 14px; }
+  .simple-status { text-align: center; font-size: 16px; font-weight: bold; padding: 12px; border-radius: 10px; background: var(--c-24262d); border: 2px solid var(--c-3a3d47); }
   .simple-status.on { color: var(--c-7dff9a); border-color: var(--c-7dff9a); }
   .simple-status.ng { color: var(--c-ff8a8a); border-color: var(--c-ff8a8a); }
   .simple-main-buttons { display: flex; gap: 12px; margin: 12px 0 18px; }
-  .simple-main-buttons button { flex: 1; font-size: 22px; font-weight: bold; padding: 16px 0; border-radius: 10px; }
-  .simple-go { background: #2e9a4b; } /* theme-keep: はじめるは緑 */
-  .simple-stop { background: #c94444; } /* theme-keep: とめるは赤 */
+  .simple-main-buttons button { flex: 1; font-size: 18px; font-weight: bold; padding: 12px 0; border-radius: 10px; }
+  .simple-go { background: #2e9a4b; } /* theme-keep: 開始は緑 */
+  .simple-stop { background: #c94444; } /* theme-keep: 停止は赤 */
   .simple-card { display: flex; gap: 14px; background: var(--c-24262d); border: 1px solid var(--c-33353d); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .simple-num { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--c-3b6df0); color: #fff; /* theme-keep */ font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+  .simple-num { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--c-3b6df0); color: #fff; /* theme-keep */ font-size: 15px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
   .simple-body { flex: 1; min-width: 0; }
-  .simple-title { font-size: 19px; font-weight: bold; margin: 4px 0 6px; color: var(--c-ffffff); }
-  .simple-sub { color: var(--c-a9acb8); font-size: 14px; line-height: 1.6; margin-bottom: 8px; }
-  .simple-label { display: block; font-size: 14px; color: var(--c-c4c6cf); margin: 10px 0 4px; }
-  .simple-body input[type=text] { width: 100%; font-size: 15px; padding: 8px 10px; }
-  .simple-check { display: flex; align-items: center; gap: 10px; font-size: 17px; cursor: pointer; padding: 4px 0; }
-  .simple-check input { width: 24px; height: 24px; margin: 0; }
-  .simple-mid { font-size: 16px; padding: 10px 18px; border-radius: 8px; }
+  .simple-title { font-size: 16px; font-weight: bold; margin: 4px 0 6px; color: var(--c-ffffff); }
+  .simple-sub { color: var(--c-a9acb8); font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
+  .simple-label { display: block; font-size: 13px; color: var(--c-c4c6cf); margin: 10px 0 4px; }
+  .simple-body input[type=text] { width: 100%; font-size: 14px; padding: 8px 10px; }
+  .simple-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 4px 0; }
+  .simple-check input { width: 18px; height: 18px; margin: 0; }
+  .simple-mid { font-size: 14px; padding: 8px 16px; border-radius: 8px; }
   .simple-back { display: block; margin: 18px auto 0; font-size: 14px; padding: 8px 18px; }
   .engine-box details.adv { margin-top: 6px; }
 </style>
@@ -283,63 +283,63 @@
       <button id="pauseBtn" class="secondary" title="読み上げを一時停止します(取得は続けて、順番待ちに溜めておきます)">一時停止</button>
       <button id="skipBtn" class="secondary" title="今のレスを飛ばして次のレスへ進みます">スキップ</button>
       <button class="secondary" data-open-tab="thread" title="今読んでいるスレッドのレスを見たり、書き込んだりします">スレッドのレス</button>
-      <button class="secondary" id="simpleModeOn" title="使うものだけを大きく出した、とても簡単な画面にします">超シンプル</button>
+      <button class="secondary" id="simpleModeOn" title="よく使う項目だけの画面にします">シンプル</button>
     </div>
     <div id="status">停止中</div>
   </header>
 
-  <!-- ================= 超シンプルモード(小学生でも分かるように、使うものだけを大きく出す) ================= -->
+  <!-- ================= シンプルモード(よく使うものだけを大きく出す) ================= -->
   <div id="simpleView">
     <div class="simple-wrap">
-      <div class="simple-status" id="simpleStatus">とまっています</div>
+      <div class="simple-status" id="simpleStatus">停止中</div>
       <div class="simple-main-buttons">
-        <button id="simpleStart" class="simple-go">▶ はじめる</button>
-        <button id="simpleStop" class="simple-stop">■ とめる</button>
+        <button id="simpleStart" class="simple-go">▶ 開始</button>
+        <button id="simpleStop" class="simple-stop">■ 停止</button>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">1</div>
         <div class="simple-body">
-          <div class="simple-title">コメントを よむ ばしょ</div>
-          <div class="simple-sub">つかう ところだけ いれてね。つかわない ところは からっぽで だいじょうぶ。</div>
-          <label class="simple-label">けいじばん(スレッドの URL)</label>
+          <div class="simple-title">コメントの取得元</div>
+          <div class="simple-sub">使うものだけ入力してください(空欄でも大丈夫です)。</div>
+          <label class="simple-label">掲示板(スレッドまたは板のURL)</label>
           <input type="text" data-key="threadUrl" placeholder="https://bbs.jpnkn.com/test/read.cgi/…" />
-          <label class="simple-label">YouTube(はいしんの URL)</label>
+          <label class="simple-label">YouTube(配信またはチャンネルのURL)</label>
           <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/…" />
-          <label class="simple-label">Twitch(チャンネルの なまえ)</label>
-          <input type="text" data-key="twitchChannel" placeholder="チャンネルの なまえ" />
+          <label class="simple-label">Twitch(チャンネル名)</label>
+          <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
         </div>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">2</div>
         <div class="simple-body">
-          <div class="simple-title">こえで よむ</div>
-          <label class="simple-check"><input type="checkbox" data-key="speechEnabled" /> コメントを こえで よみあげる</label>
+          <div class="simple-title">読み上げ</div>
+          <label class="simple-check"><input type="checkbox" data-key="speechEnabled" /> コメントを読み上げる</label>
         </div>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">3</div>
         <div class="simple-body">
-          <div class="simple-title">はいしんに うつす</div>
-          <div class="simple-sub">OBS で「ブラウザ」を つかう ひとは、ボタンを おして OBS に はりつけてね。</div>
-          <button id="simpleCopyUrl" class="secondary simple-mid">じまくの URL を コピー</button>
-          <div class="simple-sub" style="margin-top:12px">がめんを そのまま うつす ひとは、ここに チェック。</div>
-          <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> パソコンの がめんに じまくを だす</label>
+          <div class="simple-title">配信画面に出す</div>
+          <div class="simple-sub">OBSの「ブラウザ」ソースを使う場合は、URLをコピーして貼り付けます。</div>
+          <button id="simpleCopyUrl" class="secondary simple-mid">字幕のURLをコピー</button>
+          <div class="simple-sub" style="margin-top:12px">画面キャプチャで配信する場合は、字幕をデスクトップに表示します。</div>
+          <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> 字幕をデスクトップに表示する</label>
         </div>
       </div>
 
       <div class="simple-card">
         <div class="simple-num">4</div>
         <div class="simple-body">
-          <div class="simple-title">ためしてみる</div>
-          <div class="simple-sub">おすと、じまくが でて こえが きこえるよ。</div>
-          <button id="simpleTest" class="secondary simple-mid">ためしに だす</button>
+          <div class="simple-title">テスト</div>
+          <div class="simple-sub">字幕の表示と読み上げを確認できます。</div>
+          <button id="simpleTest" class="secondary simple-mid">テスト表示</button>
         </div>
       </div>
 
-      <button id="simpleModeOff" class="secondary simple-back">ふつうの がめんに もどる</button>
+      <button id="simpleModeOff" class="secondary simple-back">すべての設定を表示する</button>
     </div>
   </div>
 
@@ -371,7 +371,7 @@
   <main>
     <!-- ================= かんたん設定 ================= -->
     <section data-tab="easy" class="active">
-      <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。もっと簡単な画面がよければ <button class="secondary" data-simple-on>超シンプルモード</button></p>
+      <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。よく使う項目だけにしたい時は <button class="secondary" data-simple-on>シンプルモード</button></p>
       <div class="note easy-guide">
         <div><b>OBSの「画面キャプチャ」で配信している方</b>(URLを貼らない方)は、③の代わりに「デスクトップに表示」タブで、字幕やレス一覧をPCの画面に出してください。</div>
         <div class="inline" style="margin-top:6px">

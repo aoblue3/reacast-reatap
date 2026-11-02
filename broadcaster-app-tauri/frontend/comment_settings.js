@@ -2460,7 +2460,7 @@ document.getElementById('testBtn').addEventListener('click', () => {
   if (text) invoke('comments_test', { text });
 });
 
-// ---- 超シンプルモード(使うものだけを大きく出す。この画面の中だけの好みなので、この端末に保存) ----
+// ---- シンプルモード(使うものだけを大きく出す。この画面の中だけの好みなので、この端末に保存) ----
 const SIMPLE_KEY = 'reacast.simpleMode';
 function setSimpleMode(on) {
   document.body.classList.toggle('simple', on);
@@ -2478,32 +2478,32 @@ document.getElementById('simpleModeOff').addEventListener('click', () => setSimp
 document.getElementById('simpleStart').addEventListener('click', () => startBtn.click());
 document.getElementById('simpleStop').addEventListener('click', () => stopBtn.click());
 document.getElementById('simpleTest').addEventListener('click', () => {
-  invoke('comments_test', { text: 'テストだよ。きこえるかな?' });
+  invoke('comments_test', { text: 'テスト表示です。字幕と読み上げを確認できます' });
 });
 document.getElementById('simpleCopyUrl').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
   try {
     await navigator.clipboard.writeText(document.getElementById('urlSubtitle').textContent);
-    btn.textContent = 'コピーできたよ!';
-    setTimeout(() => (btn.textContent = 'じまくの URL を コピー'), 1500);
+    btn.textContent = 'コピーしました';
+    setTimeout(() => (btn.textContent = '字幕のURLをコピー'), 1500);
   } catch {
-    // 無視(ふつうの画面の「OBSに貼るURL」からもコピーできる)
+    // 無視(かんたん設定の「OBSに貼るURL」からもコピーできる)
   }
 });
 
 function renderSimpleStatus(s) {
   const el = document.getElementById('simpleStatus');
   document.getElementById('simpleStop').disabled = !s.running;
-  document.getElementById('simpleStart').textContent = s.running ? '▶ もういちど はじめる' : '▶ はじめる';
+  document.getElementById('simpleStart').textContent = s.running ? '▶ 再開始' : '▶ 開始';
   el.className = 'simple-status';
   if (!s.running) {
-    el.textContent = 'とまっています';
+    el.textContent = '停止中';
   } else if (s.error) {
     el.className = 'simple-status ng';
-    el.textContent = 'うまく よめません。URL を たしかめてね';
+    el.textContent = `取得できません: ${s.error}`;
   } else {
     el.className = 'simple-status on';
-    el.textContent = s.lastNo ? `うごいています(${s.lastNo}ばんめ まで よんだよ)` : 'うごいています。コメントを まっているよ';
+    el.textContent = s.lastNo ? `取得中(レス${s.lastNo})` : '取得中 — コメントを待っています';
   }
 }
 
