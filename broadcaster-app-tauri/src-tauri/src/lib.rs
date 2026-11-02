@@ -1389,6 +1389,7 @@ pub fn run() {
             emoji_font::emoji_font_status,
             emoji_font::emoji_font_download,
             emoji_font::emoji_font_remove,
+            emoji_font::emoji_font_set_all,
             local_translate::translate_show_window,
             tts::tts_list_speakers,
             tts::tts_list_devices,

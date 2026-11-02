@@ -6,11 +6,17 @@
 //! それで表示する(shared/comment-common.jsの"ReaCast Emoji")。コメント字幕・コメント一覧・OBSの
 //! 画面には、obs_bridgeのHTTP(/emoji-font.ttf)から配る。
 //!
+//! 「すべての絵文字をこの見た目にする」をONにすると、Windowsにある絵文字もこれで表示する
+//! (Windows 11で絵文字の見た目が変わったので、Win10・Win11・OBSで同じ見た目にしたい人向け)。
+//! 画面は /emoji-font-all.ttf を一番先に使うフォントとして読み、OFFの時は404を返すので
+//! 今までどおりWindowsの絵文字になる。
+//!
 //! ダウンロードするファイルは、GitHubの決まった版(コミット)に固定して、中身がその版と
 //! 同じか(gitのblobのSHA-1)を確かめてから使う。
 
 use sha1::{Digest, Sha1};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -22,17 +28,32 @@ const FONT_SIZE: usize = 3_038_756;
 const FILE_NAME: &str = "Noto-COLRv1-noflags.ttf";
 
 static FONT_PATH: OnceLock<PathBuf> = OnceLock::new();
+/// 「すべての絵文字をこの見た目にする」(設定ファイルの emojiFontAll)
+static ALL: AtomicBool = AtomicBool::new(false);
+const ALL_KEY: &str = "emojiFontAll";
 
 /// 起動時に1回だけ呼ぶ(フォントを置く場所を決める)
 pub fn init(app: &AppHandle) {
     if let Ok(dir) = app.path().app_local_data_dir() {
         let _ = FONT_PATH.set(dir.join("emoji-font").join(FILE_NAME));
     }
+    if let Some(store) = app.try_state::<crate::config_store::ConfigStore>() {
+        ALL.store(store.get(ALL_KEY).and_then(|v| v.as_bool()).unwrap_or(false), Ordering::Relaxed);
+    }
 }
 
 /// ダウンロード済みならその場所(obs_bridgeが配る)
 pub(crate) fn installed_path() -> Option<PathBuf> {
     FONT_PATH.get().filter(|p| p.exists()).cloned()
+}
+
+/// 「すべての絵文字をこの見た目にする」がONで、ダウンロード済みならその場所
+pub(crate) fn all_path() -> Option<PathBuf> {
+    installed_path().filter(|_| ALL.load(Ordering::Relaxed))
+}
+
+fn status() -> serde_json::Value {
+    serde_json::json!({ "installed": installed_path().is_some(), "all": ALL.load(Ordering::Relaxed), "sizeBytes": FONT_SIZE })
 }
 
 /// gitのblobのSHA-1("blob <大きさ>\0" + 中身)
@@ -47,12 +68,22 @@ fn git_blob_sha1(data: &[u8]) -> String {
 fn notify(app: &AppHandle) {
     app.state::<crate::obs_bridge::ObsBridge>()
         .push_voice(serde_json::json!({ "type": "emojiFont", "installed": installed_path().is_some() }));
-    let _ = app.emit("emoji-font:changed", installed_path().is_some());
+    let _ = app.emit("emoji-font:changed", status());
 }
 
 #[tauri::command]
 pub fn emoji_font_status() -> serde_json::Value {
-    serde_json::json!({ "installed": installed_path().is_some(), "sizeBytes": FONT_SIZE })
+    status()
+}
+
+/// 「すべての絵文字をこの見た目にする」のON/OFF
+#[tauri::command]
+pub fn emoji_font_set_all(app: AppHandle, store: tauri::State<crate::config_store::ConfigStore>, all: bool) -> Result<(), String> {
+    store.set(ALL_KEY.to_string(), serde_json::Value::Bool(all)).map_err(|e| e.to_string())?;
+    ALL.store(all, Ordering::Relaxed);
+    log::info!("すべての絵文字をGoogleの絵文字にする: {}", if all { "ON" } else { "OFF" });
+    notify(&app);
+    Ok(())
 }
 
 #[tauri::command]

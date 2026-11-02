@@ -238,6 +238,8 @@
    * 出てきた時だけ読み込む。ダウンロードしていなければ読み込みに失敗するだけ。
    */
   const EMOJI_FONT = '"ReaCast Emoji"';
+  // 「すべての絵文字をGoogleの絵文字にする」がONの時だけ読める(OFFなら404で、次のフォントになる)
+  const ALL_EMOJI_FONT = '"ReaCast All Emoji"';
   function setupEmojiFont(version) {
     let el = document.getElementById('reacast-emoji-font');
     if (!el) {
@@ -245,7 +247,10 @@
       el.id = 'reacast-emoji-font';
       document.head.appendChild(el);
     }
-    el.textContent = `@font-face { font-family: "ReaCast Emoji"; src: url("http://127.0.0.1:18772/emoji-font.ttf?v=${version || 0}") format("truetype"); unicode-range: U+00A9, U+00AE, U+203C-2BFF, U+3030, U+303D, U+3297, U+3299, U+1F000-1FBFF, U+E0020-E007F; }`;
+    const range = 'U+00A9, U+00AE, U+203C-2BFF, U+3030, U+303D, U+3297, U+3299, U+1F000-1FBFF, U+E0020-E007F';
+    el.textContent =
+      `@font-face { font-family: "ReaCast Emoji"; src: url("http://127.0.0.1:18772/emoji-font.ttf?v=${version || 0}") format("truetype"); unicode-range: ${range}; }\n` +
+      `@font-face { font-family: "ReaCast All Emoji"; src: url("http://127.0.0.1:18772/emoji-font-all.ttf?v=${version || 0}") format("truetype"); unicode-range: ${range}; }`;
   }
   setupEmojiFont(0);
 
@@ -259,7 +264,9 @@
       .map((n) => n.trim())
       .filter(Boolean);
     names.forEach(loadWebFont);
-    return names.length ? `${names.map((n) => `"${n}"`).join(', ')}, ${EMOJI_FONT}, sans-serif` : `${EMOJI_FONT}, sans-serif`;
+    return names.length
+      ? `${ALL_EMOJI_FONT}, ${names.map((n) => `"${n}"`).join(', ')}, ${EMOJI_FONT}, sans-serif`
+      : `${ALL_EMOJI_FONT}, ${EMOJI_FONT}, sans-serif`;
   }
 
   /** obs_bridgeに繋ぎ、切れたら繋ぎ直し続ける。 */

@@ -442,8 +442,12 @@ Connection: close
 
     // 新しい絵文字のフォント(emoji_font.rs。ダウンロードした人だけ)。ReaCastの窓
     // (tauri.localhost)からも読むので、どこから読んでもいいようにする(フォントはCORSが要る)
-    if path.split('?').next() == Some("/emoji-font.ttf") {
-        let data = match crate::emoji_font::installed_path() {
+    // /emoji-font-all.ttf は「すべての絵文字をこの見た目にする」がONの時だけ返す(OFFなら404で、
+    // 画面は次のフォント=Windowsの絵文字を使う)
+    let font_path = path.split('?').next();
+    if font_path == Some("/emoji-font.ttf") || font_path == Some("/emoji-font-all.ttf") {
+        let file = if font_path == Some("/emoji-font.ttf") { crate::emoji_font::installed_path() } else { crate::emoji_font::all_path() };
+        let data = match file {
             Some(p) => tokio::fs::read(p).await.ok(),
             None => None,
         };

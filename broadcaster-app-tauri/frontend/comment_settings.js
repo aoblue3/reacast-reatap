@@ -1691,14 +1691,22 @@ listen('voice:devices', (e) => renderVoiceDevices(e.payload));
 // ---- 新しい絵文字のフォント(使いたい人だけダウンロード。src-tauri/src/emoji_font.rs) ----
 const emojiFontStatusEl = document.getElementById('emojiFontStatus');
 const emojiFontBtn = document.getElementById('emojiFontBtn');
+const emojiFontAllBox = document.getElementById('emojiFontAll');
 let emojiFontInstalled = false;
-function renderEmojiFont(installed) {
-  emojiFontInstalled = !!installed;
+function renderEmojiFont(status) {
+  const installed = !!(status && status.installed);
+  emojiFontInstalled = installed;
+  emojiFontAllBox.checked = !!(status && status.all);
+  emojiFontAllBox.disabled = !installed;
+  document.getElementById('emojiFontAllNote').textContent = installed ? 'Win10・Win11・OBSで同じ見た目になります' : '先にダウンロードしてください';
   emojiFontStatusEl.textContent = installed ? 'ダウンロード済み(Windowsに無い絵文字も表示します)' : 'ダウンロードしていません';
   emojiFontBtn.textContent = installed ? '削除する' : 'ダウンロードする(約3MB)';
   emojiFontBtn.disabled = false;
 }
-invoke('emoji_font_status').then((v) => renderEmojiFont(v && v.installed)).catch(() => {});
+invoke('emoji_font_status').then(renderEmojiFont).catch(() => {});
+emojiFontAllBox.addEventListener('change', () => {
+  invoke('emoji_font_set_all', { all: emojiFontAllBox.checked }).catch((e) => showStatusError(String(e)));
+});
 listen('emoji-font:changed', (e) => renderEmojiFont(e.payload));
 emojiFontBtn.addEventListener('click', async () => {
   emojiFontBtn.disabled = true;
@@ -1710,8 +1718,7 @@ emojiFontBtn.addEventListener('click', async () => {
     emojiFontBtn.disabled = false;
     return;
   }
-  const v = await invoke('emoji_font_status').catch(() => null);
-  renderEmojiFont(v && v.installed);
+  renderEmojiFont(await invoke('emoji_font_status').catch(() => null));
 });
 
 // ---- PCの中で翻訳(Chrome/Edgeの翻訳の窓。src-tauri/src/local_translate.rs) ----

@@ -71,8 +71,9 @@
        エンジン)経由だと黒い文字として描画されてしまう不具合の原因になっていた)、
        フォントを明示することで両方の環境で安定して色付き絵文字として描画される
        ようにする。「草」等の文字系リアクションはこの並びのどのフォントにも
-       無ければ最後のsans-serifへ普通にフォールバックする。 */
-    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+       無ければ最後のsans-serifへ普通にフォールバックする。
+       "ReaCast All Emoji"は「すべての絵文字をGoogleの絵文字にする」がONの時だけ読める(overlay.js)。 */
+    font-family: "ReaCast All Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
   }
   .particle {
     position: absolute;
@@ -82,7 +83,7 @@
     /* パーティクルにも絵文字文字(💭💧💤等)を使うものがあるため、.reaction-glyph
        と同じ理由で絵文字用フォントを明示しておく(図形パーティクルには文字が
        無いので影響しない)。 */
-    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+    font-family: "ReaCast All Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
   }
   /* 🍜ラーメン専用: .reaction-item(絵文字本体)の子要素として追加する湯気。
      親要素の子であるため、親のtransform(移動アニメーション)がそのまま

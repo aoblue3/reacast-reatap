@@ -581,7 +581,22 @@ const COMBO_WINDOW_MS = 1500;
 //      OBSの通常のウィンドウキャプチャだと、このアプリの透明ウィンドウの
 //      透明部分がうまく抜けずデスクトップが映り込んでしまう実機不具合が
 //      あったため、この方式を用意している。
+// ---- すべての絵文字をGoogleの絵文字にする(コメント設定の「新しい絵文字を表示する」。emoji_font.rs) ----
+// ONの時だけ /emoji-font-all.ttf が読める(OFFなら404で、次のWindowsの絵文字になる)。
+// Windows 11で絵文字の見た目が変わったので、Win10・Win11・OBSで同じ見た目にしたい人向け
+function setupAllEmojiFont(version) {
+  let el = document.getElementById('reacast-all-emoji');
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'reacast-all-emoji';
+    document.head.appendChild(el);
+  }
+  el.textContent = `@font-face { font-family: "ReaCast All Emoji"; src: url("http://127.0.0.1:18772/emoji-font-all.ttf?v=${version || 0}") format("truetype"); unicode-range: U+00A9, U+00AE, U+203C-2BFF, U+3030, U+303D, U+3297, U+3299, U+1F000-1FBFF, U+E0020-E007F; }`;
+}
+setupAllEmojiFont(0);
+
 if (window.__TAURI__ && window.__TAURI__.event) {
+  window.__TAURI__.event.listen('emoji-font:changed', () => setupAllEmojiFont(Date.now()));
   const sendStageSize = () => {
     window.__TAURI__.core
       .invoke('set_overlay_stage_size', { w: window.innerWidth, h: window.innerHeight })
@@ -627,6 +642,10 @@ function connectObsBridge(port) {
       if (data.type === 'appVersion') {
         if (seenAppVersion !== null && seenAppVersion !== data.version) location.reload();
         seenAppVersion = data.version;
+        return;
+      }
+      if (data.type === 'emojiFont') {
+        setupAllEmojiFont(Date.now());
         return;
       }
       // 配信者アプリ側で設定を変更した時にも同じ内容が届く(obs_bridge.rs参照)。
