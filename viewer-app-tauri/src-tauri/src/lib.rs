@@ -1,6 +1,7 @@
 mod applog;
 mod backup;
 mod config_store;
+mod emoji_font;
 mod hotkeys;
 mod pcwmp;
 pub mod updater;
@@ -730,6 +731,7 @@ pub fn run() {
             let store = ConfigStore::load(config_path);
 
             app.manage(store);
+            emoji_font::init(app.handle());
             app.manage(ManualPickState {
                 cancelled: AtomicBool::new(false),
             });
@@ -855,6 +857,11 @@ pub fn run() {
             backup::export_settings,
             backup::import_settings,
             updater::download_and_apply_update,
+            emoji_font::emoji_font_status,
+            emoji_font::emoji_font_set_on,
+            emoji_font::emoji_font_data,
+            emoji_font::emoji_font_download,
+            emoji_font::emoji_font_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

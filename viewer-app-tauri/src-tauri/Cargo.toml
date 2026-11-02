@@ -33,6 +33,8 @@ tauri-plugin-dialog = "2"
 # 単体exeのままの自動アップデート機能用(updater.rs参照)。
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
+# Googleの絵文字のフォントが決まった版と同じか(gitのblobのSHA-1)を確かめる(emoji_font.rs)
+sha1 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

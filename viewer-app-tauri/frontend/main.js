@@ -1563,6 +1563,48 @@ async function checkForUpdateOnStartup() {
   }
 }
 
+/* ------------------------- Googleの絵文字(emoji_font.rs / shared/google-emoji.js) ------------------------- */
+// 初めてONにした時はダウンロードしてからONにする。表示の切り替えはgoogle-emoji.jsが
+// "emoji-font:changed"で、メイン画面とリアクションバーの両方で行う
+const googleEmojiBox = document.getElementById('googleEmojiBox');
+const googleEmojiStatus = document.getElementById('googleEmojiStatus');
+const googleEmojiRemoveBtn = document.getElementById('googleEmojiRemoveBtn');
+function renderGoogleEmoji(status) {
+  if (!status) return;
+  googleEmojiBox.checked = !!(status.installed && status.on);
+  googleEmojiBox.disabled = false;
+  googleEmojiStatus.textContent = status.installed ? 'ダウンロード済み' : '';
+  googleEmojiRemoveBtn.style.display = status.installed ? '' : 'none';
+}
+invoke('emoji_font_status').then(renderGoogleEmoji).catch(() => {});
+window.__TAURI__.event.listen('emoji-font:changed', (e) => renderGoogleEmoji(e.payload));
+googleEmojiBox.addEventListener('change', async () => {
+  const on = googleEmojiBox.checked;
+  googleEmojiBox.disabled = true;
+  try {
+    const status = await invoke('emoji_font_status');
+    if (on && !status.installed) {
+      googleEmojiStatus.textContent = 'ダウンロードしています…';
+      await invoke('emoji_font_download');
+    }
+    await invoke('emoji_font_set_on', { on });
+  } catch (err) {
+    googleEmojiStatus.textContent = String((err && err.message) || err);
+  }
+  renderGoogleEmoji(await invoke('emoji_font_status').catch(() => null));
+  googleEmojiBox.disabled = false;
+});
+googleEmojiRemoveBtn.addEventListener('click', async () => {
+  googleEmojiRemoveBtn.disabled = true;
+  try {
+    await invoke('emoji_font_remove');
+  } catch (err) {
+    googleEmojiStatus.textContent = String((err && err.message) || err);
+  }
+  googleEmojiRemoveBtn.disabled = false;
+  renderGoogleEmoji(await invoke('emoji_font_status').catch(() => null));
+});
+
 init().catch((err) => {
   console.error('初期化に失敗しました', err);
 });

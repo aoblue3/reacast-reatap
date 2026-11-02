@@ -6,6 +6,10 @@
 <link rel="icon" href="data:," />
 <title>ReaTap</title>
 <style>
+  /* 絵文字のフォント。設定の「Googleの絵文字で表示する」がONの時は、htmlにgoogle-emojiが付いて
+     ダウンロードしたGoogleの絵文字を一番先に使う(shared/google-emoji.js) */
+  :root { --emoji-font: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif; }
+  :root.google-emoji { --emoji-font: "ReaTap Google Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif; }
   html, body {
     margin: 0;
     padding: 0;
@@ -79,7 +83,7 @@
        真っ黒な記号として表示されてしまうことがある(配信者アプリのオーバーレイ
        側では絵文字専用フォントを先頭にしていたため発生しなかった不具合)。
        絵文字を描画するボタンだけは色付き絵文字フォントを最優先にする。 */
-    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+    font-family: var(--emoji-font);
     /* それなｗ等の短文リアクションボタンだけ絵文字ボタンより横幅が細く見え、
        ボタン列の見た目が揃わない(「気持ち悪い」)という指摘への対応。
        全ボタン共通で、絵文字1文字が収まる幅を最小幅として固定し、
@@ -219,6 +223,7 @@
   <script src="shared/error-log.js"></script>
   <script src="shared/relay-client.js"></script>
   <script src="shared/emoji-set.js"></script>
+  <script src="shared/google-emoji.js"></script>
   <script src="bar.js"></script>
 </body>
 </html>

@@ -6,6 +6,10 @@
 <link rel="icon" href="data:," />
 <title>ReaTap</title>
 <style>
+  /* 絵文字のフォント。設定の「Googleの絵文字で表示する」がONの時は、htmlにgoogle-emojiが付いて
+     ダウンロードしたGoogleの絵文字を一番先に使う(shared/google-emoji.js) */
+  :root { --emoji-font: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif; }
+  :root.google-emoji { --emoji-font: "ReaTap Google Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif; }
   /* 色はテーマ(shared/theme.js)で切り替える。変数名は元(ダークテーマ)の色 */
   :root {
     color-scheme: dark;
@@ -278,7 +282,7 @@
     font-size: 17px;
     width: 22px;
     text-align: center;
-    font-family: "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
+    font-family: var(--emoji-font);
   }
   .ro-row .ro-label { flex: 1 1 auto; color: var(--c-dddddd); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ro-row button { margin: 0; padding: 3px 8px; font-size: 11px; }
@@ -398,6 +402,11 @@
         <input type="range" id="barIconBgAlphaInput" min="0" max="1" step="0.05" style="width: 220px;" />
       </div>
 
+      <div class="field-row">
+        <label><input type="checkbox" id="googleEmojiBox" /> Googleの絵文字で表示する<span class="help" data-help="配信者がReaCastでGoogleの絵文字を使っていると、配信画面の絵文字はGoogleの絵になります。ONにすると、ReaTapのボタンも同じ絵になります。初めてONにした時に、Googleの絵文字のフォント(約3MB)をダウンロードします(1回だけ)。"></span></label>
+        <div style="font-size:12px;margin-top:4px;"><span id="googleEmojiStatus"></span> <button type="button" class="secondary" id="googleEmojiRemoveBtn" style="display:none;">ダウンロードしたフォントを削除</button></div>
+      </div>
+
       <hr />
 
       <h1>表示するリアクション・並び順<span class="help" data-help="全部の配信者に共通です。左の掴む所をドラッグするか、番号を入れて並べ替えられます。ホットキーは配信者ごとに「詳細設定」から割り当てます。"></span></h1>
@@ -469,6 +478,7 @@
   <script src="shared/relay-client.js"></script>
   <script src="shared/emoji-set.js"></script>
   <script src="shared/help.js"></script>
+  <script src="shared/google-emoji.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
