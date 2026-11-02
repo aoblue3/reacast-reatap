@@ -282,10 +282,15 @@
   .tts-check:empty { display: none; }
   .tts-hidden { display: none !important; }
   /* 取得中に取得元を変えた時の「再開始で反映」と、まだ読めていない取得元の知らせ */
-  .pending-note, .source-warn { margin-top: 6px; padding: 6px 10px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
-  .pending-note { background: rgba(255, 211, 107, 0.12); border: 1px solid rgba(255, 211, 107, 0.45); color: var(--c-ffd36b); }
-  .source-warn { background: rgba(255, 138, 138, 0.10); border: 1px solid rgba(255, 138, 138, 0.4); color: var(--c-ff8a8a); }
-  .source-warn div + div { margin-top: 4px; }
+  .pending-note { margin-top: 6px; padding: 6px 10px; border-radius: 6px; font-size: 12px; line-height: 1.6; background: rgba(255, 211, 107, 0.12); border: 1px solid rgba(255, 211, 107, 0.45); color: var(--c-ffd36b); }
+  /* 読めていない取得元は1行だけ。配信待ちなどいつものことは灰色、つながらない時だけ赤。
+     「どうすれば?」で対処を開き、×で(その知らせが変わるまで)隠せる */
+  .source-warn { margin-top: 4px; font-size: 12px; line-height: 1.6; }
+  .source-warn .warn-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--c-8d909c); }
+  .source-warn .warn-line.bad { color: var(--c-ff8a8a); }
+  .source-warn .warn-link, .source-warn .warn-close { background: none; border: none; padding: 0 2px; color: inherit; font-size: inherit; cursor: pointer; text-decoration: underline; opacity: 0.85; box-shadow: none; }
+  .source-warn .warn-close { text-decoration: none; }
+  .source-warn .warn-hint { flex-basis: 100%; color: var(--c-c4c6cf); }
   .pending-note:empty, .source-warn:empty { display: none; }
   .simple-wrap .pending-note, .simple-wrap .source-warn { font-size: 13px; }
   button.attention { box-shadow: 0 0 0 2px var(--c-ffd36b); }
@@ -698,7 +703,7 @@
       <div class="field"><label>リアクションを表示する<span class="help" data-help="視聴者からのリアクション(絵文字)を配信画面に出します。コントロールパネルの「リアクション機能を使う」と同じです。"></span></label><div><input type="checkbox" id="easyReactionsEnabled" /></div></div>
       <div class="field"><label>コメントでリアクションを飛ばす<span class="help" data-help="「www」で草、「888」で拍手のように、コメントの言葉に合わせてリアクションを飛ばします。言葉とリアクションの組み合わせは「リアクション連動」タブで変えられます。"></span></label><div><input type="checkbox" data-key="reactionLink" /></div></div>
       <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(コメント字幕・コメント一覧・流れるコメント・自分の声の字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
-      <div class="field"><label>すべての絵文字をこの見た目にする<span class="help" data-help="ONにすると、Windowsにある絵文字も、ダウンロードしたGoogleの絵文字で表示します。Windows 11では絵文字の見た目が変わったので、Win10・Win11・OBSのどれでも同じ見た目にしたい時に。リアクション(自分の画面・OBS)と、コメント字幕・コメント一覧・流れるコメント・自分の声の字幕の中の絵文字が変わります。"></span></label><div class="inline"><input type="checkbox" id="emojiFontAll" /><span class="unit" id="emojiFontAllNote">先にダウンロードしてください</span></div></div>
+      <div class="field"><label>絵文字をすべてGoogleの絵文字で表示する<span class="help" data-help="ふだんは、Windowsの絵文字で表示しています(Windows 10と11では絵文字の絵が違います)。ONにすると、ダウンロードしたGoogleの絵文字だけで表示するので、Win10・Win11・OBSのどれでも同じ絵になります。リアクション(自分の画面・OBS)と、コメント字幕・コメント一覧・流れるコメント・自分の声の字幕の中の絵文字が変わります。"></span></label><div class="inline"><input type="checkbox" id="emojiFontAll" /><span class="unit" id="emojiFontAllNote">先にダウンロードしてください</span></div></div>
 
       <h3>⑤ 試してみる</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button><span class="help" data-help="順番待ちの先頭に割り込んで、字幕に表示して読み上げます。取得を開始していなくても使えます。"></span></div>

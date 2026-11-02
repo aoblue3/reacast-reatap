@@ -1698,7 +1698,7 @@ function renderEmojiFont(status) {
   emojiFontInstalled = installed;
   emojiFontAllBox.checked = !!(status && status.all);
   emojiFontAllBox.disabled = !installed;
-  document.getElementById('emojiFontAllNote').textContent = installed ? 'Win10・Win11・OBSで同じ見た目になります' : '先にダウンロードしてください';
+  document.getElementById('emojiFontAllNote').textContent = installed ? 'ONにすると、Win10・Win11・OBSで絵文字の絵がそろいます' : '先に上のダウンロードをしてください';
   emojiFontStatusEl.textContent = installed ? 'ダウンロード済み(Windowsに無い絵文字も表示します)' : 'ダウンロードしていません';
   emojiFontBtn.textContent = installed ? '削除する' : 'ダウンロードする(約3MB)';
   emojiFontBtn.disabled = false;
@@ -2702,6 +2702,11 @@ function sourceHint(src) {
   return '';
 }
 
+// ×で隠した知らせ(取得元id→その時の文)。文が変わったらまた出す
+const dismissedWarn = {};
+// 「どうすれば?」を開いている取得元(状態の更新で閉じないように)
+const openWarnHints = new Set();
+
 function renderSourceNotes(s) {
   lastStatus = s;
   const startButtons = [startBtn, document.getElementById('simpleStart')];
@@ -2714,11 +2719,43 @@ function renderSourceNotes(s) {
   for (const b of startButtons) b.classList.toggle('attention', pending);
   // 即時通知(jpnkn)は、つながらなくても定期取得で読めるので知らせない。つなぎ始めの「接続中…」も除く
   const problems = s.running ? (s.sources || []).filter((src) => src.id !== 'jpnkn' && src.state !== 'ok' && !String(src.message || '').startsWith('接続中')) : [];
+  const shown = problems.filter((src) => dismissedWarn[src.id] !== src.message);
   for (const el of document.querySelectorAll('[data-source-warn]')) {
     el.textContent = '';
-    for (const src of problems) {
+    for (const src of shown) {
       const line = document.createElement('div');
-      line.textContent = `⚠ ${src.label}のコメントをまだ読めていません: ${src.message} ${sourceHint(src)}`;
+      // 配信待ち・配信終了はいつものことなので目立たせない
+      line.className = 'warn-line' + (src.state === 'error' ? ' bad' : '');
+      const text = document.createElement('span');
+      text.textContent = `${src.state === 'error' ? '⚠ ' : ''}${src.label}: ${src.message}`;
+      line.appendChild(text);
+      const hint = sourceHint(src);
+      if (hint) {
+        const link = document.createElement('button');
+        link.className = 'warn-link';
+        link.textContent = openWarnHints.has(src.id) ? '閉じる' : 'どうすれば?';
+        link.addEventListener('click', () => {
+          if (openWarnHints.has(src.id)) openWarnHints.delete(src.id);
+          else openWarnHints.add(src.id);
+          renderSourceNotes(lastStatus);
+        });
+        line.appendChild(link);
+      }
+      const close = document.createElement('button');
+      close.className = 'warn-close';
+      close.title = 'この知らせを隠す(変わったらまた出ます)';
+      close.textContent = '×';
+      close.addEventListener('click', () => {
+        dismissedWarn[src.id] = src.message;
+        renderSourceNotes(lastStatus);
+      });
+      line.appendChild(close);
+      if (hint && openWarnHints.has(src.id)) {
+        const h = document.createElement('div');
+        h.className = 'warn-hint';
+        h.textContent = hint;
+        line.appendChild(h);
+      }
       el.appendChild(line);
     }
   }
