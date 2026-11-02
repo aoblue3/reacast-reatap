@@ -252,6 +252,8 @@
   /* 項目をまとまりごとの枠に分ける。説明はⓘ(shared/help.js)を押すと出る */
   .card { background: var(--c-1e1f25); border: 1px solid var(--c-2a2b30); border-radius: 10px; padding: 12px 16px 14px; margin-bottom: 14px; }
   .card h2 { font-size: 14px; margin: 0 0 8px; }
+  /* セットアップがまだの時だけ目立たせる(control.js) */
+  .setup-card.todo { border-color: var(--c-3a6df0); box-shadow: inset 3px 0 0 var(--c-3a6df0); }
   .card .lead { margin-bottom: 2px; }
   .slider { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
   .slider .slider-label { width: 7.5em; font-size: 13px; color: var(--c-cccccc); }
@@ -275,6 +277,12 @@
 </head>
 <body>
   <h1>ReaCast(配信者アプリ) <span id="appVersion" class="muted" style="font-weight: normal;"></span> <span id="connStatus" class="status ng reaction-only">未接続</span></h1>
+
+  <div class="card setup-card" id="setupCard">
+    <h2>かんたんセットアップ</h2>
+    <div class="muted lead" id="setupLead">はじめての方は、ここから始めてください。コメントの取得・配信への出し方・読み上げを、順番に設定します。忘れた時や間違えた時も、何度でもやり直せます。</div>
+    <button id="openSetupBtn">セットアップを始める</button>
+  </div>
 
   <div class="card">
     <h2>コメント読み上げ・字幕</h2>

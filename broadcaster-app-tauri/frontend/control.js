@@ -16,6 +16,33 @@ document.getElementById('openCommentSettingsBtn').addEventListener('click', () =
   invoke('open_comment_settings').catch(() => {});
 });
 
+// ---- かんたんセットアップ(コメント設定の窓で、最初の案内を出す。何度でもやり直せる) ----
+document.getElementById('openSetupBtn').addEventListener('click', () => {
+  invoke('open_comment_settings', { setup: true }).catch(() => {});
+});
+// 前からコメントの取得元を設定して使っている人は、セットアップ済みとして扱う
+let alreadyConfigured = false;
+invoke('comments_get_settings')
+  .then((s) => {
+    alreadyConfigured = !!(s && (s.threadUrl || s.youtubeTarget || s.twitchChannel));
+    renderSetupCard();
+  })
+  .catch(() => {});
+function renderSetupCard() {
+  let done = alreadyConfigured;
+  try {
+    done = done || localStorage.getItem('reacast.setupDone') === '1';
+  } catch (_) {}
+  document.getElementById('setupCard').classList.toggle('todo', !done);
+  document.getElementById('openSetupBtn').textContent = done ? 'セットアップをやり直す' : 'セットアップを始める';
+}
+renderSetupCard();
+// セットアップを終えた時(コメント設定の窓で保存される)に表示を変える
+window.addEventListener('storage', (e) => {
+  if (e.key === 'reacast.setupDone') renderSetupCard();
+});
+window.addEventListener('focus', renderSetupCard);
+
 // ---- 配信前チェック(中継サーバーはこの画面の状態、それ以外はRust側のpreflight_check) ----
 const preflightOverlay = document.getElementById('preflightOverlay');
 const preflightListEl = document.getElementById('preflightList');

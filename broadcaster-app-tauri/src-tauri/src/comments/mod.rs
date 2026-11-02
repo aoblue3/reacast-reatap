@@ -2546,6 +2546,25 @@ pub fn comments_open_obs_guide() -> Result<(), String> {
     open_in_browser(&url)
 }
 
+/// 読み上げソフトの公式のダウンロードページ(かんたんセットアップで、ソフトが見つからない時に開く)
+fn tts_download_url(engine: &str) -> Option<&'static str> {
+    Some(match engine {
+        "voicevox" => "https://voicevox.hiroshiba.jp/",
+        "coeiroink" | "coeiroinkv1" => "https://coeiroink.com/",
+        "aivisspeech" => "https://aivis-project.com/",
+        "sharevox" => "https://www.sharevox.app/",
+        "bouyomi" => "https://chi.usamimi.info/Program/Application/BouyomiChan/",
+        _ => return None,
+    })
+}
+
+/// 読み上げソフトのダウンロードページをいつものブラウザで開く(決まったページだけ)
+#[tauri::command]
+pub fn comments_open_tts_download(engine: String) -> Result<(), String> {
+    let url = tts_download_url(&engine).ok_or("このソフトのダウンロードページは登録されていません")?;
+    open_in_browser(&reqwest::Url::parse(url).map_err(|e| e.to_string())?)
+}
+
 fn open_in_browser(url: &reqwest::Url) -> Result<(), String> {
     // explorerにURLを渡すと「ドキュメント」フォルダが開いてしまう(本人のPCで発生)ので、
     // URLを既定のブラウザで開く標準の方法(url.dllのFileProtocolHandler)を使う

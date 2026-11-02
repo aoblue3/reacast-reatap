@@ -2466,20 +2466,40 @@ document.getElementById('testBtn').addEventListener('click', () => {
 
 // ---- シンプルモード(使うものだけを大きく出す。この画面の中だけの好みなので、この端末に保存) ----
 const SIMPLE_KEY = 'reacast.simpleMode';
+const SETUP_DONE_KEY = 'reacast.setupDone';
+const METHOD_KEY = 'reacast.streamMethod';
+function storeGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+function storeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {}
+}
 function setSimpleMode(on) {
   document.body.classList.toggle('simple', on);
   if (window.HelpTips) window.HelpTips.close();
-  try {
-    if (on) localStorage.setItem(SIMPLE_KEY, '1');
-    else localStorage.removeItem(SIMPLE_KEY);
-  } catch (_) {}
+  storeSet(SIMPLE_KEY, on ? '1' : '0');
+  if (on && settings) checkTts();
 }
-try {
-  if (localStorage.getItem(SIMPLE_KEY) === '1') setSimpleMode(true);
-} catch (_) {}
+if (storeGet(SIMPLE_KEY) === '1') document.body.classList.add('simple');
 for (const btn of document.querySelectorAll('#simpleModeOn, [data-simple-on]')) btn.addEventListener('click', () => setSimpleMode(true));
 document.getElementById('simpleModeOff').addEventListener('click', () => setSimpleMode(false));
-document.getElementById('simpleStart').addEventListener('click', () => startBtn.click());
+
+function hasSource() {
+  return !!(settings.threadUrl || settings.youtubeTarget || settings.twitchChannel);
+}
+document.getElementById('simpleStart').addEventListener('click', () => {
+  if (!hasSource()) {
+    showStatusError('コメントの取得元が入っていません。掲示板・YouTube・Twitchのどれかを入れてください');
+    return;
+  }
+  startBtn.click();
+});
 document.getElementById('simpleStop').addEventListener('click', () => stopBtn.click());
 document.getElementById('simplePause').addEventListener('click', () => pauseBtn.click());
 document.getElementById('simpleSkip').addEventListener('click', () => document.getElementById('skipBtn').click());
@@ -2496,35 +2516,220 @@ for (const btn of document.querySelectorAll('[data-simple-open]')) {
 }
 // 読み上げソフトの選択肢は「声・速さ」タブのものを使い回す
 for (const sel of document.querySelectorAll('[data-engine-mirror]')) sel.innerHTML = document.getElementById('speechEngine').innerHTML;
-for (const btn of document.querySelectorAll('[data-simple-fetch-speakers]')) btn.addEventListener('click', () => fetchSpeakers(false));
+
 // 「視聴者のリアクションを表示する」(かんたん設定・コントロールパネルと同じ)
-const simpleReactions = document.getElementById('simpleReactionsEnabled');
+const reactionBoxes = document.querySelectorAll('[data-reactions-enabled]');
 invoke('cfg_get', { key: 'reactionsEnabled' }).then((v) => {
-  simpleReactions.checked = v !== false;
+  for (const box of reactionBoxes) box.checked = v !== false;
 });
-simpleReactions.addEventListener('change', () => {
-  invoke('set_reactions_enabled', { enabled: simpleReactions.checked }).catch((e) => showStatusError(String(e)));
-});
+for (const box of reactionBoxes) {
+  box.addEventListener('change', () => {
+    invoke('set_reactions_enabled', { enabled: box.checked }).catch((e) => showStatusError(String(e)));
+  });
+}
 listen('reactions:enabled', (e) => {
-  simpleReactions.checked = !!e.payload;
+  for (const box of reactionBoxes) box.checked = !!e.payload;
 });
 
+// ---- 配信への出し方(OBSにURLを貼る / 画面をそのまま映す)。選んだ方の枠だけを出す ----
+function streamMethod() {
+  const saved = storeGet(METHOD_KEY);
+  if (saved === 'obs' || saved === 'desktop') return saved;
+  if (settings && (settings.desktopEnabled || settings.desktopListEnabled)) return 'desktop';
+  return '';
+}
+function setStreamMethod(method) {
+  storeSet(METHOD_KEY, method);
+  // 画面をそのまま映す時は字幕をPCの画面に出す。URLを貼る時は、自分の画面に二重に出ないよう消す
+  settings.desktopEnabled = method === 'desktop';
+  if (method === 'obs') settings.desktopListEnabled = false;
+  renderFields();
+  scheduleSave();
+  renderMethod();
+}
+function renderMethod() {
+  const method = streamMethod();
+  for (const card of document.querySelectorAll('[data-method-card]')) card.classList.toggle('hidden', !!method && card.dataset.methodCard !== method);
+  for (const el of document.querySelectorAll('[data-method-detail]')) el.classList.toggle('show', el.dataset.methodDetail === method);
+  for (const btn of document.querySelectorAll('[data-wiz-method]')) btn.classList.toggle('selected', btn.dataset.wizMethod === method);
+}
+for (const btn of document.querySelectorAll('[data-set-method], [data-wiz-method]')) {
+  btn.addEventListener('click', () => setStreamMethod(btn.dataset.setMethod || btn.dataset.wizMethod));
+}
+
+// ---- 読み上げソフトにつながるかを確かめて、つながらない時は何をすればいいかを出す ----
+let ttsCheckSeq = 0;
+async function checkTts() {
+  const boxes = document.querySelectorAll('[data-tts-check]');
+  const show = (cls, text, buttons) => {
+    // 声の一覧は、つながった時だけ出す(つながっていないと選べないので)
+    for (const el of document.querySelectorAll('[data-tts-ok-only]')) el.classList.toggle('tts-hidden', cls !== 'ok');
+    for (const box of boxes) {
+      box.className = `tts-check ${cls}`;
+      box.textContent = text;
+      if (buttons) {
+        const row = document.createElement('div');
+        row.className = 'inline';
+        if (buttons.retry) {
+          const b = document.createElement('button');
+          b.className = 'secondary';
+          b.textContent = 'もう一度確かめる';
+          b.addEventListener('click', checkTts);
+          row.appendChild(b);
+        }
+        if (buttons.download) {
+          const b = document.createElement('button');
+          b.className = 'secondary';
+          b.textContent = 'ダウンロードページを開く';
+          b.addEventListener('click', () => invoke('comments_open_tts_download', { engine: buttons.download }).catch((e) => showStatusError(String(e))));
+          row.appendChild(b);
+        }
+        box.appendChild(row);
+      }
+    }
+  };
+  const engine = settings.speechEngine || 'command';
+  const sel = document.getElementById('speechEngine');
+  const name = (Array.from(sel.options).find((o) => o.value === engine) || { textContent: engine }).textContent;
+  if (!settings.speechEnabled) return show('', '読み上げはOFFです。');
+  if (engine === 'bouyomi') return show('', '棒読みちゃんを起動しておいてください(声・速さは棒読みちゃんの設定どおりに読みます)。', { download: 'bouyomi' });
+  if (engine === 'command') return show('', 'ソフトの場所などは「声・速さの細かい設定」で決めてください。');
+  const seq = ++ttsCheckSeq;
+  show('', `${name}につながるか確かめています…`);
+  try {
+    const list = await listSpeakers(engine);
+    if (seq !== ttsCheckSeq) return;
+    fillSpeakerSelects(list);
+    if (!settings.ttsSpeaker && list.length) {
+      settings.ttsSpeaker = list[0].id;
+      fillSpeakerSelects(list);
+      scheduleSave();
+    }
+    show('ok', `✓ ${name}につながりました(声が${list.length}種類あります)。`);
+  } catch (_) {
+    if (seq !== ttsCheckSeq) return;
+    show('ng', `✗ ${name}につながりません。${name}を起動してから「もう一度確かめる」を押してください。入っていない時は、ダウンロードページから入れてください(無料)。`, {
+      retry: true,
+      download: engine === 'voicevoxcompat' ? '' : engine,
+    });
+  }
+}
+for (const el of document.querySelectorAll('[data-engine-select], [data-key="speechEnabled"]')) {
+  el.addEventListener('change', () => setTimeout(checkTts, 0));
+}
+
+// ---- 状態(シンプルモードの一番上) ----
 function renderSimpleStatus(s) {
   const el = document.getElementById('simpleStatus');
   document.getElementById('simpleStop').disabled = !s.running;
   document.getElementById('simpleStart').textContent = s.running ? '▶ 再開始' : '▶ 開始';
-  document.getElementById('simplePause').textContent = s.paused ? '再開' : '一時停止';
+  document.getElementById('simplePause').textContent = s.paused ? '読み上げを再開' : '一時停止';
   document.getElementById('simpleSkip').disabled = !s.running;
   el.className = 'simple-status';
+  const sources = document.getElementById('simpleSources');
+  sources.textContent = '';
   if (!s.running) {
-    el.textContent = '停止中';
-  } else if (s.error) {
+    el.textContent = s.paused ? '停止中(読み上げは一時停止中)' : '停止中 —「▶ 開始」を押すとコメントの取得を始めます';
+    return;
+  }
+  if (s.error) {
     el.className = 'simple-status ng';
-    el.textContent = `取得できません: ${s.error}`;
+    el.textContent = `うまく取得できていません: ${s.error}`;
   } else {
     el.className = 'simple-status on';
-    el.textContent = s.lastNo ? `取得中(レス${s.lastNo})` : '取得中 — コメントを待っています';
+    el.textContent = s.paused ? '取得中(読み上げは一時停止中)' : '取得中 — コメントが届くと字幕に出して読み上げます';
   }
+  const chip = (state, text) => {
+    const span = document.createElement('span');
+    const dot = document.createElement('i');
+    dot.className = state;
+    span.append(dot, text);
+    sources.appendChild(span);
+  };
+  if (s.threadUrl) chip(s.error ? 'ng' : 'ok', s.threadTitle ? `掲示板:「${s.threadTitle}」 レス${s.lastNo}` : `掲示板: レス${s.lastNo}`);
+  for (const src of s.sources || []) {
+    const state = src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : '';
+    chip(state, `${src.label}: ${String(src.message || '').split(/[(（]/)[0]}`);
+  }
+}
+
+// ---- かんたんセットアップ(最初の案内。何度でもやり直せる) ----
+const wizard = document.getElementById('setupWizard');
+const WIZ_STEPS = Array.from(wizard.querySelectorAll('.wiz-step')).map((s) => s.dataset.step);
+let wizIndex = 0;
+let wizSourceWarned = false;
+function renderWizard() {
+  const step = WIZ_STEPS[wizIndex];
+  for (const s of wizard.querySelectorAll('.wiz-step')) s.classList.toggle('active', s.dataset.step === step);
+  const progress = document.getElementById('wizProgress');
+  progress.textContent = '';
+  // 「ようこそ」と「準備ができました」を除いた4つの手順を、棒で表す
+  for (let i = 1; i < WIZ_STEPS.length - 1; i++) {
+    const bar = document.createElement('i');
+    if (i <= wizIndex) bar.className = 'on';
+    progress.appendChild(bar);
+  }
+  progress.style.visibility = step === 'welcome' || step === 'done' ? 'hidden' : '';
+  document.getElementById('wizBack').style.visibility = wizIndex === 0 ? 'hidden' : '';
+  document.getElementById('wizLater').style.display = step === 'welcome' ? '' : 'none';
+  document.getElementById('wizNext').textContent = step === 'welcome' ? '始める' : step === 'done' ? '完了' : '次へ';
+  document.getElementById('wizSourceWarn').textContent = '';
+  renderMethod();
+  if (step === 'speech') checkTts();
+  wizard.querySelector('.wiz-box').scrollTop = 0;
+}
+function openSetup() {
+  if (window.HelpTips) window.HelpTips.close();
+  setSimpleMode(true);
+  wizIndex = 0;
+  wizSourceWarned = false;
+  wizard.classList.add('open');
+  renderWizard();
+}
+function closeSetup() {
+  wizard.classList.remove('open');
+}
+document.getElementById('wizNext').addEventListener('click', () => {
+  const step = WIZ_STEPS[wizIndex];
+  if (step === 'source' && !hasSource() && !wizSourceWarned) {
+    wizSourceWarned = true;
+    document.getElementById('wizSourceWarn').textContent = 'どれも入っていません。あとで入れる時は、このまま「次へ」を押してください。';
+    return;
+  }
+  if (step === 'method' && !streamMethod()) {
+    wizard.querySelector('.wiz-choices').animate(
+      [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }],
+      { duration: 240 },
+    );
+    return;
+  }
+  if (step === 'done') {
+    storeSet(SETUP_DONE_KEY, '1');
+    closeSetup();
+    return;
+  }
+  wizIndex++;
+  renderWizard();
+});
+document.getElementById('wizBack').addEventListener('click', () => {
+  if (wizIndex > 0) wizIndex--;
+  renderWizard();
+});
+for (const btn of wizard.querySelectorAll('[data-wiz-close]')) btn.addEventListener('click', closeSetup);
+for (const btn of document.querySelectorAll('[data-setup-open]')) btn.addEventListener('click', openSetup);
+document.getElementById('wizTestBtn').addEventListener('click', () => {
+  invoke('comments_test', { text: 'テスト表示です。字幕と読み上げを確認できます' });
+});
+// コントロールパネルの「セットアップを始める」(窓が開いている時)
+listen('settings:setup', openSetup);
+
+/** 設定を読み込んだ後に呼ぶ。初めての人は、シンプルモードとセットアップの案内から始める */
+function initSimpleMode() {
+  renderMethod();
+  const fromControl = new URLSearchParams(location.search).get('setup') === '1';
+  const firstTime = storeGet(SETUP_DONE_KEY) !== '1' && storeGet(SIMPLE_KEY) === null && !hasSource();
+  if (fromControl || firstTime) openSetup();
+  else if (document.body.classList.contains('simple')) checkTts();
 }
 
 (async () => {
@@ -2532,6 +2737,7 @@ function renderSimpleStatus(s) {
   settings.style = C.mergeStyle(settings.style);
   await loadMonitors();
   renderFields();
+  initSimpleMode();
   renderStatus(await invoke('comments_status'));
   listen('comments:status', (e) => renderStatus(e.payload));
   // マウスで位置を決めた時など、Rust側で設定が変わった時に表示し直す

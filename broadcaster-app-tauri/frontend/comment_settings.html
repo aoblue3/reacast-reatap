@@ -265,6 +265,53 @@
   .simple-url { display: grid; grid-template-columns: 7.5em 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
   .simple-url code { background: var(--c-15161a); padding: 4px 6px; border-radius: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .simple-link { margin-top: 8px; font-size: 12px; }
+  .simple-top { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+  .simple-top button { font-size: 12px; }
+  .simple-sources { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; font-size: 12px; }
+  .simple-sources span { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 10px; background: var(--c-24262d); border: 1px solid var(--c-3a3d47); color: var(--c-c9cbd4); }
+  .simple-sources i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-ffd36b); }
+  .simple-sources i.ok { background: var(--c-7dff9a); }
+  .simple-sources i.ng { background: var(--c-ff8a8a); }
+  .simple-hint { font-size: 12px; color: var(--c-8d909c); margin: 3px 0 0; line-height: 1.5; }
+  /* 番号は表示している枠だけで数える(配信方法で片方の枠を隠すため) */
+  .simple-wrap { counter-reset: simple-step; }
+  .simple-card { counter-increment: simple-step; }
+  .simple-num::before { content: counter(simple-step); }
+  .simple-card.hidden { display: none; }
+  .tts-check { margin: 8px 0 4px; padding: 7px 10px; border-radius: 6px; font-size: 13px; line-height: 1.6; background: var(--c-15161a); }
+  .tts-check:empty { display: none; }
+  .tts-hidden { display: none !important; }
+  .tts-check.ok { color: var(--c-7dff9a); }
+  .tts-check.ng { color: var(--c-ff8a8a); }
+  .tts-check .inline { margin-top: 6px; }
+  /* かんたんセットアップ(最初の案内) */
+  #setupWizard { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55); align-items: center; justify-content: center; }
+  #setupWizard.open { display: flex; }
+  .wiz-box { position: relative; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; box-sizing: border-box; padding: 20px 24px 18px; background: var(--c-1c1d22); border: 1px solid var(--c-3a3d47); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); font-size: 14px; line-height: 1.6; }
+  .wiz-box p { margin: 0 0 10px; }
+  .wiz-close { position: absolute; top: 10px; right: 12px; background: none; color: var(--c-8d909c); font-size: 16px; padding: 2px 6px; }
+  .wiz-close:hover { color: var(--c-e6e6ea); }
+  .wiz-progress { display: flex; gap: 6px; margin: 4px 30px 16px 0; }
+  .wiz-progress i { flex: 1; height: 4px; border-radius: 2px; background: var(--c-3a3d47); }
+  .wiz-progress i.on { background: var(--c-3b6df0); }
+  .wiz-step { display: none; }
+  .wiz-step.active { display: block; }
+  .wiz-title { font-size: 18px; font-weight: bold; margin: 0 0 10px; color: var(--c-ffffff); }
+  .wiz-sub { color: var(--c-a9acb8); font-size: 13px; }
+  #setupWizard input[type=text] { width: 100%; font-size: 14px; padding: 8px 10px; }
+  .wiz-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 10px; }
+  .wiz-choice { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 12px; border-radius: 10px; background: var(--c-24262d); border: 2px solid var(--c-3a3d47); color: var(--c-e6e6ea); }
+  .wiz-choice b { font-size: 15px; }
+  .wiz-choice span { font-size: 12px; color: var(--c-a9acb8); line-height: 1.5; }
+  .wiz-choice:hover { border-color: var(--c-8d909c); }
+  .wiz-choice.selected { border-color: var(--c-3b6df0); background: rgba(59, 109, 240, 0.14); }
+  [data-method-detail] { display: none; }
+  [data-method-detail].show { display: block; }
+  .wiz-method-detail { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
+  .wiz-warn { color: var(--c-ffd36b); font-size: 13px; min-height: 1.2em; margin-top: 10px; }
+  .wiz-nav { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .wiz-nav #wizBack { margin-right: auto; }
+  .wiz-nav button { padding: 7px 18px; }
   .simple-main-buttons button { flex: 1; font-size: 18px; font-weight: bold; padding: 12px 0; border-radius: 10px; }
   .simple-go { background: #2e9a4b; } /* theme-keep: 開始は緑 */
   .simple-stop { background: #c94444; } /* theme-keep: 停止は赤 */
@@ -300,33 +347,41 @@
   <!-- ================= シンプルモード(よく使うものだけを大きく出す) ================= -->
   <div id="simpleView">
     <div class="simple-wrap">
+      <div class="simple-top">
+        <button class="secondary" data-setup-open>セットアップをやり直す</button>
+        <button class="secondary" id="simpleModeOff">すべての設定を表示する</button>
+      </div>
       <div class="simple-status" id="simpleStatus">停止中</div>
+      <div class="simple-sources" id="simpleSources"></div>
       <div class="simple-main-buttons">
         <button id="simpleStart" class="simple-go">▶ 開始</button>
         <button id="simpleStop" class="simple-stop">■ 停止</button>
       </div>
       <div class="simple-sub-buttons">
-        <button class="secondary" id="simplePause">一時停止</button>
-        <button class="secondary" id="simpleSkip">スキップ</button>
-        <button class="secondary" data-simple-open="thread">スレッドのレス</button>
+        <button class="secondary" id="simplePause" title="読み上げを止めて、届いたコメントは溜めておきます">一時停止</button>
+        <button class="secondary" id="simpleSkip" title="今読んでいるコメントを飛ばします">スキップ</button>
+        <button class="secondary" data-simple-open="thread" title="掲示板のスレッドの書き込みを見たり、書き込んだりします">スレッドのレス</button>
       </div>
 
       <div class="simple-card">
-        <div class="simple-num">1</div>
+        <div class="simple-num"></div>
         <div class="simple-body">
           <div class="simple-title">コメントの取得元</div>
           <div class="simple-sub">使うものだけ入力してください(空欄でも大丈夫です)。</div>
-          <label class="simple-label">掲示板(スレッドまたは板のURL)</label>
+          <label class="simple-label">掲示板</label>
           <input type="text" data-key="threadUrl" placeholder="https://bbs.jpnkn.com/test/read.cgi/…" />
-          <label class="simple-label">YouTube(配信またはチャンネルのURL)</label>
-          <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/…" />
-          <label class="simple-label">Twitch(チャンネル名)</label>
+          <div class="simple-hint">コメントが書き込まれる掲示板のページ(スレッド)のURL。板のURLを入れると、その板の一番新しいスレッドを読みます。</div>
+          <label class="simple-label">YouTube</label>
+          <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/@…" />
+          <div class="simple-hint">配信のページか、チャンネルのURL(@から始まる名前でも大丈夫です)。</div>
+          <label class="simple-label">Twitch</label>
           <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
+          <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
         </div>
       </div>
 
       <div class="simple-card">
-        <div class="simple-num">2</div>
+        <div class="simple-num"></div>
         <div class="simple-body">
           <div class="simple-title">読み上げ</div>
           <label class="simple-check"><input type="checkbox" data-key="speechEnabled" /> コメントを読み上げる</label>
@@ -334,40 +389,40 @@
             <span>読み上げソフト</span>
             <select data-key="speechEngine" data-engine-select data-engine-mirror></select>
           </div>
+          <div class="tts-check" data-tts-check></div>
           <div class="simple-grid" data-engine="http">
             <span>声</span>
-            <div class="simple-inline"><select data-key="ttsSpeaker" data-speaker-select data-keep-unknown></select><button class="secondary" data-simple-fetch-speakers>一覧を更新</button></div>
-            <span>話速</span>
+            <select data-key="ttsSpeaker" data-speaker-select data-keep-unknown></select>
+            <span>読む速さ</span>
             <div class="slider-row"><input type="range" min="0.5" max="2" step="0.01" data-key="ttsSpeed" data-param="speed" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div>
             <span>音量</span>
             <div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-param="volume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div>
           </div>
-          <div class="simple-sub" data-engine="bouyomi" style="margin-top:8px">声・速さは棒読みちゃんの設定どおりに読みます。</div>
-          <div class="simple-sub" data-engine="command" style="margin-top:8px">ソフトの場所と引数は「声・速さ」の設定で決めてください。</div>
           <button class="secondary simple-link" data-simple-open="speech">声・速さの細かい設定 ›</button>
         </div>
       </div>
 
-      <div class="simple-card">
-        <div class="simple-num">3</div>
+      <div class="simple-card" data-method-card="obs">
+        <div class="simple-num"></div>
         <div class="simple-body">
-          <div class="simple-title">OBSに出す(ブラウザソース)</div>
-          <div class="simple-sub">OBSで「ブラウザ」ソースを追加して、URLを貼り付けます。</div>
+          <div class="simple-title">OBSに出す(URLを貼る)</div>
+          <div class="simple-sub">OBSの「ソース」の＋ →「ブラウザ」を追加して、URLの欄に貼り付けます。幅1920・高さ1080にしてください。</div>
           <div class="simple-url"><span>下の字幕</span><code id="simpleUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="simpleUrlSubtitle">コピー</button></div>
           <div class="simple-url"><span>右のレス一覧</span><code id="simpleUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="simpleUrlComments">コピー</button></div>
           <div class="simple-url"><span>リアクション</span><code id="simpleUrlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="simpleUrlReaction">コピー</button></div>
           <div class="simple-inline" style="margin-top:6px">
             <button class="secondary simple-link" data-open-guide>OBSでの設定方法 ›</button>
             <button class="secondary simple-link" data-simple-open="easy">ほかのURL(ニコ生風・話した字幕・アンケート) ›</button>
+            <button class="secondary simple-link" data-set-method="desktop">画面をそのまま映す方法に変える</button>
           </div>
         </div>
       </div>
 
-      <div class="simple-card">
-        <div class="simple-num">4</div>
+      <div class="simple-card" data-method-card="desktop">
+        <div class="simple-num"></div>
         <div class="simple-body">
-          <div class="simple-title">デスクトップに表示(画面キャプチャ)</div>
-          <div class="simple-sub">OBSの「画面キャプチャ」で配信する場合は、PCの画面に直接出します(取得中だけ表示されます)。</div>
+          <div class="simple-title">PCの画面に出す(画面をそのまま映す)</div>
+          <div class="simple-sub">OBSの「画面キャプチャ」で配信している時の方法です。字幕などをPCの画面の上に出すので、そのまま配信に映ります(「開始」している間だけ出ます)。</div>
           <div class="simple-row">
             <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> 下の字幕</label>
             <button class="secondary" data-desktop-adjust="subtitle">マウスで位置を調整する</button>
@@ -376,39 +431,130 @@
             <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> 右のレス一覧</label>
             <button class="secondary" data-desktop-adjust="list">マウスで位置を調整する</button>
           </div>
-          <label class="simple-check"><input type="checkbox" data-key="desktopTopmost" /> ほかの窓より前に出す</label>
-          <button class="secondary simple-link" data-simple-open="output">デスクトップ表示の細かい設定 ›</button>
+          <label class="simple-check"><input type="checkbox" data-key="desktopTopmost" /> ゲームなど、ほかの窓より前に出す</label>
+          <div class="simple-inline">
+            <button class="secondary simple-link" data-simple-open="output">細かい設定 ›</button>
+            <button class="secondary simple-link" data-set-method="obs">OBSにURLを貼る方法に変える</button>
+          </div>
         </div>
       </div>
 
       <div class="simple-card">
-        <div class="simple-num">5</div>
+        <div class="simple-num"></div>
         <div class="simple-body">
           <div class="simple-title">見た目</div>
           <div class="simple-grid">
-            <span>下の字幕</span>
+            <span>字幕のデザイン</span>
             <select data-preset-group="subtitle" data-preset-mirror="subtitlePreset"></select>
-            <span>右のレス一覧</span>
+            <span>レス一覧のデザイン</span>
             <select data-preset-group="list" data-preset-mirror="listPreset"></select>
           </div>
-          <label class="simple-check"><input type="checkbox" id="simpleReactionsEnabled" /> 視聴者のリアクションを表示する</label>
-          <label class="simple-check"><input type="checkbox" data-key="reactionLink" /> コメントの言葉でリアクションを飛ばす(wwwで草など)</label>
+          <label class="simple-check"><input type="checkbox" data-reactions-enabled /> 視聴者が送ったリアクション(絵文字)を表示する</label>
+          <label class="simple-check"><input type="checkbox" data-key="reactionLink" /> コメントの言葉でリアクションを飛ばす(「www」で草など)</label>
         </div>
       </div>
 
       <div class="simple-card">
-        <div class="simple-num">6</div>
+        <div class="simple-num"></div>
         <div class="simple-body">
           <div class="simple-title">テスト</div>
-          <div class="simple-sub">字幕の表示と読み上げを確認できます。</div>
+          <div class="simple-sub">「開始」していなくても、字幕の表示と読み上げを確かめられます。</div>
           <div class="simple-inline">
             <input type="text" id="simpleTestText" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" />
             <button id="simpleTest" class="secondary simple-mid">テスト表示</button>
           </div>
         </div>
       </div>
+    </div>
+  </div>
 
-      <button id="simpleModeOff" class="secondary simple-back">すべての設定を表示する</button>
+  <!-- ================= かんたんセットアップ(最初の案内。何度でもやり直せる) ================= -->
+  <div id="setupWizard">
+    <div class="wiz-box">
+      <button class="wiz-close" data-wiz-close title="閉じる(あとで、いつでもやり直せます)">✕</button>
+      <div class="wiz-progress" id="wizProgress"></div>
+
+      <div class="wiz-step" data-step="welcome">
+        <div class="wiz-title">ReaCastへようこそ</div>
+        <p>ReaCastは、配信に来たコメントを<b>字幕にして配信画面に出したり</b>、<b>声で読み上げたり</b>するアプリです。</p>
+        <p>これから4つの手順で設定します(2〜3分)。途中でやめても、あとから何度でもやり直せます。</p>
+      </div>
+
+      <div class="wiz-step" data-step="source">
+        <div class="wiz-title">コメントをどこから取りますか？</div>
+        <p class="wiz-sub">使うものだけ入力してください。あとからでも変えられます。</p>
+        <label class="simple-label">掲示板</label>
+        <input type="text" data-key="threadUrl" placeholder="https://bbs.jpnkn.com/test/read.cgi/…" />
+        <div class="simple-hint">コメントが書き込まれる掲示板のページ(スレッド)のURL。板のURLを入れると、その板の一番新しいスレッドを読みます。</div>
+        <label class="simple-label">YouTube</label>
+        <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/@…" />
+        <div class="simple-hint">配信のページか、チャンネルのURL(@から始まる名前でも大丈夫です)。</div>
+        <label class="simple-label">Twitch</label>
+        <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
+        <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
+        <div class="wiz-warn" id="wizSourceWarn"></div>
+      </div>
+
+      <div class="wiz-step" data-step="method">
+        <div class="wiz-title">配信画面にどうやって出しますか？</div>
+        <div class="wiz-choices">
+          <button class="wiz-choice" data-wiz-method="obs">
+            <b>OBSにURLを貼る</b>
+            <span>OBSの「ブラウザ」ソースで字幕を出します。ゲームの画面だけを映していても字幕が出ます。</span>
+          </button>
+          <button class="wiz-choice" data-wiz-method="desktop">
+            <b>画面をそのまま映す</b>
+            <span>OBSの「画面キャプチャ」でPCの画面ごと配信している時。字幕をPCの画面の上に出します。</span>
+          </button>
+        </div>
+        <p class="wiz-sub">分からない時は「OBSにURLを貼る」を選んでください。 <button class="secondary simple-link" data-open-guide>OBSでの設定方法(説明ページ)</button></p>
+        <div class="wiz-method-detail" data-method-detail="obs">
+          <p>OBSの「ソース」の＋ →「ブラウザ」を追加して、URLの欄に下のURLを貼り付けます。幅1920・高さ1080にしてください。</p>
+          <div class="simple-url"><span>下の字幕</span><code id="wizUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="wizUrlSubtitle">コピー</button></div>
+          <div class="simple-url"><span>右のレス一覧</span><code id="wizUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="wizUrlComments">コピー</button></div>
+          <p class="wiz-sub">右のレス一覧はいらなければ貼らなくて大丈夫です。</p>
+        </div>
+        <div class="wiz-method-detail" data-method-detail="desktop">
+          <p>「開始」している間、PCの画面に下の字幕を出します。場所は、あとで「マウスで位置を調整する」で変えられます。</p>
+          <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> 右側にレス一覧も出す</label>
+        </div>
+      </div>
+
+      <div class="wiz-step" data-step="speech">
+        <div class="wiz-title">読み上げ</div>
+        <label class="simple-check"><input type="checkbox" data-key="speechEnabled" /> コメントを声で読み上げる</label>
+        <div class="simple-grid">
+          <span>読み上げソフト</span>
+          <select data-key="speechEngine" data-engine-select data-engine-mirror></select>
+        </div>
+        <div class="simple-hint">読み上げには、別の無料ソフトが必要です。持っていなければ、VOICEVOXがおすすめです。</div>
+        <div class="tts-check" data-tts-check></div>
+        <div class="simple-grid" data-engine="http" data-tts-ok-only>
+          <span>声</span>
+          <select data-key="ttsSpeaker" data-speaker-select data-keep-unknown></select>
+        </div>
+      </div>
+
+      <div class="wiz-step" data-step="test">
+        <div class="wiz-title">試してみましょう</div>
+        <p>下のボタンを押すと、テストの字幕を出して読み上げます。</p>
+        <button class="simple-mid" id="wizTestBtn" style="margin-bottom:12px">テスト表示</button>
+        <p class="wiz-sub" data-method-detail="obs">字幕は、OBSに貼った「ブラウザ」ソースに出ます。</p>
+        <p class="wiz-sub" data-method-detail="desktop">字幕は、PCの画面の下の方に出ます。</p>
+        <p class="wiz-sub">声が聞こえない時は、読み上げソフトが起動しているか確かめてください。</p>
+      </div>
+
+      <div class="wiz-step" data-step="done">
+        <div class="wiz-title">準備ができました</div>
+        <p>配信を始める時は、この画面の<b>「▶ 開始」</b>を押してください。コメントが届くと、字幕に出て読み上げられます。</p>
+        <p>設定は、この画面からいつでも変えられます。分からなくなった時は「セットアップをやり直す」で、もう一度この案内を出せます。</p>
+      </div>
+
+      <div class="wiz-nav">
+        <button class="secondary" id="wizBack">戻る</button>
+        <button class="secondary" id="wizLater" data-wiz-close>あとで</button>
+        <button id="wizNext">次へ</button>
+      </div>
     </div>
   </div>
 
@@ -440,7 +586,7 @@
   <main>
     <!-- ================= かんたん設定 ================= -->
     <section data-tab="easy" class="active">
-      <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。よく使う項目だけにしたい時は <button class="secondary" data-simple-on>シンプルモード</button></p>
+      <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。よく使う項目だけにしたい時は <button class="secondary" data-simple-on>シンプルモード</button> <button class="secondary" data-setup-open>セットアップの案内を出す</button></p>
       <div class="note easy-guide">
         <div><b>OBSの「画面キャプチャ」で配信している方</b>(URLを貼らない方)は、③の代わりに「デスクトップに表示」タブで、字幕やレス一覧をPCの画面に出してください。</div>
         <div class="inline" style="margin-top:6px">

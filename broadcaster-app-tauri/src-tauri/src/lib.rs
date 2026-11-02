@@ -382,9 +382,16 @@ fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, l
 }
 
 /// コメント読み上げ・字幕の設定ウィンドウを開く(開いていれば前面に出す)。
+/// setup: かんたんセットアップ(最初の案内)を出す(コントロールパネルの「セットアップを始める」)
 #[tauri::command(async)]
-fn open_comment_settings(app: tauri::AppHandle) -> Result<(), String> {
-    open_comment_settings_window(&app).map_err(|e| e.to_string())
+fn open_comment_settings(app: tauri::AppHandle, setup: Option<bool>) -> Result<(), String> {
+    let setup = setup.unwrap_or(false);
+    let existed = app.get_webview_window("commentSettings").is_some();
+    open_comment_settings_window(&app, setup).map_err(|e| e.to_string())?;
+    if setup && existed {
+        let _ = app.emit_to("commentSettings", "settings:setup", ());
+    }
+    Ok(())
 }
 
 /// 視聴者アンケートの状態をOBSの画面(poll.html)に送る(control.jsから。nullで消す)
@@ -413,14 +420,15 @@ fn open_stats_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn open_comment_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+fn open_comment_settings_window(app: &tauri::AppHandle, setup: bool) -> tauri::Result<()> {
     if let Some(win) = app.get_webview_window("commentSettings") {
         let _ = win.unminimize();
         let _ = win.show();
         let _ = win.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App("comment_settings.html".into()))
+    let page = if setup { "comment_settings.html?setup=1" } else { "comment_settings.html" };
+    WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App(page.into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コメント読み上げ・字幕")
         // コントロールパネル(ReaCastのアイコン)と見分けられるよう、この窓だけ別のアイコン
@@ -1290,7 +1298,7 @@ pub fn run() {
                         "comments" => {
                             let app = app.clone();
                             std::thread::spawn(move || {
-                                let _ = open_comment_settings_window(&app);
+                                let _ = open_comment_settings_window(&app, false);
                             });
                         }
                         "minimize" => {
@@ -1402,6 +1410,7 @@ pub fn run() {
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,
+            comments::comments_open_tts_download,
             comments::comments_default_settings,
             comments::comments_desktop_adjusting,
             comments::comments_desktop_adjust,
