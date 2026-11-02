@@ -1593,6 +1593,7 @@ function showStatusError(text) {
 
 function renderStatus(s) {
   renderSimpleStatus(s);
+  renderSourceNotes(s);
   startBtn.textContent = s.running ? '再開始' : '開始';
   stopBtn.disabled = !s.running;
   statusEl.textContent = '';
@@ -2665,6 +2666,54 @@ function renderSimpleStatus(s) {
   for (const src of s.sources || []) {
     const state = src.state === 'ok' ? 'ok' : src.state === 'error' ? 'ng' : '';
     chip(state, `${src.label}: ${String(src.message || '').split(/[(（]/)[0]}`);
+  }
+}
+
+// ---- 取得元の知らせ(取得中に変えた時の「再開始で反映」と、まだ読めていない取得元) ----
+let lastStatus = null;
+// 今取得している取得元(開始した時の欄の中身)。止まっている時はnull
+let appliedSources = null;
+function sourceSnapshot() {
+  return JSON.stringify([document.getElementById('threadUrl').value.trim(), (settings.youtubeTarget || '').trim(), (settings.twitchChannel || '').trim()]);
+}
+startBtn.addEventListener('click', () => {
+  appliedSources = sourceSnapshot();
+});
+for (const el of document.querySelectorAll('[data-key="threadUrl"], [data-key="youtubeTarget"], [data-key="twitchChannel"]')) {
+  el.addEventListener('input', () => lastStatus && renderSourceNotes(lastStatus));
+}
+
+/** まだ読めていない取得元の、どうすればいいかの一言 */
+function sourceHint(src) {
+  const m = String(src.message || '');
+  if (src.state === 'error') return 'インターネットの接続を確かめてください(30秒ごとに自動でやり直します)。';
+  if (src.id === 'youtube' && m.includes('配信が始まるのを待っています')) {
+    return 'チャンネルで公開の配信が始まると、自動で読み始めます。限定公開の配信や、すぐに読みたい時は、YouTubeの欄に配信のURL(watch?v=…)を入れて「再開始」を押してください。';
+  }
+  if (src.id === 'youtube' && m.includes('チャットを読み込めません')) return '配信が始まっているか、チャットがオフになっていないか確かめてください。';
+  if (src.id === 'youtube' && m.includes('終了')) return '次の配信が始まると、自動で読み始めます。';
+  return '';
+}
+
+function renderSourceNotes(s) {
+  lastStatus = s;
+  const startButtons = [startBtn, document.getElementById('simpleStart')];
+  if (!s.running) appliedSources = null;
+  else if (appliedSources === null) appliedSources = sourceSnapshot();
+  const pending = s.running && settings && appliedSources !== sourceSnapshot();
+  for (const el of document.querySelectorAll('[data-pending-note]')) {
+    el.textContent = pending ? '取得元を変えました。「再開始」を押すと反映されます(今は前の取得元のまま読んでいます)。' : '';
+  }
+  for (const b of startButtons) b.classList.toggle('attention', pending);
+  // 即時通知(jpnkn)は、つながらなくても定期取得で読めるので知らせない。つなぎ始めの「接続中…」も除く
+  const problems = s.running ? (s.sources || []).filter((src) => src.id !== 'jpnkn' && src.state !== 'ok' && !String(src.message || '').startsWith('接続中')) : [];
+  for (const el of document.querySelectorAll('[data-source-warn]')) {
+    el.textContent = '';
+    for (const src of problems) {
+      const line = document.createElement('div');
+      line.textContent = `⚠ ${src.label}のコメントをまだ読めていません: ${src.message} ${sourceHint(src)}`;
+      el.appendChild(line);
+    }
   }
 }
 
