@@ -1219,7 +1219,7 @@ pub fn run() {
             if let Err(e) = comments::hotkeys::apply(app.handle(), &comment_settings) {
                 log::warn!("{e}");
             }
-            // 話した字幕: 音声認識の画面からのメッセージを受け取り、ONならEdgeの窓を開く
+            // 自分の声の字幕: 音声認識の画面からのメッセージを受け取り、ONならEdgeの窓を開く
             app.manage(voice::VoiceManager::default());
             voice::start_listener(app.handle().clone());
             voice::restore_muted(app.handle());
@@ -1431,7 +1431,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app, event| {
-            // 終了する時に、話した字幕のために開いたEdgeも閉じる
+            // 終了する時に、自分の声の字幕のために開いたEdgeも閉じる
             if let tauri::RunEvent::Exit = event {
                 voice::stop(app);
                 local_translate::stop();

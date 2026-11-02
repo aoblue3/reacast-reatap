@@ -193,7 +193,7 @@ pub fn parse_reading_rules(text: &str) -> Vec<ReadingRule> {
         .collect()
 }
 
-/// ひらがな・カタカナ・漢字が入っているか(下の字幕のレスを、日本語なら英語に、
+/// ひらがな・カタカナ・漢字が入っているか(コメント字幕のレスを、日本語なら英語に、
 /// それ以外なら日本語に翻訳するための判定)。
 pub fn has_japanese(text: &str) -> bool {
     text.chars().any(|c| matches!(c as u32, 0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xFF66..=0xFF9F))

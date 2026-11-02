@@ -3,7 +3,7 @@
  * コメント読み上げ・字幕機能の画面(subtitle.html / comments.html /
  * comment_settings.html)で共通に使う部品。
  *
- * 字幕・レス一覧の画面は、OBSのブラウザソースとして開かれた時も、
+ * コメント字幕・コメント一覧の画面は、OBSのブラウザソースとして開かれた時も、
  * ReaCastのデスクトップ字幕ウィンドウとして開かれた時も、同じく
  * obs_bridge(ReaCastがローカルに立てているWebSocket)から表示内容を
  * 受け取る。どちらも同じメッセージを同時に受け取るので、表示がずれない。
@@ -36,7 +36,7 @@
       offsetY: 0,
       // アンカー先のレスを先に表示する時の文字色(斜体で表示する)
       quoteColor: '#d6d6d6',
-      // レスの翻訳(「下の字幕でレスを翻訳する」)の色と、本文に対する大きさ
+      // レスの翻訳(「コメント字幕でレスを翻訳する」)の色と、本文に対する大きさ
       translationColor: '#ffe066',
       translationScale: 0.75,
       // 字幕の背景(不透明度0なら背景なし)・余白(0なら既定)・角の丸み
@@ -44,7 +44,7 @@
       bgOpacity: 0,
       padding: 0,
       radius: 0,
-      // 今読んでいるスレッドのタイトルを小さく出す(OBSの下の字幕だけ。既定OFF)。
+      // 今読んでいるスレッドのタイトルを小さく出す(OBSのコメント字幕だけ。既定OFF)。
       // 位置は表示範囲の四隅・上下の真ん中(top-left等)と、そこからのずらし(px)
       threadTitleShow: false,
       threadTitlePos: 'top-left',
@@ -109,8 +109,10 @@
       showPaid: true,
       customCss: '',
     },
-    // ニコ生風(右から左に流れる)
+    // 流れるコメント(右から左に流れる)
     nico: {
+      // OFFにすると流さない(OBSのソースを消さなくても止められる)
+      enabled: true,
       fontFamily: 'BIZ UDゴシック',
       fontSize: 40,
       bold: true,
@@ -128,7 +130,7 @@
       instant: false,
       customCss: '',
     },
-    // 話した字幕(voice.html)
+    // 自分の声の字幕(voice.html)
     voice: {
       fontFamily: 'BIZ UDゴシック',
       fontSize: 36,

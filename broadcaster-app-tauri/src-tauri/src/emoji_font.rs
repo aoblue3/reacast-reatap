@@ -3,7 +3,7 @@
 //! Windows 10の絵文字のフォント(Segoe UI Emoji)には、新しい絵文字(🫍 U+1FACDなど)が
 //! 入っていないので、レスに書かれると□で表示される。GoogleのNoto Color Emoji
 //! (OFL-1.1。約3MB)をダウンロードしておくと、Windowsのフォントに無い絵文字だけ
-//! それで表示する(shared/comment-common.jsの"ReaCast Emoji")。字幕・レス一覧・OBSの
+//! それで表示する(shared/comment-common.jsの"ReaCast Emoji")。コメント字幕・コメント一覧・OBSの
 //! 画面には、obs_bridgeのHTTP(/emoji-font.ttf)から配る。
 //!
 //! ダウンロードするファイルは、GitHubの決まった版(コミット)に固定して、中身がその版と

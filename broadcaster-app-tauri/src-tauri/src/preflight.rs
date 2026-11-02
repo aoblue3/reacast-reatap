@@ -101,7 +101,7 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     out.push(speech);
 
     out.push(if !s.voice_enabled {
-        item("話した字幕", "skip", "使っていません")
+        item("自分の声の字幕", "skip", "使っていません")
     } else if crate::voice::is_running(&app) {
         let st = app.state::<crate::voice::VoiceManager>().inner().status_message();
         let state = match st.0.as_str() {
@@ -110,9 +110,9 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
             "muted" => "warn",
             _ => "ok",
         };
-        item("話した字幕", state, st.1)
+        item("自分の声の字幕", state, st.1)
     } else {
-        item("話した字幕", "ng", "音声認識の窓(Edge)が閉じています(設定画面の「音声認識の窓を開き直す」)")
+        item("自分の声の字幕", "ng", "音声認識の窓(Edge)が閉じています(設定画面の「音声認識の窓を開き直す」)")
     });
 
     let clients = app.state::<ObsBridge>().client_count();

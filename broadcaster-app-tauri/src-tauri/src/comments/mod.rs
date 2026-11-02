@@ -75,7 +75,7 @@ pub struct CommentSettings {
     pub start_on_launch: bool,
     /// jpnknの板では即時通知(Fastインターフェース)も使って、書き込まれた瞬間に拾う
     pub jpnkn_fast: bool,
-    /// スレッドの>>1(テンプレート)は字幕・読み上げ・右のレス一覧に出さない
+    /// スレッドの>>1(テンプレート)は字幕・読み上げ・コメント一覧に出さない
     /// (長いと字幕の文字が小さくなり、読み終わるまで次のレスが待たされるため)
     pub skip_first_post: bool,
     /// 「スレッドのレス」を開いた時に、一番下(最新のレス)を表示する(既定OFF)
@@ -85,15 +85,15 @@ pub struct CommentSettings {
     pub post_mail: String,
     /// 書き込み欄でShift+Enterを押したら書き込む(OFFなら改行。Ctrl+Enterはいつも書き込む)
     pub post_shift_enter: bool,
-    /// 開始時に右のレス一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
+    /// 開始時にコメント一覧へ載せるレスの開始番号(0なら載せない。読み上げはしない)
     pub start_res_no: u32,
     /// 読み上げの途中でPCやReaCastが落ちた時、次に同じスレッドを開始したら、
     /// 前回読み終わったレスの次から読み上げる(「停止」を押して止めた時と、
     /// 1時間以上たった時は続きから読まない)
     pub resume_reading: bool,
-    /// 開始時に右のレス一覧へ出すお知らせ(空なら出さない)
+    /// 開始時にコメント一覧へ出すお知らせ(空なら出さない)
     pub initial_text: String,
-    /// 右のレス一覧に出すアイコン画像のフォルダ(掲示板のレス用。中の画像からランダムに選ぶ)
+    /// コメント一覧に出すアイコン画像のフォルダ(掲示板のレス用。中の画像からランダムに選ぶ)
     pub icon_folder_bbs: String,
     pub icon_folder_youtube: String,
     pub icon_folder_twitch: String,
@@ -176,7 +176,7 @@ pub struct CommentSettings {
     /// 読み上げの「スキップ」「一時停止/再開」のホットキー(空なら使わない。hotkeys.rs)
     pub hotkey_skip: String,
     pub hotkey_pause: String,
-    /// 話した字幕のマイクを止める / 再開するホットキー(別々のキー。voice.rs)
+    /// 自分の声の字幕のマイクを止める / 再開するホットキー(別々のキー。voice.rs)
     pub hotkey_voice_mute: String,
     pub hotkey_voice_unmute: String,
     pub reading_rules: String,
@@ -250,15 +250,15 @@ pub struct CommentSettings {
     pub reaction_rules: String,
     /// 1件のレスで飛ばすリアクションの最大数
     pub reaction_link_max: usize,
-    /// 下の字幕に出したレスを翻訳して下に添える(日本語→英語、それ以外→日本語。読み上げない)
+    /// コメント字幕に出したレスを翻訳して下に添える(日本語→英語、それ以外→日本語。読み上げない)
     pub subtitle_translate: bool,
     /// 日本語のレスの翻訳先(Google翻訳の言語コード。既定は英語)。日本語以外のレスは日本語に訳す
     pub subtitle_translate_target: String,
-    /// 翻訳のしかた(下の字幕のレス・話した字幕の共通): "local"(PCの中で。Chrome/Edgeの
+    /// 翻訳のしかた(コメント字幕のレス・自分の声の字幕の共通): "local"(PCの中で。Chrome/Edgeの
     /// 翻訳の機能。使えない時はGoogle翻訳) / "google"(Google翻訳(非公式の方法)だけ)
     pub translate_engine: String,
-    // ---- 話した字幕(voice.rs) ----
-    /// 話した字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
+    // ---- 自分の声の字幕(voice.rs) ----
+    /// 自分の声の字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
     pub voice_enabled: bool,
     /// 聞き取る言葉(例: "ja-JP")
     pub voice_lang: String,
@@ -286,7 +286,7 @@ pub struct CommentSettings {
     pub display_max_ms: u64,
     /// 字幕を出し終わるまで次のレスを待つ(ターボ中は待たない)
     pub wait_for_display: bool,
-    /// 下の字幕で、>>番号のアンカーが付いたレスの前に、アンカー先のレスを先に表示する
+    /// コメント字幕で、>>番号のアンカーが付いたレスの前に、アンカー先のレスを先に表示する
     pub anchor_preview: bool,
     pub anchor_preview_ms: u64,
     pub aa_display_ms: u64,
@@ -307,17 +307,17 @@ pub struct CommentSettings {
     /// マウスで動かして決めた位置・大きさ(物理ピクセル)。あればモニター・割合の
     /// 指定より優先する。
     pub desktop_rect: Option<DesktopRect>,
-    // ---- デスクトップに出す右のレス一覧(OBSの画面キャプチャで配信する人向け) ----
+    // ---- デスクトップに出すコメント一覧(OBSの画面キャプチャで配信する人向け) ----
     pub desktop_list_enabled: bool,
     pub desktop_list_x: f64,
     pub desktop_list_y: f64,
     pub desktop_list_width: f64,
     pub desktop_list_height: f64,
     pub desktop_list_rect: Option<DesktopRect>,
-    /// デスクトップ字幕・レス一覧をほかの窓より前に出す(OFFなら普通の窓と同じ重なり順)
+    /// デスクトップコメント字幕・コメント一覧をほかの窓より前に出す(OFFなら普通の窓と同じ重なり順)
     pub desktop_topmost: bool,
     /// 見た目の設定(フォント・色・縁など)。Rust側では中身を解釈せず、そのまま
-    /// 字幕・レス一覧の画面に渡す(画面側が既定値を補う)。
+    /// コメント字幕・コメント一覧の画面に渡す(画面側が既定値を補う)。
     pub style: serde_json::Value,
 }
 
@@ -579,7 +579,7 @@ impl Default for CommentSettings {
             desktop_width: 1.0,
             desktop_height: 0.22,
             desktop_rect: None,
-            // 画面の右上(タスクバー・下の字幕に重ならない所)
+            // 画面の右上(タスクバー・コメント字幕に重ならない所)
             desktop_list_enabled: false,
             desktop_list_x: 0.72,
             desktop_list_y: 0.05,
@@ -647,7 +647,7 @@ struct Post {
     body: String,
     /// ReaCast自身からのお知らせ(次スレ移動・スレ建て警告・テスト表示)
     system: bool,
-    /// 右のレス一覧に出すアイコン画像のURL(obs_bridgeが配信する)
+    /// コメント一覧に出すアイコン画像のURL(obs_bridgeが配信する)
     icon: Option<String>,
     /// 取得元: "bbs" | "youtube" | "twitch" | "system"
     source: &'static str,
@@ -656,7 +656,7 @@ struct Post {
     /// 「前回の続き」「ここから読み始める」で入れ直したレス。溜まっていてもターボに
     /// しない(追いつくために声を途中で切らず、普通の速さで読む)
     catch_up: bool,
-    /// スーパーチャット・ビッツ等の応援(右のレス一覧で目立たせる)
+    /// スーパーチャット・ビッツ等の応援(コメント一覧で目立たせる)
     paid: Option<Paid>,
 }
 
@@ -966,7 +966,7 @@ impl CommentEngine {
         }
     }
 
-    /// 文章が「リアクション連動」のルールに当てはまったリアクションのID(話した字幕用。最大数は設定どおり)
+    /// 文章が「リアクション連動」のルールに当てはまったリアクションのID(自分の声の字幕用。最大数は設定どおり)
     pub fn matched_reactions(&self, body: &str) -> Vec<String> {
         let st = self.state.lock().unwrap();
         text::matched_reactions(body, &st.compiled.reaction_rules, st.settings.reaction_link_max)
@@ -1070,7 +1070,7 @@ impl CommentEngine {
         );
         self.emit_status();
         self.emit_thread_reset();
-        // 開始(再開始)のたびに右のレス一覧を空にしてから始める
+        // 開始(再開始)のたびにコメント一覧を空にしてから始める
         self.bridge().clear_comments();
         let initial = self.settings().initial_text;
         if !initial.trim().is_empty() {
@@ -1474,7 +1474,7 @@ impl CommentEngine {
 
     fn emit_status(&self) {
         let status = self.status();
-        // 下の字幕に出すスレッドのタイトル(取得中だけ。出すかどうかは字幕の画面の設定で決める)
+        // コメント字幕に出すスレッドのタイトル(取得中だけ。出すかどうかは字幕の画面の設定で決める)
         let title = if status.running { status.thread_title.clone().filter(|t| !t.trim().is_empty()) } else { None };
         self.bridge().set_thread_title(title);
         let _ = self.app.emit("comments:status", status);
@@ -1503,8 +1503,8 @@ impl CommentEngine {
             if st.run_id != run_id {
                 return;
             }
-            // ニコ生風の「届いたらすぐ流す」: 読み上げの順番待ちを通さず、届いた時点で流す
-            // (字幕・読み上げ・右のレス一覧はこれまでどおり順番待ちから1件ずつ)
+            // 流れるコメントの「届いたらすぐ流す」: 読み上げの順番待ちを通さず、届いた時点で流す
+            // (字幕・読み上げ・コメント一覧はこれまでどおり順番待ちから1件ずつ)
             if st.settings.style.pointer("/nico/instant").and_then(|v| v.as_bool()).unwrap_or(false) {
                 let bridge = self.bridge();
                 for p in posts.iter().filter(|p| !p.system && !p.is_ng(&st.compiled)) {
@@ -1540,7 +1540,7 @@ impl CommentEngine {
     }
 
     /// 掲示板の読み込み先を、指定したスレッドに切り替える(取得中のみ。YouTube・
-    /// Twitchの取得や右のレス一覧はそのまま続ける)。保存してある取得先のURLは
+    /// Twitchの取得やコメント一覧はそのまま続ける)。保存してある取得先のURLは
     /// 変えないので、次に開始し直すとまた自動で現行スレを選ぶ。
     pub fn switch_thread(self: &Arc<Self>, url: &str) -> Result<(), String> {
         let (board, key) = source::parse_url(url)?;
@@ -1641,11 +1641,11 @@ impl CommentEngine {
                         .collect();
                     self.record_posts(run_id, &posts, false);
                     if first {
-                        // 起動時点で既にあったレスは読み上げない(右のレス一覧にだけ載せる)
+                        // 起動時点で既にあったレスは読み上げない(コメント一覧にだけ載せる)
                         first = false;
                         let compiled = self.state.lock().unwrap().compiled.clone();
                         let settings = self.settings();
-                        // 開始レス番号が指定されている時だけ、それ以降を右のレス一覧に載せる
+                        // 開始レス番号が指定されている時だけ、それ以降をコメント一覧に載せる
                         // (既定では載せず、「スレッド読み込みを開始しました」だけを出す)
                         let shown: Vec<&Post> = if settings.start_res_no > 0 {
                             posts.iter().filter(|p| p.no >= settings.start_res_no).collect()
@@ -1950,7 +1950,7 @@ impl CommentEngine {
             let aa = detect_aa(&settings, &compiled, &post);
             let bridge = self.bridge();
 
-            // >>番号が付いたレスなら、アンカー先のレスを先に(斜体で)下の字幕に出す。
+            // >>番号が付いたレスなら、アンカー先のレスを先に(斜体で)コメント字幕に出す。
             // 溜まっている時(ターボ中)は追いつくのを優先して省く。
             if settings.anchor_preview && post.source == "bbs" && backlog < settings.turbo_threshold.max(1) {
                 let quoted = text::first_anchor(&post.body).and_then(|n| {
@@ -2018,9 +2018,9 @@ impl CommentEngine {
             let shown_ms = if settings.max_wait_ms > 0 { shown_ms.min(settings.max_wait_ms) } else { shown_ms };
             // お知らせには反応しないが、「テスト表示」(test()のレス)では試せるようにする
             let linkable = !post.system || post.name == "テスト";
-            // 下の字幕のレスの翻訳: 字幕には番号(tid)を付けて出し、翻訳が返ってきたら
+            // コメント字幕のレスの翻訳: 字幕には番号(tid)を付けて出し、翻訳が返ってきたら
             // 同じ番号で送る(字幕の画面が、今出ている字幕の翻訳だけを下に添える)。
-            // 読み上げはしない。右のレス一覧・ニコ生風には出さない。
+            // 読み上げはしない。コメント一覧・流れるコメントには出さない。
             static SUBTITLE_TID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
             let tid = (settings.subtitle_translate && linkable && !aa && !post.body.trim().is_empty())
                 .then(|| SUBTITLE_TID.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
@@ -2377,7 +2377,7 @@ pub fn comments_save_settings(
     }
     engine.apply_settings(settings);
     crate::sync_subtitle_window(&app);
-    // 話した字幕のON/OFF・聞き取る言葉が変わっていれば、Edgeの窓を開く・閉じる・開き直す
+    // 自分の声の字幕のON/OFF・聞き取る言葉が変わっていれば、Edgeの窓を開く・閉じる・開き直す
     crate::voice::sync(&app);
     // 翻訳を使う設定・翻訳のしかたが変わっていれば、翻訳の窓を開く・閉じる
     crate::local_translate::sync(&app);
@@ -2598,7 +2598,7 @@ pub fn comments_test(app: AppHandle, engine: Engine, text: String) {
     });
 }
 
-/// 右のレス一覧・ニコ生風の表示だけに、見た目の確認用のレスを出す
+/// コメント一覧・流れるコメントの表示だけに、見た目の確認用のレスを出す
 /// (字幕・読み上げはしない)。
 #[tauri::command]
 pub fn comments_test_list(engine: Engine, text: String, name: String) {
@@ -2608,7 +2608,7 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
     post.name = name;
     post.date = "2026/10/08(木) 21:00:00.00 ID:test".into();
     post.icon = engine.pick_icon("bbs");
-    // AAとして判定されるかも本番と同じにする(ニコ生風のAAの流れ方を試せるように)
+    // AAとして判定されるかも本番と同じにする(流れるコメントのAAの流れ方を試せるように)
     let aa = {
         let st = engine.state.lock().unwrap();
         detect_aa(&st.settings, &st.compiled, &post)
@@ -2616,7 +2616,7 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
     let json = post.to_json(aa);
     let bridge = engine.bridge();
     bridge.push_comment(json.clone());
-    // ニコ生風の「届いたらすぐ流す」がONの時は、ニコ生風はこちらを流す(OFFの時は無視される)
+    // 流れるコメントの「届いたらすぐ流す」がONの時は、流れるコメントはこちらを流す(OFFの時は無視される)
     bridge.push_nico(json);
 }
 
@@ -3069,7 +3069,7 @@ mod tests {
             assert!(emoji_set.contains(&format!("id: '{id}'")), "{id}がemoji-set.jsにありません");
         }
         let m = |body: &str| text::matched_reactions(body, &rules, 2);
-        // 話した字幕(音声認識の1文)でも当てはまる
+        // 自分の声の字幕(音声認識の1文)でも当てはまる
         assert_eq!(m("おめでとうございます"), vec!["cake"]);
         assert_eq!(m("いやかわいいね"), vec!["heart"]);
         assert_eq!(m("ナイスナイス"), vec!["nice"]);

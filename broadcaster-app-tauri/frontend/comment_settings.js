@@ -68,6 +68,7 @@ function renderFields() {
   renderHotkeys();
   renderRuleEditors();
   renderEngineBoxes();
+  renderShowIf();
   if (typeof renderFontPickers === 'function') renderFontPickers();
   renderPresetSelects();
   monitorSelect.value = settings.desktopMonitorId || '';
@@ -92,7 +93,7 @@ function renderPreview(animate) {
 subtitlePreview.addEventListener('load', () => renderPreview(false));
 document.getElementById('subtitleAnimTest').addEventListener('click', () => renderPreview(true));
 
-// ---- 右のレス一覧のプレビュー(comments.html?previewを埋め込んで同じ描画をさせる) ----
+// ---- コメント一覧のプレビュー(comments.html?previewを埋め込んで同じ描画をさせる) ----
 const listPreview = document.getElementById('listPreview');
 const LIST_SAMPLES = [
   { no: 67, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:01.11 ID:abc', body: '水中にいるみたい', aa: false, icon: null },
@@ -807,7 +808,7 @@ function renderFontPickers() {
   renderFontPickers();
 })();
 
-// ---- 右のレス一覧のプリセット ----
+// ---- コメント一覧のプリセット ----
 // デザインに関わる項目だけを置き換える(フォント・件数・表示順などはそのまま)
 const LIST_PRESETS = {
   // 掲示板風: 昔の2ちゃんねるのレス。「番号 ：名前：日付」の見出し(名前は緑の太字)、
@@ -970,7 +971,7 @@ const LIST_PRESETS = {
     ].join('\n'),
   },
 };
-// ---- 下の字幕のプリセット(右のレス一覧と同じデザイン+そのデザインに合う出し方) ----
+// ---- コメント字幕のプリセット(コメント一覧と同じデザイン+そのデザインに合う出し方) ----
 const SUBTITLE_PRESETS = {
   default: {},
   // 掲示板風: 昔の2ちゃんねるのレス(灰色の背景・ＭＳ Ｐゴシック・名前は緑の太字)。
@@ -1089,7 +1090,7 @@ const SUBTITLE_PRESETS = {
   },
 };
 
-// ---- プリセットの切り替え・手直しの記憶・初期値に戻す(右のレス一覧・下の字幕) ----
+// ---- プリセットの切り替え・手直しの記憶・初期値に戻す(コメント一覧・コメント字幕) ----
 // 手直しした内容は settings.style.presets.<list|subtitle>.custom.<プリセット> に覚えておく
 const PRESET_GROUPS = {
   list: { presets: LIST_PRESETS, keys: C.LIST_PRESET_KEYS, part: 'list', select: 'listPreset' },
@@ -1197,7 +1198,7 @@ document.getElementById('chimeTestBtn').addEventListener('click', async () => {
 // baseは元にしたプリセット、valuesはプリセットで置き換える項目(PRESET_KEYS)の今の値。
 // 共有コードはこのJSONをUTF-8のbase64にして、先頭に PRESET_CODE_PREFIX を付けたもの。
 const PRESET_CODE_PREFIX = 'ReaCastPreset1:';
-const PRESET_GROUP_NAMES = { subtitle: '下の字幕', list: '右のレス一覧' };
+const PRESET_GROUP_NAMES = { subtitle: 'コメント字幕', list: 'コメント一覧' };
 
 function presetShareData(group) {
   const g = PRESET_GROUPS[group];
@@ -1370,7 +1371,7 @@ document.getElementById('presetImportOk').addEventListener('click', () => {
 });
 
 // ---- デスクトップ字幕・デスクトップのレス一覧の位置調整 ----
-// target: 'subtitle'(下の字幕) / 'list'(右のレス一覧)
+// target: 'subtitle'(コメント字幕) / 'list'(コメント一覧)
 const adjusting = { subtitle: false, list: false };
 function renderAdjust() {
   for (const btn of document.querySelectorAll('[data-desktop-adjust]')) {
@@ -1382,7 +1383,7 @@ for (const btn of document.querySelectorAll('[data-desktop-adjust]')) {
   btn.addEventListener('click', async () => {
     const enabled = target === 'list' ? settings.desktopListEnabled : settings.desktopEnabled;
     if (!enabled && !adjusting[target]) {
-      showStatusError(`「${target === 'list' ? '右のレス一覧' : '下の字幕'}」の「デスクトップに表示する」をONにしてください`);
+      showStatusError(`「${target === 'list' ? 'コメント一覧' : 'コメント字幕'}」の「デスクトップに表示する」をONにしてください`);
       return;
     }
     try {
@@ -1635,7 +1636,7 @@ function renderStatus(s) {
   }
 }
 
-// ---- 話した字幕(音声認識はEdgeの窓で行う。src-tauri/src/voice.rs) ----
+// ---- 自分の声の字幕(音声認識はEdgeの窓で行う。src-tauri/src/voice.rs) ----
 const voiceStatusEl = document.getElementById('voiceStatus');
 function renderVoiceStatus(v) {
   if (!v || !v.state) return;
@@ -1734,7 +1735,7 @@ document.getElementById('voiceReopenBtn').addEventListener('click', async () => 
   invoke('voice_reopen').catch(() => {});
 });
 
-// Edgeの音声認識の使用時間(Edgeが記録している分を読むだけ。「話した字幕」タブを開いた時と、開いている間は30秒おき)
+// Edgeの音声認識の使用時間(Edgeが記録している分を読むだけ。「自分の声の字幕」タブを開いた時と、開いている間は30秒おき)
 const voiceEdgeUsageEl = document.getElementById('voiceEdgeUsage');
 function hm(secs) {
   const m = Math.max(0, Math.round(secs / 60));
@@ -2547,8 +2548,22 @@ function setStreamMethod(method) {
   scheduleSave();
   renderMethod();
 }
+/** 「使う」のチェックがONの時だけ、その下の欄を出す */
+function renderShowIf() {
+  for (const el of document.querySelectorAll('[data-show-if]')) el.classList.toggle('off', !getPath(settings, el.dataset.showIf));
+}
+for (const el of document.querySelectorAll('[data-key]')) {
+  if (el.type === 'checkbox') el.addEventListener('change', () => settings && renderShowIf());
+}
+// 「音を選ぶ…」など、ほかのタブにあるボタンをそのまま押す
+for (const btn of document.querySelectorAll('[data-click]')) {
+  btn.addEventListener('click', () => document.getElementById(btn.dataset.click).click());
+}
+
 function renderMethod() {
   const method = streamMethod();
+  for (const el of document.querySelectorAll('[data-method-only]')) el.classList.toggle('off', !!method && el.dataset.methodOnly !== method);
+  if (settings) renderShowIf();
   for (const card of document.querySelectorAll('[data-method-card]')) card.classList.toggle('hidden', !!method && card.dataset.methodCard !== method);
   for (const el of document.querySelectorAll('[data-method-detail]')) el.classList.toggle('show', el.dataset.methodDetail === method);
   for (const btn of document.querySelectorAll('[data-wiz-method]')) btn.classList.toggle('selected', btn.dataset.wizMethod === method);

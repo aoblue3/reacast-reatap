@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <link rel="icon" href="data:," />
-<title>ReaCast 話した字幕</title>
+<title>ReaCast 自分の声の字幕</title>
 <!--
-  話した字幕のOBS用の画面(ブラウザソース)。voice.rsから
+  自分の声の字幕のOBS用の画面(ブラウザソース)。voice.rsから
   {type:"voice", id, original, final} と {type:"voice", id, translation}、
   マイクを止めた時は {type:"voice", clear:true} が届く。
   話し終わった1文を「段落」(話した言葉+翻訳)として、最近のものを数段だけ
   積み上げて残す。続けて話しても前の段落はすぐには消えず、文の長さに合わせて
   読み切れるだけの時間は出しておく(海外の人が翻訳を読む時間)。段落の数を
   超えた時と、表示時間が過ぎた時に古いものから消える。話している途中の文字は
-  一番下の段落に薄く出る。見た目は設定画面の「話した字幕」タブ(style.voice)。
+  一番下の段落に薄く出る。見た目は設定画面の「自分の声の字幕」タブ(style.voice)。
 -->
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }

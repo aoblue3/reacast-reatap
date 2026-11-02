@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <link rel="icon" href="data:," />
-<title>ReaCast 話した字幕(音声認識)</title>
+<title>ReaCast 自分の声の字幕(音声認識)</title>
 <!--
-  話した字幕: ReaCastがEdgeで開く音声認識の画面(src-tauri/src/voice.rs)。
+  自分の声の字幕: ReaCastがEdgeで開く音声認識の画面(src-tauri/src/voice.rs)。
   ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Edgeで開いて
   聞き取った文字をobs_bridgeのWebSocketでReaCastへ送る。この窓を閉じると止まる。
 -->
@@ -24,12 +24,12 @@
 </style>
 </head>
 <body>
-  <h1>ReaCast 話した字幕</h1>
+  <h1>ReaCast 自分の声の字幕</h1>
   <div>状態: <span id="state" class="wait">準備中…</span></div>
   <div id="meter"><div id="meterBar"></div></div>
   <div id="mic"></div>
   <div id="text"></div>
-  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると字幕が止まります)。止める時はReaCastの「話した字幕を使う」をOFFにしてください。</div>
+  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると字幕が止まります)。止める時はReaCastの「自分の声の字幕を使う」をOFFにしてください。</div>
   <script>
     'use strict';
     const WS_URL = 'ws://127.0.0.1:18771';
@@ -60,7 +60,7 @@
       if (muted && state === 'listening') return;
       stateEl.textContent = message;
       // 最小化していてもタスクバーで状態が分かるように、窓のタイトルにも出す
-      document.title = `話した字幕: ${message}`;
+      document.title = `自分の声の字幕: ${message}`;
       stateEl.className = state === 'listening' ? 'ok' : state === 'error' || state === 'unsupported' ? 'ng' : 'wait';
       lastState = { type: 'voiceStatus', state, message };
       send(lastState);

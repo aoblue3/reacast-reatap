@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <!-- favicon.icoの読み込みエラーがログに出ないように -->
 <link rel="icon" href="data:," />
-<title>ReaCast ニコ生風コメント</title>
+<title>ReaCast 流れるコメントコメント</title>
 <style>
   html, body {
     margin: 0;
@@ -81,6 +81,7 @@
     function flow(res) {
       if (res.system) return;
       const s = style.nico;
+      if (s.enabled === false) return;
       if (s.aaOnly && !res.aa) return;
       if (res.aa && !s.showAA && !s.aaOnly) return;
       const text = res.aa ? String(res.body || '') : String(res.body || '').replace(/\s*\n\s*/g, ' ');

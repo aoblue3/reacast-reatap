@@ -50,7 +50,7 @@ const NICO_HTML: &str = include_str!("../../frontend/nico.html");
 const COMMENT_COMMON_JS: &str = include_str!("../../frontend/shared/comment-common.js");
 // OBS上(Tauriの外)では何もしないが、読み込みが404にならないように配信する
 const ERROR_LOG_JS: &str = include_str!("../../frontend/shared/error-log.js");
-// 話した字幕: OBSに表示する画面と、Edgeで開く音声認識の画面(voice.rs)
+// 自分の声の字幕: OBSに表示する画面と、Edgeで開く音声認識の画面(voice.rs)
 const VOICE_HTML: &str = include_str!("../../frontend/voice.html");
 const VOICE_INPUT_HTML: &str = include_str!("../../frontend/voice_input.html");
 // PCの中で翻訳する窓(local_translate.rs)
@@ -58,7 +58,7 @@ const TRANSLATE_WORKER_HTML: &str = include_str!("../../frontend/translate_worke
 // 視聴者アンケートの結果(配信画面に出す)
 const POLL_HTML: &str = include_str!("../../frontend/poll.html");
 
-/// 右のレス一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
+/// コメント一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 100;
 
 /// 設定パネルの「表示関連」設定のうち、Taur本体のオーバーレイとOBS側の両方に
@@ -103,14 +103,14 @@ pub struct ObsBridge {
     settings: Arc<Mutex<BridgeSettings>>,
     // コメント機能の現在の状態(settingsと同じく、後から繋いだクライアント用)。
     comments: Arc<Mutex<CommentBridgeState>>,
-    // 話した字幕: Edgeの音声認識の画面(voice_input.html)から届いたメッセージ。
+    // 自分の声の字幕: Edgeの音声認識の画面(voice_input.html)から届いたメッセージ。
     // voice.rsが起動時に1回だけ受け取る(take_voice_inbound)
     voice_inbound: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>>>,
 }
 
 #[derive(Default)]
 struct CommentBridgeState {
-    /// 右のレス一覧のアイコンに使う画像ファイル(取得元ごとの、設定のフォルダの中身)
+    /// コメント一覧のアイコンに使う画像ファイル(取得元ごとの、設定のフォルダの中身)
     icon_files: std::collections::HashMap<String, Vec<std::path::PathBuf>>,
     style: Option<serde_json::Value>,
     history: VecDeque<serde_json::Value>,
@@ -118,7 +118,7 @@ struct CommentBridgeState {
     subtitle: Option<(serde_json::Value, Instant)>,
     /// 視聴者アンケートの今の状態(OBSを後から開いた時にも出すため)
     poll: Option<serde_json::Value>,
-    /// 今読んでいる掲示板のスレッドのタイトル(下の字幕に小さく出す。取得していなければNone)
+    /// 今読んでいる掲示板のスレッドのタイトル(コメント字幕に小さく出す。取得していなければNone)
     thread_title: Option<String>,
 }
 
@@ -152,12 +152,12 @@ impl CommentBridgeState {
 }
 
 impl ObsBridge {
-    /// 話した字幕: 音声認識の画面から届くメッセージの受け口(1回だけ取れる)
+    /// 自分の声の字幕: 音声認識の画面から届くメッセージの受け口(1回だけ取れる)
     pub fn take_voice_inbound(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>> {
         self.voice_inbound.lock().unwrap().take()
     }
 
-    /// 話した字幕: OBSの字幕の画面(voice.html)に送る
+    /// 自分の声の字幕: OBSの字幕の画面(voice.html)に送る
     pub fn push_voice(&self, msg: serde_json::Value) {
         let _ = self.tx.send(msg.to_string());
     }
@@ -241,7 +241,7 @@ impl ObsBridge {
         self.comments.lock().unwrap().icon_files.get(source).map(|f| f.len()).unwrap_or(0)
     }
 
-    /// コメント機能: 字幕・レス一覧の見た目の設定を配信する。
+    /// コメント機能: コメント字幕・コメント一覧の見た目の設定を配信する。
     pub fn set_comment_style(&self, style: serde_json::Value) {
         self.comments.lock().unwrap().style = Some(style.clone());
         let _ = self.tx.send(serde_json::json!({ "type": "commentStyle", "style": style }).to_string());
@@ -256,12 +256,12 @@ impl ObsBridge {
         );
     }
 
-    /// コメント機能: 下の字幕に出したレス(tid)の翻訳を送る(字幕の画面が下に添える)。
+    /// コメント機能: コメント字幕に出したレス(tid)の翻訳を送る(字幕の画面が下に添える)。
     pub fn push_subtitle_translation(&self, tid: u64, text: &str) {
         let _ = self.tx.send(serde_json::json!({ "type": "subtitleTranslation", "tid": tid, "text": text }).to_string());
     }
 
-    /// コメント機能: 右のレス一覧に1件追加する。
+    /// コメント機能: コメント一覧に1件追加する。
     pub fn push_comment(&self, res: serde_json::Value) {
         {
             let mut c = self.comments.lock().unwrap();
@@ -273,14 +273,14 @@ impl ObsBridge {
         let _ = self.tx.send(serde_json::json!({ "type": "comment", "res": res }).to_string());
     }
 
-    /// コメント機能: ニコ生風の「届いたらすぐ流す」用に、レスをニコ生風の画面にだけ送る
-    /// (右のレス一覧の履歴には入れない)。
+    /// コメント機能: 流れるコメントの「届いたらすぐ流す」用に、レスを流れるコメントの画面にだけ送る
+    /// (コメント一覧の履歴には入れない)。
     pub fn push_nico(&self, res: serde_json::Value) {
         let _ = self.tx.send(serde_json::json!({ "type": "nico", "res": res }).to_string());
     }
 
     /// コメント機能: 取得を止めた時に字幕を消す。
-    /// コメント機能: 右のレス一覧を空にする(開始・再開始時)。
+    /// コメント機能: コメント一覧を空にする(開始・再開始時)。
     pub fn clear_comments(&self) {
         self.comments.lock().unwrap().history.clear();
         let _ = self.tx.send(serde_json::json!({ "type": "commentClear" }).to_string());
@@ -293,7 +293,7 @@ impl ObsBridge {
         let _ = self.tx.send(serde_json::json!({ "type": "poll", "state": state }).to_string());
     }
 
-    /// 下の字幕に出すスレッドのタイトル(Noneで消す)。変わった時だけ送る
+    /// コメント字幕に出すスレッドのタイトル(Noneで消す)。変わった時だけ送る
     pub fn set_thread_title(&self, title: Option<String>) {
         {
             let mut c = self.comments.lock().unwrap();
@@ -531,7 +531,7 @@ async fn run_ws_server(
     }
 }
 
-/// 話した字幕のメッセージを受け付ける接続元。WebSocketはブラウザの別のサイトからも
+/// 自分の声の字幕のメッセージを受け付ける接続元。WebSocketはブラウザの別のサイトからも
 /// 繋げてしまうので、ReaCastが配信している音声認識の画面からの接続だけを信用する。
 fn is_trusted_origin(origin: &str) -> bool {
     origin == format!("http://127.0.0.1:{OBS_HTTP_PORT}") || origin == format!("http://localhost:{OBS_HTTP_PORT}")

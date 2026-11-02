@@ -1,8 +1,8 @@
-//! 話した字幕(配信者が話した言葉を字幕にして、自動で翻訳する)。
+//! 自分の声の字幕(配信者が話した言葉を字幕にして、自動で翻訳する)。
 //!
 //! ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Chrome(無ければEdge)を
 //! 専用の小さな窓(--app)で開いて音声認識の画面(frontend/voice_input.html)を
-//! 動かす。聞き取った文字はobs_bridgeのWebSocketで届き、OBSの「話した字幕」の
+//! 動かす。聞き取った文字はobs_bridgeのWebSocketで届き、OBSの「自分の声の字幕」の
 //! 画面(frontend/voice.html)へ送る。話し終わった文はGoogle翻訳(非公式の
 //! 方法)で翻訳して、下に出す。
 //!
@@ -380,7 +380,7 @@ fn set_status(app: &AppHandle, state: &str, message: impl Into<String>) {
         let manager = app.state::<VoiceManager>();
         let mut cur = manager.status.lock().unwrap();
         if *cur != v {
-            log::info!("話した字幕: {} {}", state, v["message"].as_str().unwrap_or_default());
+            log::info!("自分の声の字幕: {} {}", state, v["message"].as_str().unwrap_or_default());
         }
         *cur = v.clone();
     }
@@ -397,14 +397,14 @@ fn launch(app: &AppHandle, url: &str, choice: &str) -> Result<EdgeProcess, Strin
         // 声を大きくする処理(Web Audio)を、ボタンを押さなくても動かせるようにする
         &["--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"],
     )?;
-    log::info!("話した字幕: {name}で開きました");
+    log::info!("自分の声の字幕: {name}で開きました");
     *app.state::<VoiceManager>().browser_name.lock().unwrap() = name.to_string();
     Ok(child)
 }
 
 /// ReaCastの画面(OBS用のHTTPで配っているページ)を、Chrome/Edgeの小さな窓(--app)で
 /// 最小化して開く。プロフィールは用途ごとに分ける(`{purpose}-chrome`など)。
-/// 話した字幕の音声認識と、PCの中での翻訳(local_translate.rs)で使う。(窓, ブラウザの名前)を返す
+/// 自分の声の字幕の音声認識と、PCの中での翻訳(local_translate.rs)で使う。(窓, ブラウザの名前)を返す
 pub(crate) fn launch_app_window(
     app: &AppHandle,
     url: &str,
@@ -462,12 +462,12 @@ pub fn sync(app: &AppHandle) {
             &browser,
         ) {
             Ok(child) => {
-                log::info!("話した字幕: 音声認識の窓を開きました");
+                log::info!("自分の声の字幕: 音声認識の窓を開きました");
                 set_status(app, "wait", "音声認識の窓を開いています…");
                 *manager.edge.lock().unwrap() = Some((child, url));
             }
             Err(e) => {
-                log::warn!("話した字幕: {e}");
+                log::warn!("自分の声の字幕: {e}");
                 set_status(app, "error", e);
             }
         },
@@ -487,7 +487,7 @@ pub fn restore_muted(app: &AppHandle) {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if muted {
-        log::info!("話した字幕: 前回マイクを止めたまま終わったので、止めた状態から始めます");
+        log::info!("自分の声の字幕: 前回マイクを止めたまま終わったので、止めた状態から始めます");
         app.state::<VoiceManager>().muted.store(true, Ordering::SeqCst);
         set_status(app, "muted", "マイクを止めています(聞き取っていません)");
     }
@@ -513,7 +513,7 @@ pub fn set_muted(app: &AppHandle, muted: bool) -> bool {
     if manager.muted.swap(muted, Ordering::SeqCst) == muted {
         return muted;
     }
-    log::info!("話した字幕: マイクを{}", if muted { "止めました" } else { "再開しました" });
+    log::info!("自分の声の字幕: マイクを{}", if muted { "止めました" } else { "再開しました" });
     // 次にReaCastを起動した時も同じ状態にする(止めたまま終わったら、止めたまま始まる)
     let _ = app.state::<crate::config_store::ConfigStore>().set(MUTED_KEY.into(), serde_json::json!(muted));
     send_control(app, muted);
@@ -590,7 +590,7 @@ fn skip_translation(text: &str) -> bool {
 }
 
 /// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり(以下はGoogleに頼む時だけ):
-/// ・頼むのは1つずつ、前に頼んでから最低MIN_GAPあける(話した字幕と下の字幕の翻訳の合計)
+/// ・頼むのは1つずつ、前に頼んでから最低MIN_GAPあける(自分の声の字幕とコメント字幕の翻訳の合計)
 /// ・断られたら、しばらく(1分→2分→4分…最長15分)頼みに行かない。断られてもすぐ頼み
 ///   直していたので、止められたまま戻らなくなっていた(2026-10-28、本人のPCで1日中429)
 /// ・同じ文の翻訳は覚えておいて、もう一度頼まない(「草」「おつ」など)
@@ -615,8 +615,8 @@ fn translate_pause(strikes: u32) -> std::time::Duration {
     std::time::Duration::from_secs((60u64 << strikes.saturating_sub(1).min(4)).min(15 * 60))
 }
 
-/// 翻訳して、(訳文, 判定した元の言語)を返す。下の字幕のレスの翻訳(comments)でも使う。
-/// `source`は分かっていれば元の言語(話した字幕の聞き取る言葉など。Noneなら自動で判定)。
+/// 翻訳して、(訳文, 判定した元の言語)を返す。コメント字幕のレスの翻訳(comments)でも使う。
+/// `source`は分かっていれば元の言語(自分の声の字幕の聞き取る言葉など。Noneなら自動で判定)。
 /// 設定が「PCの中で翻訳」なら、まずChrome/Edgeの中で訳す(local_translate.rs。回数の
 /// 上限が無い)。使えない時(準備中・その言語に未対応など)だけGoogle翻訳(非公式の方法)。
 pub(crate) async fn translate_detect(
@@ -734,7 +734,7 @@ pub fn start_listener(app: AppHandle) {
                     && app.state::<Arc<CommentEngine>>().settings().voice_browser == "edge-first"
                     && !manager.edge_failed.swap(true, Ordering::SeqCst)
                 {
-                    log::info!("話した字幕: Edgeの音声認識が使えないので、Chromeに切り替えます({})", msg["message"].as_str().unwrap_or_default());
+                    log::info!("自分の声の字幕: Edgeの音声認識が使えないので、Chromeに切り替えます({})", msg["message"].as_str().unwrap_or_default());
                     set_status(&app, "wait", "Edgeの音声認識が使えなくなったので、Chromeに切り替えています…");
                     sync(&app);
                     continue;
@@ -784,7 +784,7 @@ pub fn start_listener(app: AppHandle) {
                     match translate(&client, &text, Some(&source).filter(|s| !s.is_empty()).map(|s| s.as_str()), &target).await {
                         Ok(t) => bridge.push_voice(serde_json::json!({ "type": "voice", "id": id, "translation": t })),
                         Err(e) if is_quiet_translate_error(&e) => {}
-                        Err(e) => log::warn!("話した字幕: {e}"),
+                        Err(e) => log::warn!("自分の声の字幕: {e}"),
                     }
                 });
             }

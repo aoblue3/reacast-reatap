@@ -257,12 +257,12 @@
   .simple-status.ng { color: var(--c-ff8a8a); border-color: var(--c-ff8a8a); }
   .simple-main-buttons { display: flex; gap: 12px; margin: 12px 0 8px; }
   .simple-sub-buttons { display: flex; gap: 8px; justify-content: center; margin-bottom: 18px; }
-  .simple-grid { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px 10px; align-items: center; margin: 10px 0 4px; }
+  .simple-grid { display: grid; grid-template-columns: 10.5em 1fr; gap: 8px 10px; align-items: center; margin: 10px 0 4px; }
   .simple-grid > span { color: var(--c-c4c6cf); }
   .simple-grid select { max-width: 100%; }
   .simple-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .simple-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-  .simple-url { display: grid; grid-template-columns: 7.5em 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .simple-url { display: grid; grid-template-columns: 10.5em 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
   .simple-url code { background: var(--c-15161a); padding: 4px 6px; border-radius: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .simple-link { margin-top: 8px; font-size: 12px; }
   .simple-top { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
@@ -281,6 +281,10 @@
   .tts-check { margin: 8px 0 4px; padding: 7px 10px; border-radius: 6px; font-size: 13px; line-height: 1.6; background: var(--c-15161a); }
   .tts-check:empty { display: none; }
   .tts-hidden { display: none !important; }
+  .simple-indent { margin: 2px 0 10px 28px; }
+  .simple-indent .simple-url { margin-top: 4px; grid-template-columns: 3em 1fr auto; }
+  .simple-indent input[type=text][readonly] { font-size: 12px !important; padding: 5px 8px !important; }
+  [data-show-if].off, [data-method-only].off { display: none; }
   .tts-check.ok { color: var(--c-7dff9a); }
   .tts-check.ng { color: var(--c-ff8a8a); }
   .tts-check .inline { margin-top: 6px; }
@@ -407,12 +411,12 @@
         <div class="simple-body">
           <div class="simple-title">OBSに出す(URLを貼る)</div>
           <div class="simple-sub">OBSの「ソース」の＋ →「ブラウザ」を追加して、URLの欄に貼り付けます。幅1920・高さ1080にしてください。</div>
-          <div class="simple-url"><span>下の字幕</span><code id="simpleUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="simpleUrlSubtitle">コピー</button></div>
-          <div class="simple-url"><span>右のレス一覧</span><code id="simpleUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="simpleUrlComments">コピー</button></div>
+          <div class="simple-url"><span>コメント字幕</span><code id="simpleUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="simpleUrlSubtitle">コピー</button></div>
+          <div class="simple-url"><span>コメント一覧</span><code id="simpleUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="simpleUrlComments">コピー</button></div>
           <div class="simple-url"><span>リアクション</span><code id="simpleUrlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="simpleUrlReaction">コピー</button></div>
           <div class="simple-inline" style="margin-top:6px">
             <button class="secondary simple-link" data-open-guide>OBSでの設定方法 ›</button>
-            <button class="secondary simple-link" data-simple-open="easy">ほかのURL(ニコ生風・話した字幕・アンケート) ›</button>
+            <button class="secondary simple-link" data-simple-open="easy">ほかのURL(アンケートなど) ›</button>
             <button class="secondary simple-link" data-set-method="desktop">画面をそのまま映す方法に変える</button>
           </div>
         </div>
@@ -424,11 +428,11 @@
           <div class="simple-title">PCの画面に出す(画面をそのまま映す)</div>
           <div class="simple-sub">OBSの「画面キャプチャ」で配信している時の方法です。字幕などをPCの画面の上に出すので、そのまま配信に映ります(「開始」している間だけ出ます)。</div>
           <div class="simple-row">
-            <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> 下の字幕</label>
+            <label class="simple-check"><input type="checkbox" data-key="desktopEnabled" /> コメント字幕</label>
             <button class="secondary" data-desktop-adjust="subtitle">マウスで位置を調整する</button>
           </div>
           <div class="simple-row">
-            <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> 右のレス一覧</label>
+            <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> コメント一覧</label>
             <button class="secondary" data-desktop-adjust="list">マウスで位置を調整する</button>
           </div>
           <label class="simple-check"><input type="checkbox" data-key="desktopTopmost" /> ゲームなど、ほかの窓より前に出す</label>
@@ -444,13 +448,41 @@
         <div class="simple-body">
           <div class="simple-title">見た目</div>
           <div class="simple-grid">
-            <span>字幕のデザイン</span>
+            <span>コメント字幕のデザイン</span>
             <select data-preset-group="subtitle" data-preset-mirror="subtitlePreset"></select>
-            <span>レス一覧のデザイン</span>
+            <span>コメント一覧のデザイン</span>
             <select data-preset-group="list" data-preset-mirror="listPreset"></select>
           </div>
           <label class="simple-check"><input type="checkbox" data-reactions-enabled /> 視聴者が送ったリアクション(絵文字)を表示する</label>
           <label class="simple-check"><input type="checkbox" data-key="reactionLink" /> コメントの言葉でリアクションを飛ばす(「www」で草など)</label>
+        </div>
+      </div>
+
+      <div class="simple-card">
+        <div class="simple-num"></div>
+        <div class="simple-body">
+          <div class="simple-title">ほかの機能(使うものだけON)</div>
+          <label class="simple-check"><input type="checkbox" data-key="chimeEnabled" /> コメント着信音(コメントを出す前に音を鳴らす)</label>
+          <div class="simple-indent" data-show-if="chimeEnabled">
+            <div class="simple-inline"><input type="text" data-key="chimePath" readonly placeholder="音のファイルが選ばれていません" style="flex:1" /><button class="secondary" data-click="chimePickBtn">音を選ぶ…</button><button class="secondary" data-click="chimeTestBtn">試しに鳴らす</button></div>
+          </div>
+          <label class="simple-check"><input type="checkbox" data-key="style.nico.enabled" /> 流れるコメント(コメントを右から左に流す)</label>
+          <div class="simple-indent" data-show-if="style.nico.enabled">
+            <div class="simple-url" data-method-only="obs"><span>URL</span><code id="simpleUrlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="simpleUrlNico">コピー</button></div>
+            <div class="simple-hint" data-method-only="obs">OBSに「ブラウザ」ソースを追加して貼り、配信画面と同じ大きさ(1920×1080)にします。</div>
+            <div class="simple-hint" data-method-only="desktop">流れるコメントは、OBSに「ブラウザ」ソースでURLを貼った時だけ出せます(PCの画面には出せません)。</div>
+          </div>
+          <label class="simple-check"><input type="checkbox" data-key="voiceEnabled" /> 自分の声の字幕(あなたが話した言葉を聞き取って字幕にする)</label>
+          <div class="simple-indent" data-show-if="voiceEnabled">
+            <div class="simple-hint">聞き取りのために、ChromeかEdgeの小さな窓が開きます(最小化しておいて大丈夫です)。インターネット接続が必要です。</div>
+            <div class="simple-url" data-method-only="obs"><span>URL</span><code id="simpleUrlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="simpleUrlVoice">コピー</button></div>
+            <div class="simple-hint" data-method-only="desktop">自分の声の字幕は、OBSに「ブラウザ」ソースでURLを貼った時だけ出せます。</div>
+          </div>
+          <div class="simple-inline">
+            <button class="secondary simple-link" data-simple-open="chime">着信音の細かい設定 ›</button>
+            <button class="secondary simple-link" data-simple-open="nico">流れるコメントの細かい設定 ›</button>
+            <button class="secondary simple-link" data-simple-open="voice">自分の声の字幕の細かい設定(翻訳など) ›</button>
+          </div>
         </div>
       </div>
 
@@ -477,7 +509,7 @@
       <div class="wiz-step" data-step="welcome">
         <div class="wiz-title">ReaCastへようこそ</div>
         <p>ReaCastは、配信に来たコメントを<b>字幕にして配信画面に出したり</b>、<b>声で読み上げたり</b>するアプリです。</p>
-        <p>これから4つの手順で設定します(2〜3分)。途中でやめても、あとから何度でもやり直せます。</p>
+        <p>これから5つの手順で設定します(2〜3分)。途中でやめても、あとから何度でもやり直せます。</p>
       </div>
 
       <div class="wiz-step" data-step="source">
@@ -510,13 +542,13 @@
         <p class="wiz-sub">分からない時は「OBSにURLを貼る」を選んでください。 <button class="secondary simple-link" data-open-guide>OBSでの設定方法(説明ページ)</button></p>
         <div class="wiz-method-detail" data-method-detail="obs">
           <p>OBSの「ソース」の＋ →「ブラウザ」を追加して、URLの欄に下のURLを貼り付けます。幅1920・高さ1080にしてください。</p>
-          <div class="simple-url"><span>下の字幕</span><code id="wizUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="wizUrlSubtitle">コピー</button></div>
-          <div class="simple-url"><span>右のレス一覧</span><code id="wizUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="wizUrlComments">コピー</button></div>
-          <p class="wiz-sub">右のレス一覧はいらなければ貼らなくて大丈夫です。</p>
+          <div class="simple-url"><span>コメント字幕</span><code id="wizUrlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="wizUrlSubtitle">コピー</button></div>
+          <div class="simple-url"><span>コメント一覧</span><code id="wizUrlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="wizUrlComments">コピー</button></div>
+          <p class="wiz-sub">コメント一覧はいらなければ貼らなくて大丈夫です。</p>
         </div>
         <div class="wiz-method-detail" data-method-detail="desktop">
-          <p>「開始」している間、PCの画面に下の字幕を出します。場所は、あとで「マウスで位置を調整する」で変えられます。</p>
-          <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> 右側にレス一覧も出す</label>
+          <p>「開始」している間、PCの画面にコメント字幕を出します。場所は、あとで「マウスで位置を調整する」で変えられます。</p>
+          <label class="simple-check"><input type="checkbox" data-key="desktopListEnabled" /> コメント一覧も出す</label>
         </div>
       </div>
 
@@ -532,6 +564,27 @@
         <div class="simple-grid" data-engine="http" data-tts-ok-only>
           <span>声</span>
           <select data-key="ttsSpeaker" data-speaker-select data-keep-unknown></select>
+        </div>
+      </div>
+
+      <div class="wiz-step" data-step="extras">
+        <div class="wiz-title">ほかに使う機能はありますか？</div>
+        <p class="wiz-sub">使うものだけONにしてください。使わなければ、このまま「次へ」で大丈夫です。</p>
+        <label class="simple-check"><input type="checkbox" data-key="chimeEnabled" /> コメント着信音(コメントを出す前に音を鳴らす)</label>
+        <div class="simple-indent" data-show-if="chimeEnabled">
+          <div class="simple-inline"><input type="text" data-key="chimePath" readonly placeholder="音のファイルが選ばれていません" style="flex:1" /><button class="secondary" data-click="chimePickBtn">音を選ぶ…</button><button class="secondary" data-click="chimeTestBtn">試しに鳴らす</button></div>
+        </div>
+        <label class="simple-check"><input type="checkbox" data-key="style.nico.enabled" /> 流れるコメント(コメントを右から左に流す)</label>
+        <div class="simple-indent" data-show-if="style.nico.enabled">
+          <div class="simple-url" data-method-only="obs"><span>URL</span><code id="wizUrlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="wizUrlNico">コピー</button></div>
+          <div class="simple-hint" data-method-only="obs">OBSに「ブラウザ」ソースを追加して貼り、配信画面と同じ大きさ(1920×1080)にします。</div>
+          <div class="simple-hint" data-method-only="desktop">流れるコメントは、OBSに「ブラウザ」ソースでURLを貼った時だけ出せます(PCの画面には出せません)。</div>
+        </div>
+        <label class="simple-check"><input type="checkbox" data-key="voiceEnabled" /> 自分の声の字幕(あなたが話した言葉を聞き取って字幕にする)</label>
+        <div class="simple-indent" data-show-if="voiceEnabled">
+          <div class="simple-hint">聞き取りのために、ChromeかEdgeの小さな窓が開きます(最小化しておいて大丈夫です)。インターネット接続が必要です。</div>
+          <div class="simple-url" data-method-only="obs"><span>URL</span><code id="wizUrlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="wizUrlVoice">コピー</button></div>
+          <div class="simple-hint" data-method-only="desktop">自分の声の字幕は、OBSに「ブラウザ」ソースでURLを貼った時だけ出せます。</div>
         </div>
       </div>
 
@@ -567,16 +620,16 @@
     <div class="nav-group">読み上げ</div>
     <button data-tab="speech">声・速さ</button>
     <button data-tab="words">NGワード・荒らし対策</button>
-    <button data-tab="chime">レス着信音</button>
+    <button data-tab="chime">コメント着信音</button>
     <div class="nav-group">見た目</div>
-    <button data-tab="subtitle">下の字幕</button>
-    <button data-tab="list">右のレス一覧</button>
-    <button data-tab="nico">ニコ生風</button>
+    <button data-tab="subtitle">コメント字幕</button>
+    <button data-tab="list">コメント一覧</button>
+    <button data-tab="nico">流れるコメント</button>
     <button data-tab="aa">AA</button>
     <button data-tab="output">デスクトップに表示</button>
     <div class="nav-group">連動</div>
     <button data-tab="reactions">リアクション連動</button>
-    <button data-tab="voice">話した字幕</button>
+    <button data-tab="voice">自分の声の字幕</button>
     <div class="nav-group">その他</div>
     <button data-tab="hotkeys">ホットキー</button>
     <button data-tab="misc">設定のリセット</button>
@@ -588,7 +641,7 @@
     <section data-tab="easy" class="active">
       <p class="lead">初めての時は、このタブだけ設定すれば使い始められます。細かい設定は左のタブにあります。よく使う項目だけにしたい時は <button class="secondary" data-simple-on>シンプルモード</button> <button class="secondary" data-setup-open>セットアップの案内を出す</button></p>
       <div class="note easy-guide">
-        <div><b>OBSの「画面キャプチャ」で配信している方</b>(URLを貼らない方)は、③の代わりに「デスクトップに表示」タブで、字幕やレス一覧をPCの画面に出してください。</div>
+        <div><b>OBSの「画面キャプチャ」で配信している方</b>(URLを貼らない方)は、③の代わりに「デスクトップに表示」タブで、コメント字幕やコメント一覧をPCの画面に出してください。</div>
         <div class="inline" style="margin-top:6px">
           <button class="secondary" data-open-tab="output">デスクトップに表示する設定へ</button>
           <button class="secondary" data-open-guide>OBSでの設定方法(説明ページ)</button>
@@ -622,17 +675,17 @@
       </div></div>
 
       <h3>③ OBSに貼るURL(ブラウザソースで配信する方)<span class="help" data-help="OBSで「ブラウザ」ソースを追加して、URLに下のものを貼ります(「ローカルファイル」のチェックは入れません)。幅・高さは配信画面に合わせてください。ReaCastの起動中だけ表示されます。表示範囲を変えたい時は、ソースの角をドラッグせずに、プロパティの「幅」「高さ」を変えてから「変換をリセット」(Ctrl+R)すると、文字の大きさが変わりません。"></span></h3>
-      <div class="copy-row"><span style="width:110px">下の字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">右のレス一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">ニコ生風</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
-      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">コメント字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">コメント一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">流れるコメント</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">自分の声の字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
       <div class="copy-row"><span style="width:110px">アンケート</span><code id="urlPoll">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="urlPoll">コピー</button></div>
 
       <h3>④ 表示</h3>
       <div class="field"><label>リアクションを表示する<span class="help" data-help="視聴者からのリアクション(絵文字)を配信画面に出します。コントロールパネルの「リアクション機能を使う」と同じです。"></span></label><div><input type="checkbox" id="easyReactionsEnabled" /></div></div>
       <div class="field"><label>コメントでリアクションを飛ばす<span class="help" data-help="「www」で草、「888」で拍手のように、コメントの言葉に合わせてリアクションを飛ばします。言葉とリアクションの組み合わせは「リアクション連動」タブで変えられます。"></span></label><div><input type="checkbox" data-key="reactionLink" /></div></div>
-      <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(下の字幕・右のレス一覧・ニコ生風・話した字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
+      <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(コメント字幕・コメント一覧・流れるコメント・自分の声の字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
 
       <h3>⑤ 試してみる</h3>
       <div class="inline"><input id="testText" type="text" class="wide" value="テスト表示です。字幕と読み上げを確認できます" style="flex:1" /><button id="testBtn" class="secondary">テスト表示</button><span class="help" data-help="順番待ちの先頭に割り込んで、字幕に表示して読み上げます。取得を開始していなくても使えます。"></span></div>
@@ -643,7 +696,7 @@
     <section data-tab="fetch">
       <p class="lead">掲示板からのレスの取り方と、次スレへの移り方。</p>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
-      <div class="field"><label>&gt;&gt;1(テンプレート)を出さない<span class="help" data-help="次スレの>>1は、字幕・読み上げ・右のレス一覧に出しません(長いテンプレートで字幕の文字が小さくなったり、読み終わるまで次のレスが待たされたりするのを防ぎます)。「スレッドのレス」では見られます。"></span></label><div><input type="checkbox" data-key="skipFirstPost" /></div></div>
+      <div class="field"><label>&gt;&gt;1(テンプレート)を出さない<span class="help" data-help="次スレの>>1は、字幕・読み上げ・コメント一覧に出しません(長いテンプレートで字幕の文字が小さくなったり、読み終わるまで次のレスが待たされたりするのを防ぎます)。「スレッドのレス」では見られます。"></span></label><div><input type="checkbox" data-key="skipFirstPost" /></div></div>
       <div class="field"><label>落ちた時は続きから読む<span class="help" data-help="読み上げの途中でPCやReaCastが落ちた時、1時間以内に同じスレッドで開始し直すと、前回読み終わったレスの次から読み上げます(「停止」で止めた時は続きから読みません)。好きなレスから読み直す時は、「スレッドのレス」でレスを右クリック→「ここから読み始める」。"></span></label><div><input type="checkbox" data-key="resumeReading" /></div></div>
       <div class="field"><label>ReaCast起動時に自動で開始する</label><div><input type="checkbox" data-key="startOnLaunch" /></div></div>
       <div class="field"><label>jpnknの即時通知を使う<span class="help" data-help="jpnknの板では、書き込まれた瞬間にレスを拾います(Fastインターフェース)。取りこぼし対策として、いつもの定期取得も続けます。"></span></label><div><input type="checkbox" data-key="jpnknFast" /></div></div>
@@ -657,8 +710,8 @@
         <div class="field"><label>自動更新間隔</label><div><input type="number" min="1000" step="500" data-key="pollIntervalMs" /><span class="unit">ミリ秒</span></div></div>
         <div class="field"><label>次スレのタイトルに含まれる文字</label><div><input type="text" data-key="nextThreadKeyword" /><span class="unit">空欄なら条件なし(一番近い新しいスレへ)</span></div></div>
         <div class="field"><label>スレ建て警告をするレス数</label><div><input type="number" min="0" data-key="threadWarnCount" /><span class="unit">0で警告しない</span></div></div>
-        <div class="field"><label>開始レス番号<span class="help" data-help="開始した時に、この番号以降のレスを右のレス一覧に表示します(読み上げはしません)。0なら表示しません。"></span></label><div><input type="number" min="0" data-key="startResNo" /></div></div>
-        <div class="field"><label>初期表示テキスト<span class="help" data-help="開始した時に、右のレス一覧に表示する文字です。空欄なら表示しません。"></span></label><div><input type="text" class="wide" data-key="initialText" /></div></div>
+        <div class="field"><label>開始レス番号<span class="help" data-help="開始した時に、この番号以降のレスをコメント一覧に表示します(読み上げはしません)。0なら表示しません。"></span></label><div><input type="number" min="0" data-key="startResNo" /></div></div>
+        <div class="field"><label>初期表示テキスト<span class="help" data-help="開始した時に、コメント一覧に表示する文字です。空欄なら表示しません。"></span></label><div><input type="text" class="wide" data-key="initialText" /></div></div>
       </details>
     </section>
 
@@ -791,7 +844,7 @@
       </details>
     </section>
 
-    <!-- ================= レス着信音 ================= -->
+    <!-- ================= コメント着信音 ================= -->
     <section data-tab="chime">
       <p class="lead">レスを字幕に出す前に、選んだ音を鳴らします。<span class="help" data-help="鳴り終わるまで、長くても1.5秒待ってから読み上げます。音のファイルはwav・mp3・oggが使えます。鳴らす先は「声・速さ」タブの「音の出力先」と同じです。"></span></p>
       <div class="field"><label>着信音を鳴らす</label><div><input type="checkbox" data-key="chimeEnabled" /></div></div>
@@ -821,7 +874,7 @@
       </details>
     </section>
 
-    <!-- ================= 下の字幕 ================= -->
+    <!-- ================= コメント字幕 ================= -->
     <section data-tab="subtitle">
       <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・字幕の出し方(アニメーション)・カスタムCSSがそのデザインに変わります(文字の大きさ・位置などはそのまま)。下で手直しした内容はプリセットごとに覚えておきます。"></span></label><div class="inline">
         <select id="subtitlePreset" data-preset-group="subtitle">
@@ -862,7 +915,7 @@
       </select><button class="secondary" id="subtitleAnimTest">動きを見る</button></div></div>
       <div class="field"><label>文字揃え</label><div><select data-key="style.subtitle.align"><option value="left">左(表示範囲の左端から)</option><option value="center">中央</option><option value="right">右(表示範囲の右端に)</option></select></div></div>
       <div class="field"><label>字幕が消える時間</label><div><input type="number" min="300" step="100" data-key="displayMs" /><span class="unit">ミリ秒</span></div></div>
-      <div class="field"><label>スレッドのタイトルを出す<span class="help" data-help="今読んでいる掲示板のスレッドのタイトルを、OBSの下の字幕の画面の隅に小さく出します(取得中だけ。デスクトップ字幕には出しません)。位置・大きさ・色は「詳しい設定」で変えられます。"></span></label><div class="inline"><input type="checkbox" data-key="style.subtitle.threadTitleShow" /><select data-key="style.subtitle.threadTitlePos">
+      <div class="field"><label>スレッドのタイトルを出す<span class="help" data-help="今読んでいる掲示板のスレッドのタイトルを、OBSのコメント字幕の画面の隅に小さく出します(取得中だけ。デスクトップに表示している時は出しません)。位置・大きさ・色は「詳しい設定」で変えられます。"></span></label><div class="inline"><input type="checkbox" data-key="style.subtitle.threadTitleShow" /><select data-key="style.subtitle.threadTitlePos">
         <option value="top-left">左上</option>
         <option value="top-center">上の真ん中</option>
         <option value="top-right">右上</option>
@@ -1001,10 +1054,10 @@
       </div>
     </section>
 
-    <!-- ================= 話した字幕 ================= -->
+    <!-- ================= 自分の声の字幕 ================= -->
     <section data-tab="voice">
       <p class="lead">配信者が話した言葉を字幕にして、自動で翻訳します。<span class="help" data-help="ONにすると、ReaCastがGoogle Chrome(入っていなければMicrosoft Edge)で音声認識用の小さな窓を開きます(最小化しておいて大丈夫です。閉じると止まります)。聞き取りはGoogle(EdgeならMicrosoft)のサーバーで行うので、インターネット接続が必要です。翻訳は「翻訳のしかた」で選べます(おすすめの「PCの中で翻訳」は、PCの中だけで翻訳します)。"></span></p>
-      <div class="field"><label>話した字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
+      <div class="field"><label>自分の声の字幕を使う</label><div><input type="checkbox" data-key="voiceEnabled" /></div></div>
       <div class="field"><label>状態</label><div class="inline"><span id="voiceStatus" class="unit">使っていません</span><button class="secondary" id="voiceReopenBtn">音声認識の窓を開き直す</button></div></div>
       <div class="field"><label>マイク<span class="help" data-help="電話や離席の時に。止めている間は聞き取り自体を止めて、表示中の字幕も消します。ホットキーは「ホットキー」タブで割り当てられます。"></span></label><div class="inline"><button id="voiceMuteBtn">マイクを止める</button></div></div>
       <div class="field"><label>声の大きさ<span class="help" data-help="マイクが拾っている声の大きさです(緑の棒)。話しているのに棒がほとんど伸びない時は、声が小さく届いています。下の「声を大きくする」を上げるか、Windowsのマイクの音量を上げてください。棒が伸びているのに字幕が出ない時は、音声認識の側の問題です。赤くなる時は大きすぎます。"></span></label><div class="inline"><div id="voiceMeter" style="width:180px;height:10px;border-radius:5px;background:var(--c-15161a, #15161a);overflow:hidden;border:1px solid var(--c-3a3d47, #3a3d47)"><div id="voiceMeterBar" style="height:100%;width:0;background:var(--c-7dff9a);transition:width .15s"></div></div></div></div>
@@ -1051,7 +1104,7 @@
       </select></div></div>
       <div class="field"><label>Edgeの音声認識の使用時間<span class="help" data-help="Edgeの音声認識は、使った時間をEdgeが記録していて、合計で約10時間になると使えなくなります。記録は一定の期間で戻るようです(戻るまでの期間は分かっていません)。「Edge優先」にしておくと、使えなくなった時に自動でChromeに切り替わります。"></span></label><div class="inline"><span id="voiceEdgeUsage" class="unit" style="margin-left:0">-</span></div></div>
       <h3>OBSに出す</h3>
-      <div class="copy-row"><span style="width:110px">話した字幕</span><code id="urlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">自分の声の字幕</span><code id="urlVoice">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice">コピー</button></div>
       <div class="field"><label>出すもの</label><div><select data-key="style.voice.show">
         <option value="both">話した言葉と翻訳</option>
         <option value="original">話した言葉だけ</option>
@@ -1073,7 +1126,7 @@
       </details>
     </section>
 
-    <!-- ================= 右のレス一覧 ================= -->
+    <!-- ================= コメント一覧 ================= -->
     <section data-tab="list">
       <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・見出し・カスタムCSSがそのデザインに変わります(文字の大きさ・件数などはそのまま)。下で手直しした内容はプリセットごとに覚えておくので、別のプリセットに切り替えて戻ってきても、手直しした見た目になります。「このプリセットの初期値に戻す」で手直しを消せます。"></span></label><div class="inline">
         <select id="listPreset" data-preset-group="list">
@@ -1097,9 +1150,9 @@
       <iframe id="listPreview" class="preview-frame" src="comments.html?preview"></iframe>
       <div class="inline" style="margin-top:6px">
         <input id="listTestName" type="text" value="名無し＠BBSさん" style="width:160px" />
-        <input id="listTestText" type="text" value="右のレス一覧の文字のテストです" style="flex:1" />
+        <input id="listTestText" type="text" value="コメント一覧の文字のテストです" style="flex:1" />
         <button class="secondary" id="listTestBtn">テスト表示</button>
-        <span class="help" data-help="テスト表示は、OBSの右のレス一覧とニコ生風の画面にだけ出ます(字幕・読み上げはしません)。"></span>
+        <span class="help" data-help="テスト表示は、OBSのコメント一覧と流れるコメントの画面にだけ出ます(字幕・読み上げはしません)。"></span>
       </div>
       <div class="field" style="margin-top:10px"><label>見出しに表示するもの</label><div class="inline">
         <label><input type="checkbox" data-key="style.list.showResNumber" /> レス番号</label>
@@ -1111,7 +1164,7 @@
       <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
-      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのレス一覧を別々の場所に出せます。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
+      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのコメント一覧を別々の場所に出せます。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
         <div class="copy-row"><span style="width:70px">掲示板</span><code id="urlCommentsBbs">http://127.0.0.1:18772/comments.html?source=bbs</code><button class="secondary" data-copy="urlCommentsBbs">コピー</button></div>
         <div class="copy-row"><span style="width:70px">YouTube</span><code id="urlCommentsYoutube">http://127.0.0.1:18772/comments.html?source=youtube</code><button class="secondary" data-copy="urlCommentsYoutube">コピー</button></div>
         <div class="copy-row"><span style="width:70px">Twitch</span><code id="urlCommentsTwitch">http://127.0.0.1:18772/comments.html?source=twitch</code><button class="secondary" data-copy="urlCommentsTwitch">コピー</button></div>
@@ -1134,7 +1187,7 @@
         <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(既定1.3)</span></div></div>
         <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
         <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
-          <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">レス一覧に表示</option></select>
+          <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">コメント一覧に表示</option></select>
           <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
         </div></div>
         <h3>アイコン</h3>
@@ -1147,9 +1200,10 @@
       </details>
     </section>
 
-    <!-- ================= ニコ生風 ================= -->
+    <!-- ================= 流れるコメント ================= -->
     <section data-tab="nico">
-      <p class="lead">レスを右から左に流します(ニコニコ生放送のコメントのような表示)。<span class="help" data-help="OBSのブラウザソースに「かんたん設定」タブのニコ生風のURLを指定し、配信画面と同じ大きさ(例: 1920×1080)にして重ねてください。既定では、字幕に表示されるのと同じタイミングで1件ずつ流れます。"></span></p>
+      <div class="field"><label>流れるコメントを使う<span class="help" data-help="OFFにすると、OBSに貼ったままでも何も流しません。"></span></label><div><input type="checkbox" data-key="style.nico.enabled" /></div></div>
+      <p class="lead">レスを右から左に流します(ニコニコ生放送のコメントのような表示)。<span class="help" data-help="OBSのブラウザソースに「かんたん設定」タブの流れるコメントのURLを指定し、配信画面と同じ大きさ(例: 1920×1080)にして重ねてください。既定では、字幕に表示されるのと同じタイミングで1件ずつ流れます。"></span></p>
       <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.nico.fontFamily" /></div></div>
       <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="300" data-key="style.nico.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.nico.bold" /> 太字</label></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.nico.color" /><input type="color" data-key="style.nico.outlineColor" /></div></div>
@@ -1169,33 +1223,33 @@
 
     <!-- ================= デスクトップに表示 ================= -->
     <section data-tab="output">
-      <p class="lead">OBSの「画面キャプチャ」「ウィンドウキャプチャ」で配信している方向けです。字幕やレス一覧をPCの画面に重ねて出すので、OBSにURLを貼らなくても、そのまま配信に映ります。<span class="help" data-help="字幕・レス一覧は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。OBSの「ウィンドウキャプチャ」でゲームの窓だけを映している時は、字幕は映らないので、「画面キャプチャ」を使ってください。OBSのブラウザソースで配信している方は、ここをOFFにしておくと、自分の画面に字幕が出ません。"></span></p>
+      <p class="lead">OBSの「画面キャプチャ」「ウィンドウキャプチャ」で配信している方向けです。コメント字幕やコメント一覧をPCの画面に重ねて出すので、OBSにURLを貼らなくても、そのまま配信に映ります。<span class="help" data-help="コメント字幕・コメント一覧は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。OBSの「ウィンドウキャプチャ」でゲームの窓だけを映している時は、字幕は映らないので、「画面キャプチャ」を使ってください。OBSのブラウザソースで配信している方は、ここをOFFにしておくと、自分の画面に字幕が出ません。"></span></p>
       <div class="inline" style="margin-bottom:6px"><button class="secondary" data-open-guide>OBSでの設定方法(説明ページ)</button></div>
-      <div class="field"><label>最前面に表示する<span class="help" data-help="ONにすると、下の字幕・右のレス一覧を、ゲームやブラウザなどほかの窓より前に出します。OFFにすると普通の窓と同じで、後から開いた窓や、クリックした窓の後ろに隠れます。"></span></label><div><input type="checkbox" data-key="desktopTopmost" /></div></div>
+      <div class="field"><label>最前面に表示する<span class="help" data-help="ONにすると、コメント字幕・コメント一覧を、ゲームやブラウザなどほかの窓より前に出します。OFFにすると普通の窓と同じで、後から開いた窓や、クリックした窓の後ろに隠れます。"></span></label><div><input type="checkbox" data-key="desktopTopmost" /></div></div>
 
-      <h3>下の字幕</h3>
+      <h3>コメント字幕</h3>
       <div class="field"><label>デスクトップに表示する</label><div><input type="checkbox" data-key="desktopEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
       <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、字幕の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
         <button data-desktop-adjust="subtitle">マウスで位置を調整する</button>
         <button class="secondary" data-desktop-reset="subtitle">既定の位置に戻す</button>
         <span class="unit" data-desktop-rect="subtitle"></span>
       </div></div>
-      <div class="field"><label>デザインのプリセット<span class="help" data-help="「下の字幕」タブのプリセットと同じです(ここで変えると、OBSの下の字幕も変わります)。フォント・大きさ・色などは「下の字幕」タブで変えられます。"></span></label><div class="inline">
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="「コメント字幕」タブのプリセットと同じです(ここで変えると、OBSのコメント字幕も変わります)。フォント・大きさ・色などは「コメント字幕」タブで変えられます。"></span></label><div class="inline">
         <select data-preset-group="subtitle" data-preset-mirror="subtitlePreset"></select>
-        <button class="secondary" data-open-tab="subtitle">「下の字幕」タブで細かく変える</button>
+        <button class="secondary" data-open-tab="subtitle">「コメント字幕」タブで細かく変える</button>
       </div></div>
       <div class="field"><label>プリセットの見た目にする<span class="help" data-help="OFFにすると、デスクトップに出す字幕だけは、文字の大きさ・位置などはそのままで、プリセットの部分(フォント・色・背景・出し方)を既定の見た目にします。"></span></label><div><input type="checkbox" data-key="style.subtitle.desktopUsePreset" /></div></div>
 
-      <h3>右のレス一覧</h3>
+      <h3>コメント一覧</h3>
       <div class="field"><label>デスクトップに表示する</label><div><input type="checkbox" data-key="desktopListEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
-      <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、レス一覧の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
+      <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、コメント一覧の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
         <button data-desktop-adjust="list">マウスで位置を調整する</button>
         <button class="secondary" data-desktop-reset="list">既定の位置に戻す</button>
         <span class="unit" data-desktop-rect="list"></span>
       </div></div>
-      <div class="field"><label>デザインのプリセット<span class="help" data-help="「右のレス一覧」タブのプリセットと同じです(ここで変えると、OBSの右のレス一覧も変わります)。フォント・大きさ・件数などは「右のレス一覧」タブで変えられます。"></span></label><div class="inline">
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="「コメント一覧」タブのプリセットと同じです(ここで変えると、OBSのコメント一覧も変わります)。フォント・大きさ・件数などは「コメント一覧」タブで変えられます。"></span></label><div class="inline">
         <select data-preset-group="list" data-preset-mirror="listPreset"></select>
-        <button class="secondary" data-open-tab="list">「右のレス一覧」タブで細かく変える</button>
+        <button class="secondary" data-open-tab="list">「コメント一覧」タブで細かく変える</button>
       </div></div>
 
       <h3>リアクション</h3>
@@ -1204,13 +1258,13 @@
       <details class="adv">
         <summary>既定の位置(マウスで位置を決めていない時に使います)</summary>
         <div class="field"><label>表示するモニター</label><div><select id="desktopMonitor"></select></div></div>
-        <div class="field"><label>下の字幕の範囲(モニターに対する割合)</label><div class="inline">
+        <div class="field"><label>コメント字幕の範囲(モニターに対する割合)</label><div class="inline">
           左 <input type="number" min="0" max="95" data-key="desktopX" data-percent />%
           上 <input type="number" min="0" max="95" data-key="desktopY" data-percent />%
           幅 <input type="number" min="5" max="100" data-key="desktopWidth" data-percent />%
           高さ <input type="number" min="5" max="100" data-key="desktopHeight" data-percent />%
         </div></div>
-        <div class="field"><label>右のレス一覧の範囲</label><div class="inline">
+        <div class="field"><label>コメント一覧の範囲</label><div class="inline">
           左 <input type="number" min="0" max="95" data-key="desktopListX" data-percent />%
           上 <input type="number" min="0" max="95" data-key="desktopListY" data-percent />%
           幅 <input type="number" min="5" max="100" data-key="desktopListWidth" data-percent />%
@@ -1226,7 +1280,7 @@
       <h3>読み上げ</h3>
       <div class="field"><label>スキップ<span class="help" data-help="字幕と待ち時間を飛ばして、VOICEVOX等・棒読みちゃんの声も止めます(コマンドで渡した声は止まらないので、民安★TALK側で止めてください)。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeySkip" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeySkip">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeySkip">解除</button></div></div>
       <div class="field"><label>一時停止 / 再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyPause" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyPause">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyPause">解除</button></div></div>
-      <h3>話した字幕</h3>
+      <h3>自分の声の字幕</h3>
       <div class="field"><label>マイクを止める<span class="help" data-help="押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
       <div class="field"><label>マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
       <div class="hint hotkey-msg" id="hotkeyMsg"></div>
