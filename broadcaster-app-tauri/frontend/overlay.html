@@ -422,6 +422,19 @@
     40% { transform: scale(1); opacity: 0.85; }
     100% { transform: scale(1.4); opacity: 0; }
   }
+  /* 🎆の星: 中心から--aの向きへ--rまで飛び、最後は少し垂れて(--fall)消える。
+     回転の前のtranslateYは画面の下向きなので、どの向きの星も同じように落ちる */
+  @keyframes particle-star {
+    0% { transform: translateY(0) rotate(var(--a)) translateX(0) scaleX(0.3); opacity: 1; }
+    55% { transform: translateY(calc(var(--fall) * 0.25)) rotate(var(--a)) translateX(var(--r)) scaleX(1); opacity: 1; }
+    100% { transform: translateY(var(--fall)) rotate(var(--a)) translateX(calc(var(--r) * 1.1)) scaleX(0.4); opacity: 0; }
+  }
+  /* 🎆の打ち上げ: 下から開く所まで上がる光の玉 */
+  @keyframes particle-shell {
+    0% { transform: translateY(var(--from)); opacity: 0.9; }
+    90% { opacity: 1; }
+    100% { transform: translateY(0); opacity: 0; }
+  }
   /* 👊の集中線: transform-originを左端(spawnRadialLines参照)にした状態で、
      --line-rotの角度を保ったままscaleXで根本から伸びて消える。 */
   @keyframes particle-radial-line {

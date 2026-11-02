@@ -272,6 +272,9 @@
   .simple-sources i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-ffd36b); }
   .simple-sources i.ok { background: var(--c-7dff9a); }
   .simple-sources i.ng { background: var(--c-ff8a8a); }
+  .emoji-recommend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; padding: 7px 10px; border-radius: 6px; background: var(--c-15161a); font-size: 12px; line-height: 1.6; }
+  .emoji-recommend b { color: var(--c-ffd36b); font-weight: normal; }
+  .emoji-recommend.hidden { display: none; }
   .simple-hint { font-size: 12px; color: var(--c-8d909c); margin: 3px 0 0; line-height: 1.5; }
   /* 番号は表示している枠だけで数える(配信方法で片方の枠を隠すため) */
   .simple-wrap { counter-reset: simple-step; }
@@ -472,6 +475,7 @@
           </div>
           <label class="simple-check"><input type="checkbox" data-reactions-enabled /> 視聴者が送ったリアクション(絵文字)を表示する</label>
           <label class="simple-check"><input type="checkbox" data-key="reactionLink" /> コメントの言葉でリアクションを飛ばす(「www」で草など)</label>
+          <div class="emoji-recommend" data-emoji-recommend><span><b>おすすめ</b>: 絵文字をGoogleの絵文字にそろえると、Win10・Win11・OBSで同じ絵になり、新しい絵文字も□になりません(約3MBのダウンロード)。</span><button class="secondary" data-emoji-recommend-btn>Googleの絵文字にする</button></div>
         </div>
       </div>
 
@@ -703,6 +707,7 @@
       <div class="field"><label>リアクションを表示する<span class="help" data-help="視聴者からのリアクション(絵文字)を配信画面に出します。コントロールパネルの「リアクション機能を使う」と同じです。"></span></label><div><input type="checkbox" id="easyReactionsEnabled" /></div></div>
       <div class="field"><label>コメントでリアクションを飛ばす<span class="help" data-help="「www」で草、「888」で拍手のように、コメントの言葉に合わせてリアクションを飛ばします。言葉とリアクションの組み合わせは「リアクション連動」タブで変えられます。"></span></label><div><input type="checkbox" data-key="reactionLink" /></div></div>
       <div class="field"><label>新しい絵文字を表示する<span class="help" data-help="Windows 10の絵文字には、新しい絵文字(🫍など)が入っていないので、レスに書かれると□で表示されます。Googleの絵文字のフォント(Noto Color Emoji、約3MB)をダウンロードすると、Windowsに無い絵文字だけそれで表示します(コメント字幕・コメント一覧・流れるコメント・自分の声の字幕・スレッドのレス。今まで表示できていた絵文字の見た目は変わりません)。OBSの画面にもすぐ反映されます。使いたい人だけダウンロードしてください。"></span></label><div class="inline"><span id="emojiFontStatus" class="unit" style="margin-left:0">-</span><button class="secondary" id="emojiFontBtn">ダウンロードする(約3MB)</button></div></div>
+      <div class="emoji-recommend" data-emoji-recommend><span><b>おすすめ</b>: 絵文字をGoogleの絵文字にそろえると、Win10・Win11・OBSで同じ絵になり、新しい絵文字も□になりません(約3MBのダウンロード)。</span><button class="secondary" data-emoji-recommend-btn>Googleの絵文字にする</button></div>
       <div class="field"><label>絵文字をすべてGoogleの絵文字で表示する<span class="help" data-help="ふだんは、Windowsの絵文字で表示しています(Windows 10と11では絵文字の絵が違います)。ONにすると、ダウンロードしたGoogleの絵文字だけで表示するので、Win10・Win11・OBSのどれでも同じ絵になります。リアクション(自分の画面・OBS)と、コメント字幕・コメント一覧・流れるコメント・自分の声の字幕の中の絵文字が変わります。"></span></label><div class="inline"><input type="checkbox" id="emojiFontAll" /><span class="unit" id="emojiFontAllNote">先にダウンロードしてください</span></div></div>
 
       <h3>⑤ 試してみる</h3>

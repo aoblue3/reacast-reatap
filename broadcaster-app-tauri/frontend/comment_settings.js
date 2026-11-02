@@ -1702,6 +1702,23 @@ function renderEmojiFont(status) {
   emojiFontStatusEl.textContent = installed ? 'ダウンロード済み(Windowsに無い絵文字も表示します)' : 'ダウンロードしていません';
   emojiFontBtn.textContent = installed ? '削除する' : 'ダウンロードする(約3MB)';
   emojiFontBtn.disabled = false;
+  // ダウンロードしてONにするまでは「おすすめ」を出す
+  for (const el of document.querySelectorAll('[data-emoji-recommend]')) el.classList.toggle('hidden', installed && !!(status && status.all));
+}
+// 「Googleの絵文字にする」: ダウンロードしていなければダウンロードしてから、すべての絵文字をGoogleの絵文字にする
+for (const btn of document.querySelectorAll('[data-emoji-recommend-btn]')) {
+  btn.addEventListener('click', async () => {
+    const buttons = document.querySelectorAll('[data-emoji-recommend-btn]');
+    for (const b of buttons) { b.disabled = true; b.textContent = 'ダウンロードしています…'; }
+    try {
+      if (!emojiFontInstalled) await invoke('emoji_font_download');
+      await invoke('emoji_font_set_all', { all: true });
+    } catch (err) {
+      showStatusError(String((err && err.message) || err));
+    }
+    for (const b of buttons) { b.disabled = false; b.textContent = 'Googleの絵文字にする'; }
+    renderEmojiFont(await invoke('emoji_font_status').catch(() => null));
+  });
 }
 invoke('emoji_font_status').then(renderEmojiFont).catch(() => {});
 emojiFontAllBox.addEventListener('change', () => {

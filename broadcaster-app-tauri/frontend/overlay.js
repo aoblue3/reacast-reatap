@@ -592,7 +592,13 @@ function setupAllEmojiFont(version) {
     document.head.appendChild(el);
   }
   el.textContent = `@font-face { font-family: "ReaCast All Emoji"; src: url("http://127.0.0.1:18772/emoji-font-all.ttf?v=${version || 0}") format("truetype"); unicode-range: U+00A9, U+00AE, U+203C-2BFF, U+3030, U+303D, U+3297, U+3299, U+1F000-1FBFF, U+E0020-E007F; }`;
+  // 読めたか(OFFなら404で読めない)。Googleの🎆は夜空の四角が付いているので、花火では絵文字を出さない
+  allEmojiFontActive = false;
+  document.fonts.load('16px "ReaCast All Emoji"', '🎆').then((faces) => {
+    allEmojiFontActive = faces.some((f) => f.family.replace(/"/g, '') === 'ReaCast All Emoji');
+  }).catch(() => {});
 }
+let allEmojiFontActive = false;
 setupAllEmojiFont(0);
 
 if (window.__TAURI__ && window.__TAURI__.event) {
@@ -3958,16 +3964,12 @@ function spawnReaction(emojiId, opts) {
   if (preset.fireworksBurst) {
     const burstX = path.startX + size / 2;
     const burstY = path.startY + size / 2;
-    setTimeout(() => {
-      if (el.isConnected) spawnFireworkBurst(burstX, burstY, size);
-    }, 60);
+    if (allEmojiFontActive) glyph.style.visibility = 'hidden';
+    spawnFireworkBurst(burstX, burstY, size, 0);
     for (let i = 0; i < 2; i++) {
       const offsetX = (rand() - 0.5) * size * 5;
       const offsetY = -rand() * size * 2.5;
-      const delay = 280 + i * 280 + rand() * 180;
-      setTimeout(() => {
-        if (el.isConnected) spawnFireworkBurst(burstX + offsetX, burstY + offsetY, size);
-      }, delay);
+      spawnFireworkBurst(burstX + offsetX, burstY + offsetY, size, 280 + i * 280 + rand() * 180);
     }
   }
 
@@ -4198,12 +4200,51 @@ function spawnFlash(cx, cy, size) {
 // 表示のコマ落ちの主な原因になっていたため。あわせてactiveParticlesの上限
 // (enforceMaxParticles)も新設したので、どちらの対策でも重くなりすぎないよう
 // 二重に効くようにしてある)。
-function spawnFireworkBurst(cx, cy, size) {
+//
+// 下から光の玉が上がり(particle-shell)、開くと星が丸く広がって少し垂れて消える
+// (particle-star。外側の色の星16個+内側の金色の星8個)。1箇所あたりの要素は
+// 前の紙吹雪+粒(24個)とほぼ同じで、動きはtransformとopacityだけ。
+function spawnFireworkBurst(cx, cy, size, delay) {
+  const rise = 260;
+  const shell = document.createElement('div');
+  shell.className = 'particle';
+  const shellSize = Math.max(4, Math.round(size * 0.08));
+  shell.style.left = `${cx - shellSize / 2}px`;
+  shell.style.top = `${cy - shellSize / 2}px`;
+  shell.style.width = `${shellSize}px`;
+  shell.style.height = `${shellSize * 3}px`;
+  shell.style.borderRadius = `${shellSize}px`;
+  shell.style.background = 'linear-gradient(to bottom, #fff6d8, rgba(255,214,120,0))';
+  shell.style.setProperty('--from', `${size * 2.2}px`);
+  shell.style.animation = `particle-shell ${rise}ms ease-out ${delay}ms both`;
+  stage.appendChild(shell);
+  trackParticle(shell, delay + rise);
   const color = CONFETTI_COLORS[Math.floor(rand() * CONFETTI_COLORS.length)];
-  spawnFlash(cx, cy, size * 1.9);
-  spawnParticles({ shape: 'confetti', count: 14, life: 950 }, cx, cy, size);
-  spawnParticles({ shape: 'dot', color, count: 10, spread: 62, life: 900, drift: 'twinkle' }, cx, cy, size);
-  spawnRing(cx, cy, size, { life: 520, thickness: 3, color: 'rgba(255,255,255,0.85)', glow: true, scale: 2.3 });
+  const tilt = rand() * 360;
+  const star = (angle, radius, width, height, fill, life) => {
+    const el = document.createElement('div');
+    el.className = 'particle';
+    el.style.left = `${cx}px`;
+    el.style.top = `${cy - height / 2}px`;
+    el.style.width = `${width}px`;
+    el.style.height = `${height}px`;
+    el.style.borderRadius = `${height}px`;
+    // 進む向きの先が明るく、後ろは尾のように薄くなる
+    el.style.background = `linear-gradient(to right, rgba(255,255,255,0), ${fill})`;
+    el.style.transformOrigin = 'left center';
+    el.style.setProperty('--a', `${angle}deg`);
+    el.style.setProperty('--r', `${radius}px`);
+    el.style.setProperty('--fall', `${size * 0.45}px`);
+    el.style.animation = `particle-star ${life}ms cubic-bezier(0.15, 0.7, 0.3, 1) ${delay + rise}ms both`;
+    stage.appendChild(el);
+    trackParticle(el, delay + rise + life);
+  };
+  for (let i = 0; i < 16; i++) {
+    star(tilt + (360 * i) / 16 + (rand() - 0.5) * 8, size * (1.8 + rand() * 0.3), size * 0.5, Math.max(3, size * 0.085), color, 1100 + rand() * 200);
+  }
+  for (let i = 0; i < 8; i++) {
+    star(tilt + (360 * i) / 8 + 22, size * (0.9 + rand() * 0.15), size * 0.3, Math.max(3, size * 0.065), '#ffe9a8', 900 + rand() * 150);
+  }
 }
 
 // 👊専用: (cx, cy)を中心に、放射状に伸びる集中線を複数本出す(漫画の
