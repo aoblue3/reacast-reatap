@@ -1587,6 +1587,7 @@ function showStatusError(text) {
 }
 
 function renderStatus(s) {
+  renderSimpleStatus(s);
   startBtn.textContent = s.running ? '再開始' : '開始';
   stopBtn.disabled = !s.running;
   statusEl.textContent = '';
@@ -2458,6 +2459,53 @@ document.getElementById('testBtn').addEventListener('click', () => {
   const text = document.getElementById('testText').value.trim();
   if (text) invoke('comments_test', { text });
 });
+
+// ---- 超シンプルモード(使うものだけを大きく出す。この画面の中だけの好みなので、この端末に保存) ----
+const SIMPLE_KEY = 'reacast.simpleMode';
+function setSimpleMode(on) {
+  document.body.classList.toggle('simple', on);
+  if (window.HelpTips) window.HelpTips.close();
+  try {
+    if (on) localStorage.setItem(SIMPLE_KEY, '1');
+    else localStorage.removeItem(SIMPLE_KEY);
+  } catch (_) {}
+}
+try {
+  if (localStorage.getItem(SIMPLE_KEY) === '1') setSimpleMode(true);
+} catch (_) {}
+for (const btn of document.querySelectorAll('#simpleModeOn, [data-simple-on]')) btn.addEventListener('click', () => setSimpleMode(true));
+document.getElementById('simpleModeOff').addEventListener('click', () => setSimpleMode(false));
+document.getElementById('simpleStart').addEventListener('click', () => startBtn.click());
+document.getElementById('simpleStop').addEventListener('click', () => stopBtn.click());
+document.getElementById('simpleTest').addEventListener('click', () => {
+  invoke('comments_test', { text: 'テストだよ。きこえるかな?' });
+});
+document.getElementById('simpleCopyUrl').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(document.getElementById('urlSubtitle').textContent);
+    btn.textContent = 'コピーできたよ!';
+    setTimeout(() => (btn.textContent = 'じまくの URL を コピー'), 1500);
+  } catch {
+    // 無視(ふつうの画面の「OBSに貼るURL」からもコピーできる)
+  }
+});
+
+function renderSimpleStatus(s) {
+  const el = document.getElementById('simpleStatus');
+  document.getElementById('simpleStop').disabled = !s.running;
+  document.getElementById('simpleStart').textContent = s.running ? '▶ もういちど はじめる' : '▶ はじめる';
+  el.className = 'simple-status';
+  if (!s.running) {
+    el.textContent = 'とまっています';
+  } else if (s.error) {
+    el.className = 'simple-status ng';
+    el.textContent = 'うまく よめません。URL を たしかめてね';
+  } else {
+    el.className = 'simple-status on';
+    el.textContent = s.lastNo ? `うごいています(${s.lastNo}ばんめ まで よんだよ)` : 'うごいています。コメントを まっているよ';
+  }
+}
 
 (async () => {
   settings = await invoke('comments_get_settings');
