@@ -267,6 +267,8 @@
   .simple-link { margin-top: 8px; font-size: 12px; }
   .simple-top { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
   .simple-top button { font-size: 12px; }
+  .simple-foot { display: flex; justify-content: center; margin-top: 14px; }
+  .simple-foot button { font-size: 12px; }
   .simple-sources { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; font-size: 12px; }
   .simple-sources span { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 10px; background: var(--c-24262d); border: 1px solid var(--c-3a3d47); color: var(--c-c9cbd4); }
   .simple-sources i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-ffd36b); }
@@ -392,7 +394,7 @@
   <div id="simpleView">
     <div class="simple-wrap">
       <div class="simple-top">
-        <button class="secondary" data-setup-open>セットアップをやり直す</button>
+        <button class="secondary" data-setup-open id="simpleSetupBtn">セットアップをやり直す</button>
         <button class="secondary" id="simpleModeOff">すべての設定を表示する</button>
       </div>
       <div class="simple-status" id="simpleStatus">停止中</div>
@@ -541,6 +543,7 @@
           </div>
         </div>
       </div>
+      <div class="simple-foot" id="simpleFoot"></div>
     </div>
   </div>
 
@@ -696,6 +699,7 @@
 
       <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにしてください。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
       <div class="field"><label>掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
+      <div class="field"><label>2つ目の掲示板<span class="help" data-help="jpnknとしたらばのように、掲示板を2つ同時に読みたい時に入れます(空欄なら使いません)。レスは1つ目の掲示板と同じ順番待ちに並びます。2つ目の掲示板は読むだけで、「スレッドのレス」・書き込み・次スレ建て・落ちた時に続きから読む、は1つ目の掲示板だけです。1000を超えたら次スレへ移るのは、2つ目も同じです。"></span></label><div><input type="text" class="wide" data-key="subThreadUrl" placeholder="空欄なら使いません 例: https://jbbs.shitaraba.net/bbs/read.cgi/カテゴリ/板の番号/スレッド番号/" /></div></div>
       <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
       <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
       <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
@@ -744,6 +748,7 @@
     <!-- ================= 掲示板 ================= -->
     <section data-tab="fetch">
       <p class="lead">掲示板からのレスの取り方と、次スレへの移り方。</p>
+      <div class="field"><label>2つ目の掲示板<span class="help" data-help="jpnknとしたらばのように、掲示板を2つ同時に読みたい時に入れます(空欄なら使いません)。2つ目の掲示板は読むだけで、「スレッドのレス」・書き込み・次スレ建て・落ちた時に続きから読む、は1つ目の掲示板(一番上の欄)だけです。"></span></label><div><input type="text" class="wide" data-key="subThreadUrl" placeholder="空欄なら使いません" /></div></div>
       <div class="field"><label>1000を超えたら次スレへ自動で移る</label><div><input type="checkbox" data-key="autoNextThread" /></div></div>
       <div class="field"><label>&gt;&gt;1(テンプレート)を出さない<span class="help" data-help="次スレの>>1は、字幕・読み上げ・コメント一覧に出しません(長いテンプレートで字幕の文字が小さくなったり、読み終わるまで次のレスが待たされたりするのを防ぎます)。「スレッドのレス」では見られます。"></span></label><div><input type="checkbox" data-key="skipFirstPost" /></div></div>
       <div class="field"><label>落ちた時は続きから読む<span class="help" data-help="読み上げの途中でPCやReaCastが落ちた時、1時間以内に同じスレッドで開始し直すと、前回読み終わったレスの次から読み上げます(「停止」で止めた時は続きから読みません)。好きなレスから読み直す時は、「スレッドのレス」でレスを右クリック→「ここから読み始める」。"></span></label><div><input type="checkbox" data-key="resumeReading" /></div></div>
@@ -1209,13 +1214,15 @@
         <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
         <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
       </div></div>
-      <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
+      <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。掲示板を2つ使っている時は、掲示板のレスにも「jpnkn」「したらば」などと表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
       <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
       <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
-      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのコメント一覧を別々の場所に出せます。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
+      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのコメント一覧を別々の場所に出せます。「掲示板」は掲示板の全部、「jpnkn」「したらば」はその掲示板だけです(掲示板を2つ使う時に)。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
         <div class="copy-row"><span style="width:70px">掲示板</span><code id="urlCommentsBbs">http://127.0.0.1:18772/comments.html?source=bbs</code><button class="secondary" data-copy="urlCommentsBbs">コピー</button></div>
+        <div class="copy-row"><span style="width:70px">jpnkn</span><code id="urlCommentsJpnkn">http://127.0.0.1:18772/comments.html?source=jpnkn</code><button class="secondary" data-copy="urlCommentsJpnkn">コピー</button></div>
+        <div class="copy-row"><span style="width:70px">したらば</span><code id="urlCommentsShitaraba">http://127.0.0.1:18772/comments.html?source=shitaraba</code><button class="secondary" data-copy="urlCommentsShitaraba">コピー</button></div>
         <div class="copy-row"><span style="width:70px">YouTube</span><code id="urlCommentsYoutube">http://127.0.0.1:18772/comments.html?source=youtube</code><button class="secondary" data-copy="urlCommentsYoutube">コピー</button></div>
         <div class="copy-row"><span style="width:70px">Twitch</span><code id="urlCommentsTwitch">http://127.0.0.1:18772/comments.html?source=twitch</code><button class="secondary" data-copy="urlCommentsTwitch">コピー</button></div>
       </div></div>

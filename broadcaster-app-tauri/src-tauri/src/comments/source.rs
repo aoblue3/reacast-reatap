@@ -22,6 +22,26 @@ pub enum Board {
     Shitaraba { category: String, board: String },
 }
 
+impl Board {
+    /// コメント一覧で取得元を分ける名前: "jpnkn" | "shitaraba" | "bbs"(そのほかの2ch互換の掲示板)
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Board::Nch { origin, .. } if origin.contains("jpnkn.com") => "jpnkn",
+            Board::Nch { .. } => "bbs",
+            Board::Shitaraba { .. } => "shitaraba",
+        }
+    }
+
+    /// 画面に出す名前(取得元の状態の札など)
+    pub fn label(&self) -> String {
+        match self {
+            Board::Nch { origin, .. } if origin.contains("jpnkn.com") => "jpnkn".into(),
+            Board::Nch { origin, .. } => origin.split("://").nth(1).unwrap_or(origin).to_string(),
+            Board::Shitaraba { .. } => "したらば".into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThreadRef {
     pub board: Board,
@@ -561,6 +581,15 @@ mod tests {
         assert_eq!((b2, k2.as_deref()), (t.board.clone(), Some("1700000000")));
         let (_, k3) = parse_url("https://jbbs.shitaraba.net/bbs/lite/read.cgi/game/12345/1700000000/").unwrap();
         assert_eq!(k3.as_deref(), Some("1700000000"));
+    }
+
+    #[test]
+    fn tells_boards_apart() {
+        let kind = |u: &str| parse_url(u).unwrap().0.kind();
+        assert_eq!(kind("https://bbs.jpnkn.com/test/read.cgi/ao/1790705505/"), "jpnkn");
+        assert_eq!(kind("https://jbbs.shitaraba.net/bbs/read.cgi/game/12345/1700000000/"), "shitaraba");
+        assert_eq!(kind("https://example.com/test/read.cgi/board/1700000000/"), "bbs");
+        assert_eq!(parse_url("https://example.com:8080/board/").unwrap().0.label(), "example.com:8080");
     }
 
     #[test]

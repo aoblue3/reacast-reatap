@@ -31,7 +31,8 @@
   /* カスタムCSSで使えるクラス:
      .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .avatar(YouTube・Twitchの人のアイコン) .name(名前)
      .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ)
-     .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch(取得元ごと) */
+     .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch(取得元ごと)
+     .item.board-jpnkn / .item.board-shitaraba / .item.board-bbs(掲示板の種類ごと。bbsはそのほかの掲示板) */
   /* 応援(スーパーチャット・ビッツ等)。カスタムCSSでは .item.paid / .paid-superchat / .paid-sticker /
      .paid-member / .paid-bits / .paid-sub / .paid-gift / .paid-raid / .paid-badge(金額の札) */
   .item.paid { box-shadow: inset 5px 0 0 rgba(255, 255, 255, 0.55); }
@@ -55,6 +56,9 @@
   .head .src { font-size: 0.8em; padding: 0 0.35em; border-radius: 3px; color: #fff; text-shadow: none; }
   .src-youtube .head .src { background: #e62117; }
   .src-twitch .head .src { background: #9146ff; }
+  .src-bbs .head .src { background: #5a6270; }
+  .board-jpnkn .head .src { background: #2f7d4f; }
+  .board-shitaraba .head .src { background: #b5651d; }
   .content.inline .head { display: inline; margin-right: 0.5em; }
   .content.inline .body { display: inline; }
   .body { white-space: pre-wrap; word-break: break-word; }
@@ -204,6 +208,7 @@
       const paid = s.showPaid !== false && res.paid && !res.system ? res.paid : null;
       el.className =
         'item' + (res.aa ? ' aa' : '') + (res.system ? ' system' : '') + (res.source ? ` src-${res.source}` : '') +
+        (res.board ? ` board-${res.board}` : '') +
         (paid ? ` paid paid-${paid.kind}` : '');
       const bgOpacity = Number(s.itemBgOpacity) || 0;
       if (bgOpacity > 0) el.style.background = C.rgba(s.itemBgColor, bgOpacity);
@@ -242,7 +247,11 @@
       if (res.system) {
         if (res.name) head.appendChild(span('name', res.name, s.nameColor));
       } else {
-        const label = { youtube: 'YouTube', twitch: 'Twitch' }[res.source];
+        // 掲示板の印は、2種類以上の掲示板のレスが来ている時だけ(1つなら見分ける必要が無いので)
+        const label =
+          res.source === 'bbs'
+            ? boardsSeen.size > 1 ? { jpnkn: 'jpnkn', shitaraba: 'したらば' }[res.board] || '掲示板' : ''
+            : { youtube: 'YouTube', twitch: 'Twitch' }[res.source];
         if (s.showSource && label) head.appendChild(span('src', label));
         if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
         else if (s.showResNumber && res.avatar) head.appendChild(avatarImg(res.avatar));
@@ -294,9 +303,22 @@
       }
     }
 
+    // 来たことのある掲示板の種類(2種類以上なら、掲示板のレスにも取得元の印を付ける)
+    const boardsSeen = new Set();
+    function noteBoard(res) {
+      if (!res || res.source !== 'bbs' || !res.board || boardsSeen.has(res.board)) return false;
+      boardsSeen.add(res.board);
+      return boardsSeen.size === 2;
+    }
+
     function add(res) {
       items.push(res);
       if (items.length > 100) items = items.slice(-100);
+      // 2つ目の種類の掲示板が来たら、前のレスにも印を付けるために描き直す
+      if (noteBoard(res)) {
+        render();
+        return;
+      }
       const el = buildItem(res);
       if (style.list.newestFirst) listEl.prepend(el);
       else listEl.appendChild(el);
@@ -306,12 +328,13 @@
     }
 
     // ?source=youtube のように付けると、その取得元のレスだけを出す(複数は「,」区切り。
-    // bbs=掲示板 youtube=YouTube twitch=Twitch)。付けなければ全部。ReaCastからのお知らせは常に出す
+    // bbs=掲示板の全部 jpnkn・shitaraba=その掲示板だけ youtube=YouTube twitch=Twitch)。
+    // 付けなければ全部。ReaCastからのお知らせは常に出す
     const onlySources = (new URLSearchParams(location.search).get('source') || '')
       .split(',')
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean);
-    const wanted = (res) => !onlySources.length || !res || res.system || res.source === 'system' || onlySources.includes(res.source);
+    const wanted = (res) => !onlySources.length || !res || res.system || res.source === 'system' || onlySources.includes(res.source) || (!!res.board && onlySources.includes(res.board));
 
     function handle(msg) {
       if (msg.type === 'commentStyle') {
@@ -323,6 +346,7 @@
         renderAud();
       } else if (msg.type === 'commentHistory') {
         items = Array.isArray(msg.items) ? msg.items.filter(wanted).slice(-100) : [];
+        items.forEach(noteBoard);
         render();
       } else if (msg.type === 'commentClear') {
         items = [];

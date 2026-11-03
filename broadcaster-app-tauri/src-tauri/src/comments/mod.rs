@@ -68,6 +68,9 @@ pub struct RandomVoice {
 pub struct CommentSettings {
     // ---- 取得 ----
     pub thread_url: String,
+    /// 2つ目の掲示板(読むだけ。jpnknとしたらばを両方使う時など)。スレッドのレス・
+    /// 書き込み・次スレ建て・続きから読むは、1つ目の掲示板だけ
+    pub sub_thread_url: String,
     pub poll_interval_ms: u64,
     pub auto_next_thread: bool,
     pub next_thread_keyword: String,
@@ -453,6 +456,7 @@ impl Default for CommentSettings {
     fn default() -> Self {
         Self {
             thread_url: String::new(),
+            sub_thread_url: String::new(),
             poll_interval_ms: 7000,
             auto_next_thread: true,
             next_thread_keyword: String::new(),
@@ -655,6 +659,10 @@ struct Post {
     icon: Option<String>,
     /// 取得元: "bbs" | "youtube" | "twitch" | "system"
     source: &'static str,
+    /// 掲示板の種類(コメント一覧で分ける用): "jpnkn" | "shitaraba" | "bbs"(そのほか)。掲示板以外は""
+    board: &'static str,
+    /// 2つ目の掲示板のレス(スレッドのレス・続きから読む・アンカーの表示には使わない)
+    sub: bool,
     /// 配信サイトのコメントを書いた人のアイコン画像のURL(レス番号の位置に出す)
     avatar: Option<String>,
     /// 「前回の続き」「ここから読み始める」で入れ直したレス。溜まっていてもターボに
@@ -689,7 +697,7 @@ impl Post {
         format!("{}:{}", self.source, self.name)
     }
 
-    fn from_raw(p: &source::RawPost, icon: Option<String>) -> Self {
+    fn from_raw(p: &source::RawPost, icon: Option<String>, board: &'static str, sub: bool) -> Self {
         Self {
             no: p.no,
             name: text::html_to_text(&p.name),
@@ -698,6 +706,8 @@ impl Post {
             system: false,
             icon,
             source: "bbs",
+            board,
+            sub,
             avatar: None,
             catch_up: false,
             paid: None,
@@ -713,6 +723,8 @@ impl Post {
             system: true,
             icon: None,
             source: "system",
+            board: "",
+            sub: false,
             avatar: None,
             catch_up: false,
             paid: None,
@@ -721,7 +733,7 @@ impl Post {
 
     /// 配信サイトのチャット(レス番号は無い)
     fn chat(source: &'static str, name: String, body: String, icon: Option<String>, avatar: Option<String>) -> Self {
-        Self { no: 0, name, date: String::new(), body, system: false, icon, source, avatar, catch_up: false, paid: None }
+        Self { no: 0, name, date: String::new(), body, system: false, icon, source, board: "", sub: false, avatar, catch_up: false, paid: None }
     }
 
     /// NGワードが名前・本文・日時の行(「ID:xxxx」を含む)のどれかに含まれるか
@@ -739,6 +751,7 @@ impl Post {
             "system": self.system,
             "icon": self.icon,
             "source": self.source,
+            "board": self.board,
             "avatar": self.avatar,
             "paid": self.paid.as_ref().map(|p| serde_json::json!({
                 "kind": p.kind, "amount": p.amount, "color": p.color, "message": p.message,
@@ -1042,6 +1055,11 @@ impl CommentEngine {
     pub fn start(self: &Arc<Self>, url: &str) -> Result<(), String> {
         let settings = self.settings();
         let bbs = if url.trim().is_empty() { None } else { Some(source::parse_url(url)?) };
+        let sub_bbs = if settings.sub_thread_url.trim().is_empty() {
+            None
+        } else {
+            Some(source::parse_url(&settings.sub_thread_url).map_err(|e| format!("2つ目の掲示板: {e}"))?)
+        };
         let youtube = if settings.youtube_target.trim().is_empty() {
             None
         } else {
@@ -1052,10 +1070,13 @@ impl CommentEngine {
         } else {
             Some(twitch::parse_channel(&settings.twitch_channel)?)
         };
-        if bbs.is_none() && youtube.is_none() && twitch.is_none() {
+        if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() {
             return Err("掲示板のURL、YouTube、Twitchのどれかを指定してください".into());
         }
         let mut sources = Vec::new();
+        if let Some((board, _)) = &sub_bbs {
+            sources.push(SourceStatus { id: "bbs2".into(), label: board.label(), state: "wait".into(), message: "接続中…".into() });
+        }
         if youtube.is_some() {
             sources.push(SourceStatus { id: "youtube".into(), label: "YouTube".into(), state: "wait".into(), message: "接続中…".into() });
         }
@@ -1071,7 +1092,7 @@ impl CommentEngine {
             st.settings.thread_url = url.trim().to_string();
             st.status = CommentStatus { running: true, sources, ..Default::default() };
             let mut counts = Vec::new();
-            for (used, id) in [(youtube.is_some(), "youtube"), (twitch.is_some(), "twitch"), (bbs.is_some(), "peercast")] {
+            for (used, id) in [(youtube.is_some(), "youtube"), (twitch.is_some(), "twitch"), (bbs.is_some() || sub_bbs.is_some(), "peercast")] {
                 if used {
                     counts.push(audience::SourceCount { id, ..Default::default() });
                 }
@@ -1097,7 +1118,11 @@ impl CommentEngine {
         if let Some((board, key)) = bbs {
             let me = self.clone();
             let gen = self.state.lock().unwrap().bbs_gen;
-            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, key).await });
+            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, key, false).await });
+        }
+        if let Some((board, key)) = sub_bbs {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_fetch(run_id, 0, board, key, true).await });
         }
         if let Some(target) = youtube {
             let me = self.clone();
@@ -1413,7 +1438,7 @@ impl CommentEngine {
 
     /// 掲示板のレスを読み上げた(字幕に出した)ので、位置を記録する。
     fn record_progress(&self, post: &Post) {
-        if post.source != "bbs" || post.system || post.no == 0 {
+        if post.source != "bbs" || post.sub || post.system || post.no == 0 {
             return;
         }
         let thread = {
@@ -1450,7 +1475,7 @@ impl CommentEngine {
             if posts.is_empty() {
                 return Err("そのレス以降のレスがありません".into());
             }
-            st.queue.retain(|p| p.source != "bbs");
+            st.queue.retain(|p| p.source != "bbs" || p.sub);
             let n = posts.len();
             for p in posts.into_iter().rev() {
                 st.queue.push_front(p);
@@ -1515,7 +1540,7 @@ impl CommentEngine {
         let st = self.state.lock().unwrap();
         raws.iter()
             .map(|r| {
-                let p = Post::from_raw(r, None);
+                let p = Post::from_raw(r, None, "", false);
                 p.to_json(detect_aa(&st.settings, &st.compiled, &p))
             })
             .collect()
@@ -1673,16 +1698,27 @@ impl CommentEngine {
         self.emit_thread_reset();
         self.emit_status();
         let me = self.clone();
-        tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, Some(key)).await });
+        tauri::async_runtime::spawn(async move { me.run_fetch(run_id, gen, board, Some(key), false).await });
         Ok(())
     }
 
-    fn is_bbs_current(&self, run_id: u64, gen: u64) -> bool {
+    /// 掲示板の取得タスクがまだ使われているか。2つ目の掲示板(sub)は切り替えが無いので、
+    /// 開始し直すまで
+    fn is_bbs_current(&self, run_id: u64, gen: u64, sub: bool) -> bool {
         let st = self.state.lock().unwrap();
-        st.run_id == run_id && st.bbs_gen == gen
+        st.run_id == run_id && (sub || st.bbs_gen == gen)
     }
 
-    async fn run_fetch(self: Arc<Self>, run_id: u64, gen: u64, board: Board, key: Option<String>) {
+    /// 掲示板の状態を出す。1つ目の掲示板は上の状態の行、2つ目は取得元の札
+    fn update_bbs_error(&self, run_id: u64, sub: bool, e: String) {
+        if sub {
+            self.update_source(run_id, "bbs2", "error", e);
+        } else {
+            self.update_status(run_id, |s| s.error = Some(e));
+        }
+    }
+
+    async fn run_fetch(self: Arc<Self>, run_id: u64, gen: u64, board: Board, key: Option<String>, sub: bool) {
         let client = source::http_client();
         let poll_interval = |me: &Self| Duration::from_millis(me.settings().poll_interval_ms.max(1000));
 
@@ -1690,21 +1726,24 @@ impl CommentEngine {
         let key = match key {
             Some(k) => k,
             None => loop {
-                if !self.is_bbs_current(run_id, gen) {
+                if !self.is_bbs_current(run_id, gen, sub) {
                     return;
                 }
                 match source::list_threads(&client, &board).await {
                     Ok(list) => match source::pick_current(&list, &self.settings().next_thread_keyword) {
                         Some(t) => break t.key.clone(),
-                        None => self.update_status(run_id, |s| s.error = Some("板にスレッドが見つかりません".into())),
+                        None => self.update_bbs_error(run_id, sub, "板にスレッドが見つかりません".into()),
                     },
-                    Err(e) => self.update_status(run_id, |s| s.error = Some(e)),
+                    Err(e) => self.update_bbs_error(run_id, sub, e),
                 }
                 tokio::time::sleep(poll_interval(&self)).await;
             },
         };
 
         let mut reader = ThreadReader::new(ThreadRef { board: board.clone(), key });
+        let kind = board.kind();
+        // 即時通知の札(2つ目の掲示板もjpnknなら、別の札にする)
+        let fast_id = if sub { "jpnkn2" } else { "jpnkn" };
         let mut first = true;
         let mut warned = false;
         let mut created = false;
@@ -1718,10 +1757,10 @@ impl CommentEngine {
             (Board::Nch { origin, board: name }, true) if origin.contains("jpnkn.com") => {
                 let (tx, rx) = tokio::sync::mpsc::channel::<(String, source::RawPost)>(256);
                 self.update_status(run_id, |s| {
-                    if !s.sources.iter().any(|x| x.id == "jpnkn") {
+                    if !s.sources.iter().any(|x| x.id == fast_id) {
                         s.sources.insert(0, SourceStatus {
-                            id: "jpnkn".into(),
-                            label: "jpnkn即時通知".into(),
+                            id: fast_id.into(),
+                            label: if sub { "jpnkn即時通知(2つ目)".into() } else { "jpnkn即時通知".into() },
                             state: "wait".into(),
                             message: "接続中…".into(),
                         });
@@ -1729,19 +1768,19 @@ impl CommentEngine {
                 });
                 let me = self.clone();
                 let name = name.clone();
-                tauri::async_runtime::spawn(async move { me.run_jpnkn_fast(run_id, gen, name, tx).await });
+                tauri::async_runtime::spawn(async move { me.run_jpnkn_fast(run_id, gen, sub, fast_id, name, tx).await });
                 Some(rx)
             }
             _ => None,
         };
 
         loop {
-            if !self.is_bbs_current(run_id, gen) {
+            if !self.is_bbs_current(run_id, gen, sub) {
                 return;
             }
             let polled = reader.poll(&client).await;
             // 取得している間に手動で別のスレッドへ切り替えられていたら、結果を捨てる
-            if !self.is_bbs_current(run_id, gen) {
+            if !self.is_bbs_current(run_id, gen, sub) {
                 return;
             }
             match polled {
@@ -1749,9 +1788,11 @@ impl CommentEngine {
                     let posts: Vec<Post> = raw
                         .iter()
                         .filter(|p| seen.from_dat(p)) // 即時通知で既に読んだレスは除く
-                        .map(|p| Post::from_raw(p, self.pick_icon("bbs")))
+                        .map(|p| Post::from_raw(p, self.pick_icon("bbs"), kind, sub))
                         .collect();
-                    self.record_posts(run_id, &posts, false);
+                    if !sub {
+                        self.record_posts(run_id, &posts, false);
+                    }
                     if first {
                         // 起動時点で既にあったレスは読み上げない(コメント一覧にだけ載せる)
                         first = false;
@@ -1770,7 +1811,7 @@ impl CommentEngine {
                             }
                         }
                         // 前回、読み上げの途中で落ちていたら、その続きから読む
-                        let resume = if settings.resume_reading {
+                        let resume = if settings.resume_reading && !sub {
                             self.load_progress()
                                 .and_then(|p| resume_point(&p, &reader.thread.read_url(), reader.last_no, now_ms()))
                         } else {
@@ -1797,15 +1838,24 @@ impl CommentEngine {
                         self.enqueue(run_id, posts.into_iter().filter(|p| !(skip_first && p.no == 1)).collect());
                     }
                     let (title, url, last_no) = (reader.title.clone(), reader.thread.read_url(), reader.last_no);
-                    self.update_status(run_id, |s| {
-                        s.error = None;
-                        s.thread_title = title;
-                        s.thread_url = Some(url);
-                        s.last_no = last_no;
-                    });
+                    if sub {
+                        let msg = match &title {
+                            Some(t) => format!("「{t}」 レス{last_no}"),
+                            None => format!("レス{last_no}"),
+                        };
+                        self.update_source(run_id, "bbs2", "ok", msg);
+                    } else {
+                        self.update_status(run_id, |s| {
+                            s.error = None;
+                            s.thread_title = title;
+                            s.thread_url = Some(url);
+                            s.last_no = last_no;
+                        });
+                    }
 
                     let settings = self.settings();
-                    if settings.auto_create_thread
+                    if !sub
+                        && settings.auto_create_thread
                         && !created
                         && settings.create_thread_count > 0
                         && reader.last_no >= settings.create_thread_count
@@ -1840,7 +1890,8 @@ impl CommentEngine {
                         self.enqueue(run_id, vec![Post::system(msg)]);
                     }
 
-                    if !settings.auto_create_thread
+                    if !sub
+                        && !settings.auto_create_thread
                         && !warned
                         && settings.thread_warn_count > 0
                         && reader.last_no >= settings.thread_warn_count
@@ -1858,22 +1909,26 @@ impl CommentEngine {
                                 if let Some(next) = source::pick_next(&list, &reader.thread.key, &settings.next_thread_keyword) {
                                     // 次スレのレスは1番から全部新着として扱う
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
-                                    self.record_posts(run_id, &[], true);
                                     seen = SeenPosts::default();
                                     warned = false;
                                     created = false;
-                                    self.update_status(run_id, |s| s.warning = None);
+                                    if !sub {
+                                        self.record_posts(run_id, &[], true);
+                                        self.update_status(run_id, |s| s.warning = None);
+                                    }
                                     self.enqueue(run_id, vec![Post::system(format!("次スレ「{}」に移動しました", next.title))]);
                                     continue;
+                                } else if sub {
+                                    self.update_source(run_id, "bbs2", "wait", "スレッドが1000を超えました。次スレを探しています");
                                 } else {
                                     self.update_status(run_id, |s| s.warning = Some("スレッドが1000を超えました。次スレを探しています".into()));
                                 }
                             }
-                            Err(e) => self.update_status(run_id, |s| s.error = Some(e)),
+                            Err(e) => self.update_bbs_error(run_id, sub, e),
                         }
                     }
                 }
-                Err(e) => self.update_status(run_id, |s| s.error = Some(e)),
+                Err(e) => self.update_bbs_error(run_id, sub, e),
             }
 
             // 次の定期取得まで待つ。その間に即時通知で届いたレスは、すぐ順番待ちに入れる
@@ -1886,7 +1941,7 @@ impl CommentEngine {
                             fast_rx = None; // 通知の接続タスクが終わった
                             continue;
                         };
-                        if !self.is_bbs_current(run_id, gen) {
+                        if !self.is_bbs_current(run_id, gen, sub) {
                             return;
                         }
                         // 1001番(「このスレッドは1000を超えました」)は即時通知では使わない。
@@ -1899,8 +1954,10 @@ impl CommentEngine {
                         if first || thread_key != reader.thread.key || !seen.from_fast(&raw) {
                             continue;
                         }
-                        let post = Post::from_raw(&raw, self.pick_icon("bbs"));
-                        self.record_posts(run_id, std::slice::from_ref(&post), false);
+                        let post = Post::from_raw(&raw, self.pick_icon("bbs"), kind, sub);
+                        if !sub {
+                            self.record_posts(run_id, std::slice::from_ref(&post), false);
+                        }
                         if !(raw.no == 1 && self.settings().skip_first_post) {
                             self.enqueue(run_id, vec![post]);
                         }
@@ -1916,6 +1973,8 @@ impl CommentEngine {
         self: Arc<Self>,
         run_id: u64,
         gen: u64,
+        sub: bool,
+        id: &'static str,
         board: String,
         tx: tokio::sync::mpsc::Sender<(String, source::RawPost)>,
     ) {
@@ -1923,7 +1982,7 @@ impl CommentEngine {
         use tokio_tungstenite::tungstenite::client::IntoClientRequest;
         use tokio_tungstenite::tungstenite::Message;
         let client = source::http_client();
-        while self.is_bbs_current(run_id, gen) {
+        while self.is_bbs_current(run_id, gen, sub) {
             // 接続先のサーバーを一覧から選ぶ(取れなければ既定のサーバー)
             let servers = match client.get(jpnkn_fast::SERVER_LIST_URL).send().await {
                 Ok(r) => r.json::<serde_json::Value>().await.map(|v| jpnkn_fast::secure_servers(&v)).unwrap_or_default(),
@@ -1945,8 +2004,8 @@ impl CommentEngine {
             let (mut write, mut read) = match conn {
                 Ok((ws, _)) => ws.split(),
                 Err(e) => {
-                    self.update_source(run_id, "jpnkn", "error", format!("即時通知に接続できません({e})。定期取得で続けます"));
-                    if !self.sleep_while_bbs_current(run_id, gen, Duration::from_secs(15)).await {
+                    self.update_source(run_id, id, "error", format!("即時通知に接続できません({e})。定期取得で続けます"));
+                    if !self.sleep_while_bbs_current(run_id, gen, sub, Duration::from_secs(15)).await {
                         return;
                     }
                     continue;
@@ -1957,7 +2016,7 @@ impl CommentEngine {
             let mut buf: Vec<u8> = Vec::new();
             let mut last_ping = tokio::time::Instant::now();
             loop {
-                if !self.is_bbs_current(run_id, gen) {
+                if !self.is_bbs_current(run_id, gen, sub) {
                     let _ = write.close().await;
                     return;
                 }
@@ -1984,10 +2043,10 @@ impl CommentEngine {
                             let _ = write.send(Message::Binary(jpnkn_fast::subscribe_packet(&format!("bbs/{board}")))).await;
                         }
                         jpnkn_fast::Incoming::ConnAck(rc) => {
-                            self.update_source(run_id, "jpnkn", "error", format!("即時通知への接続が拒否されました(コード{rc})"));
+                            self.update_source(run_id, id, "error", format!("即時通知への接続が拒否されました(コード{rc})"));
                         }
                         jpnkn_fast::Incoming::SubAck => {
-                            self.update_source(run_id, "jpnkn", "ok", "接続中(書き込まれた瞬間に拾います)");
+                            self.update_source(run_id, id, "ok", "接続中(書き込まれた瞬間に拾います)");
                         }
                         jpnkn_fast::Incoming::Publish { payload, .. } => {
                             if let Some(item) = jpnkn_fast::parse_payload(&payload) {
@@ -2000,22 +2059,22 @@ impl CommentEngine {
                     }
                 }
             }
-            self.update_source(run_id, "jpnkn", "wait", "即時通知が切れました。再接続しています(その間も定期取得で拾います)");
-            if !self.sleep_while_bbs_current(run_id, gen, Duration::from_secs(5)).await {
+            self.update_source(run_id, id, "wait", "即時通知が切れました。再接続しています(その間も定期取得で拾います)");
+            if !self.sleep_while_bbs_current(run_id, gen, sub, Duration::from_secs(5)).await {
                 return;
             }
         }
     }
 
-    async fn sleep_while_bbs_current(&self, run_id: u64, gen: u64, dur: Duration) -> bool {
+    async fn sleep_while_bbs_current(&self, run_id: u64, gen: u64, sub: bool, dur: Duration) -> bool {
         let end = tokio::time::Instant::now() + dur;
         while tokio::time::Instant::now() < end {
-            if !self.is_bbs_current(run_id, gen) {
+            if !self.is_bbs_current(run_id, gen, sub) {
                 return false;
             }
             tokio::time::sleep((end - tokio::time::Instant::now()).min(Duration::from_secs(1))).await;
         }
-        self.is_bbs_current(run_id, gen)
+        self.is_bbs_current(run_id, gen, sub)
     }
 
     async fn run_queue(self: Arc<Self>) {
@@ -2064,7 +2123,7 @@ impl CommentEngine {
 
             // >>番号が付いたレスなら、アンカー先のレスを先に(斜体で)コメント字幕に出す。
             // 溜まっている時(ターボ中)は追いつくのを優先して省く。
-            if settings.anchor_preview && post.source == "bbs" && backlog < settings.turbo_threshold.max(1) {
+            if settings.anchor_preview && post.source == "bbs" && !post.sub && backlog < settings.turbo_threshold.max(1) {
                 let quoted = text::first_anchor(&post.body).and_then(|n| {
                     let st = self.state.lock().unwrap();
                     st.thread_posts.iter().find(|p| p.no == n && n != post.no).cloned()
@@ -3043,7 +3102,7 @@ mod tests {
     use super::*;
 
     fn post(no: u32, body: &str) -> Post {
-        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", avatar: None, catch_up: false, paid: None }
+        Post { no, name: "名無し".into(), date: String::new(), body: body.into(), system: false, icon: None, source: "bbs", board: "jpnkn", sub: false, avatar: None, catch_up: false, paid: None }
     }
 
     #[test]

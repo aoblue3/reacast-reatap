@@ -2675,7 +2675,7 @@ for (const btn of document.querySelectorAll('#simpleModeOn, [data-simple-on]')) 
 document.getElementById('simpleModeOff').addEventListener('click', () => setSimpleMode(false));
 
 function hasSource() {
-  return !!(settings.threadUrl || settings.youtubeTarget || settings.twitchChannel);
+  return !!(settings.threadUrl || settings.subThreadUrl || settings.youtubeTarget || settings.twitchChannel);
 }
 document.getElementById('simpleStart').addEventListener('click', () => {
   if (!hasSource()) {
@@ -2856,18 +2856,24 @@ let lastStatus = null;
 // 今取得している取得元(開始した時の欄の中身)。止まっている時はnull
 let appliedSources = null;
 function sourceSnapshot() {
-  return JSON.stringify([document.getElementById('threadUrl').value.trim(), (settings.youtubeTarget || '').trim(), (settings.twitchChannel || '').trim()]);
+  return JSON.stringify([
+    document.getElementById('threadUrl').value.trim(),
+    (settings.subThreadUrl || '').trim(),
+    (settings.youtubeTarget || '').trim(),
+    (settings.twitchChannel || '').trim(),
+  ]);
 }
 startBtn.addEventListener('click', () => {
   appliedSources = sourceSnapshot();
 });
-for (const el of document.querySelectorAll('[data-key="threadUrl"], [data-key="youtubeTarget"], [data-key="twitchChannel"]')) {
+for (const el of document.querySelectorAll('[data-key="threadUrl"], [data-key="subThreadUrl"], [data-key="youtubeTarget"], [data-key="twitchChannel"]')) {
   el.addEventListener('input', () => lastStatus && renderSourceNotes(lastStatus));
 }
 
 /** まだ読めていない取得元の、どうすればいいかの一言 */
 function sourceHint(src) {
   const m = String(src.message || '');
+  if (src.id === 'bbs2' && src.state === 'error') return '「2つ目の掲示板」のURLが合っているか、その掲示板をブラウザで開けるかを確かめてください(自動でやり直します)。';
   if (src.state === 'error') return 'インターネットの接続を確かめてください(30秒ごとに自動でやり直します)。';
   if (src.id === 'youtube' && m.includes('配信が始まるのを待っています')) {
     return 'チャンネルで公開の配信が始まると、自動で読み始めます。限定公開の配信や、すぐに読みたい時は、YouTubeの欄に配信のURL(watch?v=…)を入れて「再開始」を押してください。';
@@ -2893,7 +2899,7 @@ function renderSourceNotes(s) {
   }
   for (const b of startButtons) b.classList.toggle('attention', pending);
   // 即時通知(jpnkn)は、つながらなくても定期取得で読めるので知らせない。つなぎ始めの「接続中…」も除く
-  const problems = s.running ? (s.sources || []).filter((src) => src.id !== 'jpnkn' && src.state !== 'ok' && !String(src.message || '').startsWith('接続中')) : [];
+  const problems = s.running ? (s.sources || []).filter((src) => !src.id.startsWith('jpnkn') && src.state !== 'ok' && !String(src.message || '').startsWith('接続中')) : [];
   const shown = problems.filter((src) => dismissedWarn[src.id] !== src.message);
   for (const el of document.querySelectorAll('[data-source-warn]')) {
     el.textContent = '';
@@ -2988,6 +2994,7 @@ document.getElementById('wizNext').addEventListener('click', () => {
   }
   if (step === 'done') {
     storeSet(SETUP_DONE_KEY, '1');
+    renderSetupButtons();
     closeSetup();
     return;
   }
@@ -3006,9 +3013,24 @@ document.getElementById('wizTestBtn').addEventListener('click', () => {
 // コントロールパネルの「セットアップを始める」(窓が開いている時)
 listen('settings:setup', openSetup);
 
+// 「セットアップをやり直す」は、終えた後はシンプルモードの一番下へ移す(上にあると間違えて
+// 押してしまうため)。コントロールパネルの「かんたんセットアップを表示する」がOFFなら出さない
+function renderSetupButtons() {
+  const done = storeGet(SETUP_DONE_KEY) === '1' || hasSource();
+  const show = storeGet('reacast.showSetup') !== '0';
+  for (const btn of document.querySelectorAll('[data-setup-open]')) btn.style.display = show ? '' : 'none';
+  const btn = document.getElementById('simpleSetupBtn');
+  if (done) document.getElementById('simpleFoot').appendChild(btn);
+  else document.getElementById('simpleModeOff').before(btn);
+}
+window.addEventListener('storage', (e) => {
+  if (e.key === 'reacast.showSetup' || e.key === SETUP_DONE_KEY) renderSetupButtons();
+});
+
 /** 設定を読み込んだ後に呼ぶ。初めての人は、シンプルモードとセットアップの案内から始める */
 function initSimpleMode() {
   renderMethod();
+  renderSetupButtons();
   const fromControl = new URLSearchParams(location.search).get('setup') === '1';
   const firstTime = storeGet(SETUP_DONE_KEY) !== '1' && storeGet(SIMPLE_KEY) === null && !hasSource();
   if (fromControl || firstTime) openSetup();

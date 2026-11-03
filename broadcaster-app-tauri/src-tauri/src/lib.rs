@@ -1228,7 +1228,9 @@ pub fn run() {
             local_translate::sync(app.handle());
             emoji_font::init(app.handle());
             addons::init(app.handle());
-            if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
+            if comment_settings.start_on_launch
+                && !(comment_settings.thread_url.trim().is_empty() && comment_settings.sub_thread_url.trim().is_empty())
+            {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
                     // setup()はメインスレッドで動くので、字幕ウィンドウの作成は別スレッドから。

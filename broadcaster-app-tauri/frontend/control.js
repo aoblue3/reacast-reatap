@@ -16,30 +16,70 @@ document.getElementById('openCommentSettingsBtn').addEventListener('click', () =
   invoke('open_comment_settings').catch(() => {});
 });
 
+// この画面の中だけの好み(この端末に保存。コメント設定の窓とも同じ所を読む)
+function storeGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+function storeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {}
+}
+
+// ---- 起動時にコメント読み上げ・字幕の設定の窓も開く(既定OFF) ----
+const OPEN_ON_LAUNCH_KEY = 'reacast.openCommentSettingsOnLaunch';
+const openOnLaunchBox = document.getElementById('openSettingsOnLaunchCheckbox');
+openOnLaunchBox.checked = storeGet(OPEN_ON_LAUNCH_KEY) === '1';
+openOnLaunchBox.addEventListener('change', () => storeSet(OPEN_ON_LAUNCH_KEY, openOnLaunchBox.checked ? '1' : '0'));
+// この画面が読み込み直された時は開き直さない(起動して最初の1回だけ)
+let launchOpened = false;
+try {
+  launchOpened = sessionStorage.getItem('reacast.launchOpened') === '1';
+  sessionStorage.setItem('reacast.launchOpened', '1');
+} catch (_) {}
+if (openOnLaunchBox.checked && !launchOpened) {
+  invoke('open_comment_settings').catch(() => {});
+}
+
 // ---- かんたんセットアップ(コメント設定の窓で、最初の案内を出す。何度でもやり直せる) ----
 document.getElementById('openSetupBtn').addEventListener('click', () => {
   invoke('open_comment_settings', { setup: true }).catch(() => {});
+});
+// セットアップを終えた後は一番下へ移す(上にあると、間違えて押してしまうため)。
+// 「その他」の「かんたんセットアップを表示する」をOFFにすると出さない
+const SHOW_SETUP_KEY = 'reacast.showSetup';
+const showSetupBox = document.getElementById('showSetupCheckbox');
+showSetupBox.addEventListener('change', () => {
+  storeSet(SHOW_SETUP_KEY, showSetupBox.checked ? '1' : '0');
+  renderSetupCard();
 });
 // 前からコメントの取得元を設定して使っている人は、セットアップ済みとして扱う
 let alreadyConfigured = false;
 invoke('comments_get_settings')
   .then((s) => {
-    alreadyConfigured = !!(s && (s.threadUrl || s.youtubeTarget || s.twitchChannel));
+    alreadyConfigured = !!(s && (s.threadUrl || s.subThreadUrl || s.youtubeTarget || s.twitchChannel));
     renderSetupCard();
   })
   .catch(() => {});
 function renderSetupCard() {
-  let done = alreadyConfigured;
-  try {
-    done = done || localStorage.getItem('reacast.setupDone') === '1';
-  } catch (_) {}
-  document.getElementById('setupCard').classList.toggle('todo', !done);
+  const done = alreadyConfigured || storeGet('reacast.setupDone') === '1';
+  const card = document.getElementById('setupCard');
+  const show = storeGet(SHOW_SETUP_KEY) !== '0';
+  showSetupBox.checked = show;
+  card.style.display = show ? '' : 'none';
+  card.classList.toggle('todo', !done);
+  if (done) document.getElementById('miscCard').after(card);
+  else document.getElementById('setupSlot').after(card);
   document.getElementById('openSetupBtn').textContent = done ? 'セットアップをやり直す' : 'セットアップを始める';
 }
 renderSetupCard();
 // セットアップを終えた時(コメント設定の窓で保存される)に表示を変える
 window.addEventListener('storage', (e) => {
-  if (e.key === 'reacast.setupDone') renderSetupCard();
+  if (e.key === 'reacast.setupDone' || e.key === SHOW_SETUP_KEY) renderSetupCard();
 });
 window.addEventListener('focus', renderSetupCard);
 

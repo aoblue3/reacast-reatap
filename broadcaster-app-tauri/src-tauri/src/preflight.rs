@@ -21,25 +21,25 @@ fn item(label: &str, state: &'static str, message: impl Into<String>) -> CheckIt
     CheckItem { label: label.into(), state, message: message.into() }
 }
 
-async fn check_bbs(url: String) -> CheckItem {
-    const L: &str = "掲示板";
+async fn check_bbs(url: String, sub: bool) -> CheckItem {
+    let l = if sub { "2つ目の掲示板" } else { "掲示板" };
     if url.trim().is_empty() {
-        return item(L, "skip", "URLが入っていません(掲示板を使わない場合はこのままで大丈夫です)");
+        return item(l, "skip", "URLが入っていません(掲示板を使わない場合はこのままで大丈夫です)");
     }
     let (board, key) = match source::parse_url(&url) {
         Ok(v) => v,
-        Err(e) => return item(L, "ng", e),
+        Err(e) => return item(l, "ng", e),
     };
     let list = match source::list_threads(&source::http_client(), &board).await {
-        Ok(l) => l,
-        Err(e) => return item(L, "ng", format!("板を読み込めませんでした: {e}")),
+        Ok(list) => list,
+        Err(e) => return item(l, "ng", format!("板を読み込めませんでした: {e}")),
     };
     match key {
-        None => item(L, "ok", format!("板を読み込めました(スレッド{}件)", list.len())),
+        None => item(l, "ok", format!("板を読み込めました(スレッド{}件)", list.len())),
         Some(k) => match list.iter().find(|t| t.key == k) {
-            None => item(L, "warn", "指定したスレッドが板の一覧にありません(落ちたか、別の板のURLかもしれません)"),
-            Some(t) if t.count >= 1000 => item(L, "warn", format!("「{}」は1000を超えています(次スレのURLにしてください)", t.title)),
-            Some(t) => item(L, "ok", format!("「{}」(レス{})", t.title, t.count)),
+            None => item(l, "warn", "指定したスレッドが板の一覧にありません(落ちたか、別の板のURLかもしれません)"),
+            Some(t) if t.count >= 1000 => item(l, "warn", format!("「{}」は1000を超えています(次スレのURLにしてください)", t.title)),
+            Some(t) => item(l, "ok", format!("「{}」(レス{})", t.title, t.count)),
         },
     }
 }
@@ -74,8 +74,9 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     let status = engine.status();
     let live = |id: &str| status.sources.iter().find(|x| x.id == id).cloned();
 
-    let (bbs, youtube, twitch) = tokio::join!(
-        check_bbs(s.thread_url.clone()),
+    let (bbs, sub_bbs, youtube, twitch) = tokio::join!(
+        check_bbs(s.thread_url.clone(), false),
+        check_bbs(s.sub_thread_url.clone(), true),
         check_site("YouTube", s.youtube_target.clone(), live("youtube"), false),
         check_site("Twitch", s.twitch_channel.clone(), live("twitch"), true),
     );
@@ -87,9 +88,12 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
             item("コメントの取得", "warn", "まだ開始していません(コメント読み上げ・字幕の設定の「開始」)")
         },
         bbs,
-        youtube,
-        twitch,
     ];
+    // 2つ目の掲示板は、使っている人にだけ出す
+    if !s.sub_thread_url.trim().is_empty() {
+        out.push(sub_bbs);
+    }
+    out.extend([youtube, twitch]);
 
     let speech = if !s.speech_enabled || s.command_path.trim().is_empty() {
         item("読み上げソフト", "skip", "読み上げはOFFです")
