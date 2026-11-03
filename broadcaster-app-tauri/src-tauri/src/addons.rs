@@ -3,10 +3,12 @@
 //! exeを書き換える代わりに、設定のフォルダの addons\<フォルダ名>\addon.json に書いておくと、
 //! ReaCastが読み込む。exeの外に置くので、ReaCastを更新してもそのまま使える。
 //! アドオンでできることは決まっていて、プログラムは動かさない(安全のため):
-//! - css: 画面ごとの見た目(OBSの画面・デスクトップに出す窓に /addon.css?page=… で配る)
+//! - css: 画面ごとの見た目(OBSの画面・デスクトップに出す窓に /addon.css?page=… で配る)。
+//!   インターネットからは何も読ませない(配信者のIPアドレスや配信の時間を知られないように):
+//!   @importは消し、url()はアドオンのフォルダの中のファイル(/addon-file/…で配る)とdata:だけにする
 //! - names: 名前欄を、名前の一覧からランダムに置き換える(同じ人はずっと同じ名前)
 //! - tts: 「コマンドで渡す」の「よく使う設定」に、読み上げソフトのボタンを足す
-//!   (押した時に欄に入るだけで、勝手には動かさない)
+//!   (押すと動かすソフトの場所を見せて確かめてもらい、欄に入るだけ。勝手には動かさない)
 //!
 //! どれを使うかは、コメント設定の「アドオン」タブで1つずつON/OFFする(最初はOFF)。
 //! 「アドオンを使わない」をONにすると、全部まとめて止める(不具合の切り分け用)。
@@ -32,6 +34,10 @@ pub struct TtsPreset {
     pub label: String,
     pub command_path: String,
     pub command_args: String,
+    /// アドオンのフォルダに入っているソフトか(作った人を信頼できる時だけ使ってもらう)
+    pub in_addon: bool,
+    /// どのアドオンのボタンか
+    pub addon: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -67,12 +73,16 @@ struct NameRule {
 
 #[derive(Default)]
 struct Loaded {
+    /// 使っているアドオンのフォルダ名(/addon-file/ で配ってよいもの)
+    active: Vec<String>,
     css: HashMap<String, String>,
     names: Vec<NameRule>,
     tts: Vec<TtsPreset>,
 }
 
 static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
+/// アドオンのフォルダ(/addon-file/ を配る時に使う)
+static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
 pub fn dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("addons"))
@@ -113,6 +123,137 @@ fn read_text(path: &Path) -> Option<String> {
     }
     let s = std::fs::read_to_string(path).ok()?;
     Some(s.trim_start_matches('\u{feff}').to_string())
+}
+
+/// アドオンのCSSから、インターネットへの読み込みを無くす。
+/// - `@import` は消す
+/// - `url(…)` は、アドオンのフォルダの中のファイル(相対パス)なら /addon-file/<フォルダ>/… に書き換え、
+///   data: はそのまま、それ以外(http・https・//・/ で始まる等)は空にする
+/// - `image-set(…)` は文字列でURLを書けるので none にする
+/// - バックスラッシュ(\)は、`u\72l(` のように url を隠せるので、使っていたら読まない
+fn sanitize_css(css: &str, addon_id: &str) -> Result<String, String> {
+    if css.contains('\\') {
+        return Err("バックスラッシュ(\\)は使えません(文字はそのまま書いてください)".into());
+    }
+    // コメントは先に消す(コメントの中に url( 等を隠せないように)
+    let mut s = String::new();
+    let mut rest = css;
+    while let Some(i) = rest.find("/*") {
+        s.push_str(&rest[..i]);
+        rest = match rest[i + 2..].find("*/") {
+            Some(j) => &rest[i + 2 + j + 2..],
+            None => "",
+        };
+    }
+    s.push_str(rest);
+    // @import … ; を消す
+    loop {
+        let lower = s.to_ascii_lowercase();
+        let Some(i) = lower.find("@import") else { break };
+        let end = lower[i..].find(';').map(|j| i + j + 1).unwrap_or(s.len());
+        s.replace_range(i..end, "");
+    }
+    // url(…) を書き換える
+    let mut out = String::new();
+    let mut rest = s.as_str();
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(i) = lower.find("url(") else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 4..];
+        let Some(close) = after.find(')') else {
+            break;
+        };
+        let target = after[..close].trim().trim_matches(|c| c == '"' || c == '\'').trim();
+        let safe = if target.to_ascii_lowercase().starts_with("data:") {
+            target.to_string()
+        } else if target.is_empty() || target.contains(':') || target.starts_with('/') || target.contains("..") {
+            String::new()
+        } else {
+            let enc = |x: &str| x.split('/').map(|p| urlencoding_component(p)).collect::<Vec<_>>().join("/");
+            format!("http://127.0.0.1:18772/addon-file/{}/{}", urlencoding_component(addon_id), enc(target))
+        };
+        out.push_str(&format!("url(\"{}\")", safe.replace('"', "%22")));
+        rest = &after[close + 1..];
+    }
+    // image-set("https://…" 1x)・src("https://…") は文字列でURLを書けるので、中身ごと none にする
+    loop {
+        let lower = out.to_ascii_lowercase();
+        let found = lower.find("image-set(").or_else(|| {
+            lower.match_indices("src(").map(|(i, _)| i).find(|&i| {
+                i == 0 || !lower.as_bytes()[i - 1].is_ascii_alphanumeric() && lower.as_bytes()[i - 1] != b'-'
+            })
+        });
+        let Some(i) = found else { break };
+        let end = lower[i..].find(')').map(|j| i + j + 1).unwrap_or(out.len());
+        out.replace_range(i..end, "none");
+    }
+    Ok(out)
+}
+
+/// URLの一部に使えるように、英数字と -_.~ 以外を%XXにする
+fn urlencoding_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.as_bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(b) {
+            out.push(*b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// %XXを戻す(/addon-file/… のパス用)
+fn percent_decode(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let h = std::str::from_utf8(&b[i + 1..i + 3]).ok()?;
+            out.push(u8::from_str_radix(h, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// /addon-file/<フォルダ>/<ファイル> で配る、アドオンの中の画像・フォント。
+/// 使っている(ONで、使わない設定でない)アドオンの、フォルダの中のファイルだけ
+pub fn file(path: &str) -> Option<(Vec<u8>, &'static str)> {
+    let rest = path.strip_prefix("/addon-file/")?.split('?').next()?;
+    let (id, rel) = rest.split_once('/')?;
+    let id = percent_decode(id)?;
+    let rel = percent_decode(rel)?;
+    if !LOADED.lock().unwrap().as_ref()?.active.contains(&id) {
+        return None;
+    }
+    let ext = Path::new(&rel).extension()?.to_string_lossy().to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        _ => return None,
+    };
+    let base = ROOT.get()?.join(&id);
+    let p = inside(&base, &rel)?;
+    if std::fs::metadata(&p).ok()?.len() > 10 * 1024 * 1024 {
+        return None;
+    }
+    Some((std::fs::read(p).ok()?, mime))
 }
 
 fn str_of(v: &serde_json::Value, key: &str) -> String {
@@ -174,11 +315,12 @@ fn load_one(base: &Path, id: &str, enabled: bool) -> (AddonInfo, Loaded) {
                 continue;
             }
             let text = file.as_str().and_then(|f| inside(base, f)).and_then(|p| read_text(&p));
-            match text {
-                Some(t) => {
+            match text.map(|t| sanitize_css(&t, id)) {
+                Some(Ok(t)) => {
                     info.css_pages.push(page.clone());
                     loaded.css.insert(page.clone(), t);
                 }
+                Some(Err(why)) => info.error = Some(format!("css の {page} のファイル: {why}")),
                 None => info.error = Some(format!("css の {page} のファイルを読めません")),
             }
         }
@@ -204,12 +346,14 @@ fn load_one(base: &Path, id: &str, enabled: bool) -> (AddonInfo, Loaded) {
         let dir = base.to_string_lossy().to_string();
         for t in arr {
             let label = str_of(t, "label");
-            let path = str_of(t, "commandPath").replace("{addon}", &dir);
+            let raw_path = str_of(t, "commandPath");
+            let path = raw_path.replace("{addon}", &dir);
             if label.is_empty() || path.is_empty() {
                 continue;
             }
+            let in_addon = raw_path.contains("{addon}") || Path::new(&path).starts_with(base);
             let args = t.get("commandArgs").and_then(|x| x.as_str()).unwrap_or("#Res#").replace("{addon}", &dir);
-            info.tts.push(TtsPreset { label, command_path: path, command_args: args });
+            info.tts.push(TtsPreset { label, command_path: path, command_args: args, in_addon, addon: info.name.clone() });
         }
         loaded.tts = info.tts.clone();
     }
@@ -248,6 +392,7 @@ fn scan(app: &AppHandle) -> Vec<AddonInfo> {
             let on = enabled.contains(&id);
             let (info, loaded) = load_one(&d, &id, on);
             if on && !safe && info.compatible && info.error.is_none() {
+                merged.active.push(id.clone());
                 for (page, css) in loaded.css {
                     let e = merged.css.entry(page).or_default();
                     e.push_str(&format!("\n/* ---- アドオン: {} ---- */\n{}\n", info.name, css));
@@ -270,6 +415,9 @@ fn scan(app: &AppHandle) -> Vec<AddonInfo> {
 
 /// 起動時に1回読む
 pub fn init(app: &AppHandle) {
+    if let Some(d) = dir(app) {
+        let _ = ROOT.set(d);
+    }
     scan(app);
 }
 
@@ -401,6 +549,28 @@ mod tests {
         assert!(info.tts[0].command_path.ends_with("yomiko.exe") && !info.tts[0].command_path.contains("{addon}"));
         assert_eq!(loaded.names[0].sources, vec!["bbs".to_string()]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn keeps_css_offline() {
+        let css = r#"@import url("https://evil.example/a.css");
+            .a { background: url(https://evil.example/x.png); }
+            .b { background: URL( '//evil.example/y.png' ); }
+            .c { background: url(img/bg.png); }
+            .d { background: url("data:image/png;base64,AAAA"); }
+            .e { background: url(/etc/x.png); }
+            .f { background: url(../other/x.png); }
+            .g { background: image-set("https://evil.example/z.png" 1x); }
+            .h { background-image: src("https://evil.example/s.png"); }
+            /* url(https://hidden.example) */"#;
+        let out = sanitize_css(css, "my addon").unwrap();
+        assert!(!out.contains("evil.example") && !out.contains("hidden.example"), "{out}");
+        assert!(!out.to_ascii_lowercase().contains("@import"));
+        assert!(out.contains(r#"url("http://127.0.0.1:18772/addon-file/my%20addon/img/bg.png")"#), "{out}");
+        assert!(out.contains("data:image/png;base64,AAAA"));
+        assert!(out.contains(".g { background: none; }"), "{out}");
+        assert!(sanitize_css(r".x { background: u\72l(https://evil.example) }", "a").is_err());
+        assert_eq!(percent_decode("my%20addon").as_deref(), Some("my addon"));
     }
 
     #[test]

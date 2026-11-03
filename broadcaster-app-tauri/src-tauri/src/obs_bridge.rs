@@ -478,6 +478,25 @@ Connection: close
         return;
     }
 
+    // アドオンの中の画像・フォント(addons.rs。使っているアドオンのフォルダの中のものだけ)。
+    // SVGを直接開かれてもスクリプトが動かないように、CSPで何も実行させない
+    if path.starts_with("/addon-file/") {
+        let found = crate::addons::file(path);
+        let header = match &found {
+            Some((d, mime)) => format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                d.len()
+            ),
+            None => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".to_string(),
+        };
+        let _ = socket.write_all(header.as_bytes()).await;
+        if let Some((d, _)) = found {
+            let _ = socket.write_all(&d).await;
+        }
+        let _ = socket.shutdown().await;
+        return;
+    }
+
     // アドオンの見た目(addons.rs)。使っているアドオンが無ければ空のCSS
     if font_path == Some("/addon.css") {
         let page = path.split("page=").nth(1).map(|p| p.split('&').next().unwrap_or_default()).unwrap_or_default();

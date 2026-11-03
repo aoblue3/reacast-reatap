@@ -711,14 +711,43 @@ async function renderAddonCommandPresets() {
     b.className = 'secondary';
     b.textContent = `${p.label}(アドオン)`;
     b.title = `${p.commandPath} ${p.commandArgs}`;
-    b.addEventListener('click', () => {
-      settings.commandPath = p.commandPath;
-      settings.commandArgs = p.commandArgs;
-      renderFields();
-      scheduleSave();
-    });
+    b.addEventListener('click', () => confirmAddonTts(p));
     el.appendChild(b);
   }
+}
+// アドオンの読み上げソフトのボタン: 動かすソフトの場所を見せて、確かめてから欄に入れる
+function confirmAddonTts(p) {
+  const box = document.getElementById('addonTtsConfirm');
+  box.textContent = '';
+  box.classList.remove('hidden');
+  const line = (cls, text) => {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = text;
+    box.appendChild(d);
+  };
+  line('', `アドオン「${p.addon}」の「${p.label}」を使う設定にします。読み上げのたびに、次のソフトを動かします:`);
+  line('addon-tts-path', `${p.commandPath} ${p.commandArgs}`);
+  if (p.inAddon) {
+    line('addon-tts-warn', '⚠ このソフトは、アドオンのフォルダに入っていたものです。アドオンを作った人を信頼できる時だけ使ってください(知らない人のソフトは、ウイルスのことがあります)。');
+  }
+  const row = document.createElement('div');
+  row.className = 'inline';
+  const ok = document.createElement('button');
+  ok.textContent = 'この設定にする';
+  ok.addEventListener('click', () => {
+    settings.commandPath = p.commandPath;
+    settings.commandArgs = p.commandArgs;
+    box.classList.add('hidden');
+    renderFields();
+    scheduleSave();
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'secondary';
+  cancel.textContent = 'やめる';
+  cancel.addEventListener('click', () => box.classList.add('hidden'));
+  row.append(ok, cancel);
+  box.appendChild(row);
 }
 document.getElementById('addonsOpenFolder').addEventListener('click', () => invoke('addons_open_folder').catch((e) => showStatusError(String(e))));
 document.getElementById('addonsReload').addEventListener('click', () => invoke('addons_reload').then(renderAddons).catch((e) => showStatusError(String(e))));

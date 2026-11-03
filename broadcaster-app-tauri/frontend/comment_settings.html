@@ -306,6 +306,10 @@
   .addon-card .addon-desc { font-size: 12px; margin-top: 2px; }
   .addon-card .addon-uses { font-size: 12px; margin-top: 2px; color: var(--c-a9acb8); }
   .addon-card .addon-err { font-size: 12px; margin-top: 2px; color: var(--c-ff8a8a); }
+  .addon-tts-confirm { margin: 6px 0 10px; padding: 8px 10px; border-radius: 6px; background: var(--c-15161a); border: 1px solid var(--c-ffd36b); font-size: 13px; line-height: 1.6; }
+  .addon-tts-confirm.hidden { display: none; }
+  .addon-tts-path { font-family: Consolas, monospace; word-break: break-all; margin: 4px 0; }
+  .addon-tts-warn { color: var(--c-ff8a8a); margin-bottom: 6px; }
   .addon-empty { font-size: 13px; color: var(--c-8d909c); padding: 8px 0; }
   /* 視聴者数・コメント数(今の数字。shared/comment-common.jsのrenderAudience) */
   .aud-now { color: var(--c-e6e6ea); }
@@ -870,6 +874,7 @@
         <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
         <div class="field"><label>引数<span class="help" data-help="#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。"></span></label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
         <div class="field"><label>よく使う設定<span class="help" data-help="押したら、ソフトの場所を自分のPCに入っている場所に合わせてください(SofTalkはsoftalkw.exe(またはSofTalk.exe)、AquesTalkはAquesTalkPlayer.exe)。AquesTalkの声を変える時は、引数を「/P &quot;プリセット名&quot; /T #Res#」のようにします(プリセット名はAquesTalkPlayerの画面に出ている名前。例: れいむ、まりさ)。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button><button class="secondary" data-command-preset="aquestalk">AquesTalk(AquesTalkPlayer)</button><span id="addonCommandPresets" class="inline"></span></div></div>
+        <div id="addonTtsConfirm" class="addon-tts-confirm hidden"></div>
         <div class="note">民安★TALKを使う時は、民安★TALKの設定の「ただちに再生」をOFFにしてください(ONだと、長いレスの途中で次のレスが届いた時に読み上げが打ち切られます)。</div>
       </div>
 
