@@ -130,6 +130,26 @@
       instant: false,
       customCss: '',
     },
+    // 視聴者数・コメント数(audience.html と、コメント一覧の上)
+    audience: {
+      // 'separate'=取得元ごと / 'total'=合計だけ / 'both'=取得元ごと+合計
+      mode: 'separate',
+      showViewers: true,
+      showComments: true,
+      // 'row'=横に並べる / 'column'=縦に並べる
+      layout: 'row',
+      fontFamily: 'BIZ UDゴシック',
+      fontSize: 28,
+      bold: true,
+      color: '#ffffff',
+      outlineWidth: 2.5,
+      outlineColor: '#000000',
+      bgColor: '#000000',
+      bgOpacity: 0,
+      // コメント一覧の上にも出す(大きさはコメント一覧の文字に合わせる)
+      showInList: false,
+      customCss: '',
+    },
     // 自分の声の字幕(voice.html)
     voice: {
       fontFamily: 'BIZ UDゴシック',
@@ -346,7 +366,77 @@
     'appear', 'translationColor', 'customCss',
   ];
 
+  // ---- 視聴者数・コメント数 ----
+  // 取得元の印(サービスを指す小さな印。YouTube・Twitchは各社の色、PeerCastはアンテナ)
+  const AUDIENCE_ICONS = {
+    youtube:
+      '<svg viewBox="0 0 28 20" aria-label="YouTube"><rect width="28" height="20" rx="5" fill="#ff0000"/><path d="M11 5.5v9l8-4.5z" fill="#fff"/></svg>',
+    twitch:
+      '<svg viewBox="0 0 24 26" aria-label="Twitch"><path d="M2 0 0 5v18h6v3h3l3-3h5l7-7V0z" fill="#9146ff"/><path d="M4 2h18v11l-4 4h-6l-3 3v-3H4z" fill="#fff"/><path d="M11 6h2v6h-2zm5 0h2v6h-2z" fill="#9146ff"/></svg>',
+    peercast:
+      '<svg viewBox="0 0 24 24" aria-label="PeerCast"><circle cx="12" cy="12" r="12" fill="#2e8b57"/><circle cx="12" cy="10" r="2.4" fill="#fff"/><path d="M11 12h2l2 8h-2l-.5-2h-1l-.5 2H9z" fill="#fff"/><path d="M7.3 5.3a6.6 6.6 0 0 0 0 9.4M16.7 5.3a6.6 6.6 0 0 1 0 9.4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>',
+    total:
+      '<svg viewBox="0 0 24 24" aria-label="合計"><rect width="24" height="24" rx="6" fill="#3b6df0"/><path d="M7 6h10v2.4h-6.6l4 3.6-4 3.6H17V18H7v-2.2l4.4-3.8L7 8.2z" fill="#fff"/></svg>',
+  };
+  const VIEWER_ICON =
+    '<svg viewBox="0 0 24 24" aria-label="視聴者"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M3.5 21a8.5 8.5 0 0 1 17 0z" fill="currentColor"/></svg>';
+  const COMMENT_ICON =
+    '<svg viewBox="0 0 24 24" aria-label="コメント"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="currentColor"/></svg>';
+
+  /** 視聴者数・コメント数を描く。state = { running, sources: [{ id, viewers, comments }] } */
+  function renderAudience(el, state, cfg) {
+    el.textContent = '';
+    const sources = (state && Array.isArray(state.sources) ? state.sources : []).filter((s) => AUDIENCE_ICONS[s.id]);
+    if (!state || !state.running || !sources.length || (!cfg.showViewers && !cfg.showComments)) {
+      el.classList.add('empty');
+      return;
+    }
+    el.classList.remove('empty');
+    const rows = [];
+    if (cfg.mode !== 'total') rows.push(...sources);
+    if (cfg.mode !== 'separate') {
+      const known = sources.filter((s) => s.viewers != null);
+      rows.push({
+        id: 'total',
+        viewers: known.length ? known.reduce((n, s) => n + s.viewers, 0) : null,
+        comments: sources.reduce((n, s) => n + (Number(s.comments) || 0), 0),
+      });
+    }
+    const fmt = (n) => (n == null ? '-' : Number(n).toLocaleString('ja-JP'));
+    for (const r of rows) {
+      const item = document.createElement('span');
+      item.className = `aud-item aud-${r.id}`;
+      const icon = document.createElement('span');
+      icon.className = 'aud-icon';
+      icon.innerHTML = AUDIENCE_ICONS[r.id];
+      item.appendChild(icon);
+      const part = (cls, svg, n) => {
+        const p = document.createElement('span');
+        p.className = cls;
+        p.innerHTML = svg;
+        p.appendChild(document.createTextNode(fmt(n)));
+        item.appendChild(p);
+      };
+      if (cfg.showViewers) part('aud-viewers', VIEWER_ICON, r.viewers);
+      if (cfg.showComments) part('aud-comments', COMMENT_ICON, r.comments);
+      el.appendChild(item);
+    }
+  }
+
+  // renderAudienceで描いた物の見た目(audience.html・comments.html・設定画面で同じ)
+  const AUDIENCE_CSS = `
+    .aud { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em 0.9em; line-height: 1.2; }
+    .aud.column { flex-direction: column; align-items: flex-start; }
+    .aud.empty { display: none; }
+    .aud-item { display: inline-flex; align-items: center; gap: 0.3em; white-space: nowrap; }
+    .aud-icon svg { width: 1.25em; height: 1.25em; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+    .aud-viewers, .aud-comments { display: inline-flex; align-items: center; gap: 0.12em; font-variant-numeric: tabular-nums; }
+    .aud-viewers svg, .aud-comments svg { width: 0.85em; height: 0.85em; opacity: 0.85; }
+    .aud-comments { margin-left: 0.25em; }`;
+
   window.CommentCommon = {
+    renderAudience,
+    AUDIENCE_CSS,
     DEFAULT_STYLE,
     LIST_PRESET_KEYS,
     SUBTITLE_PRESET_KEYS,

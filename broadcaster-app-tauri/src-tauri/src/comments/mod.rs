@@ -10,6 +10,7 @@
 //! コントロールパネル等の画面を隠していてもWebViewのタイマー抑制の影響を
 //! 受けずに動き続けるようにするため。
 
+pub mod audience;
 pub mod hotkeys;
 pub mod jpnkn_fast;
 pub mod source;
@@ -102,6 +103,8 @@ pub struct CommentSettings {
     pub youtube_target: String,
     /// Twitchのチャンネル名(またはURL)
     pub twitch_channel: String,
+    /// 視聴者数を読む、このPCのPeerCastのポート(audience.rs)
+    pub peercast_port: u16,
     // ---- 次スレの自動作成 ----
     pub auto_create_thread: bool,
     /// このレス番号に達したら次スレを建てる
@@ -469,6 +472,7 @@ impl Default for CommentSettings {
             icon_folder_twitch: String::new(),
             youtube_target: String::new(),
             twitch_channel: String::new(),
+            peercast_port: 7144,
             auto_create_thread: false,
             create_thread_count: 975,
             create_title_template: "{next}".into(),
@@ -865,6 +869,10 @@ struct State {
     progress: Option<(String, u32)>,
     /// 荒らし対策(届いた順に見るので、順番待ちに入れる前に判定する)
     spam: spam::SpamFilter,
+    /// 視聴者数・コメント数(audience.rs)
+    audience: audience::Audience,
+    /// 今読んでいるYouTubeの配信(動画ID・クライアントのバージョン)。視聴者数を読む用
+    youtube_live: Option<(String, String)>,
 }
 
 pub struct CommentEngine {
@@ -893,6 +901,8 @@ impl CommentEngine {
                 paused: false,
                 progress: None,
                 spam: spam::SpamFilter::default(),
+                audience: audience::Audience::default(),
+                youtube_live: None,
             }),
             wake: Notify::new(),
             skip: Notify::new(),
@@ -1060,6 +1070,14 @@ impl CommentEngine {
             st.spam.clear();
             st.settings.thread_url = url.trim().to_string();
             st.status = CommentStatus { running: true, sources, ..Default::default() };
+            let mut counts = Vec::new();
+            for (used, id) in [(youtube.is_some(), "youtube"), (twitch.is_some(), "twitch"), (bbs.is_some(), "peercast")] {
+                if used {
+                    counts.push(audience::SourceCount { id, ..Default::default() });
+                }
+            }
+            st.audience = audience::Audience { running: true, sources: counts };
+            st.youtube_live = None;
             st.run_id
         };
         log::info!(
@@ -1085,11 +1103,86 @@ impl CommentEngine {
             let me = self.clone();
             tauri::async_runtime::spawn(async move { me.run_youtube(run_id, target).await });
         }
+        {
+            let me = self.clone();
+            let channel = twitch.clone();
+            tauri::async_runtime::spawn(async move { me.run_audience(run_id, channel).await });
+        }
         if let Some(channel) = twitch {
             let me = self.clone();
             tauri::async_runtime::spawn(async move { me.run_twitch(run_id, channel).await });
         }
         Ok(())
+    }
+
+    /// 視聴者数を30秒おきに読む(取得中だけ)。コメント数はenqueueで数える
+    async fn run_audience(self: Arc<Self>, run_id: u64, twitch: Option<String>) {
+        let yt_client = youtube::client();
+        let client = source::http_client();
+        loop {
+            if !self.is_current(run_id) {
+                return;
+            }
+            let (live, port) = {
+                let st = self.state.lock().unwrap();
+                (st.youtube_live.clone(), st.settings.peercast_port)
+            };
+            let yt = match &live {
+                Some((id, ver)) => audience::fetch_youtube_viewers(&yt_client, id, ver).await,
+                None => None,
+            };
+            let tw = match &twitch {
+                Some(login) => audience::fetch_twitch_viewers(&client, login).await,
+                None => None,
+            };
+            let pc = audience::fetch_peercast_listeners(&client, port).await;
+            {
+                let mut st = self.state.lock().unwrap();
+                if st.run_id != run_id {
+                    return;
+                }
+                if let Some(s) = st.audience.get_mut("youtube") {
+                    s.viewers = yt;
+                }
+                if let Some(s) = st.audience.get_mut("twitch") {
+                    s.viewers = tw;
+                }
+                // 掲示板を読んでいなくても、PeerCastで配信していれば出す
+                if pc.is_some() && st.audience.get_mut("peercast").is_none() {
+                    st.audience.sources.push(audience::SourceCount { id: "peercast", ..Default::default() });
+                }
+                if let Some(s) = st.audience.get_mut("peercast") {
+                    s.viewers = pc;
+                }
+            }
+            self.emit_audience();
+            if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                return;
+            }
+        }
+    }
+
+    pub fn audience(&self) -> audience::Audience {
+        self.state.lock().unwrap().audience.clone()
+    }
+
+    fn emit_audience(&self) {
+        let a = self.audience();
+        let v = serde_json::to_value(&a).unwrap_or_default();
+        self.bridge().set_audience(v.clone());
+        let _ = self.app.emit("comments:audience", v);
+    }
+
+    fn set_youtube_live(&self, run_id: u64, live: Option<(String, String)>) {
+        let mut st = self.state.lock().unwrap();
+        if st.run_id == run_id {
+            if live.is_none() {
+                if let Some(s) = st.audience.get_mut("youtube") {
+                    s.viewers = None;
+                }
+            }
+            st.youtube_live = live;
+        }
     }
 
     fn update_source(&self, run_id: u64, id: &str, state: &str, message: impl Into<String>) {
@@ -1157,6 +1250,7 @@ impl CommentEngine {
                 continue;
             };
             self.update_source(run_id, "youtube", "ok", format!("取得中(動画 {video_id})"));
+            self.set_youtube_live(run_id, Some((video_id.clone(), params.client_version.clone())));
             // 3. 新着コメントを取り続ける(最初のページにある過去のコメントは読まない)
             let mut continuation = params.continuation.clone();
             let mut failures = 0;
@@ -1198,6 +1292,7 @@ impl CommentEngine {
                                 }
                             }
                             None => {
+                                self.set_youtube_live(run_id, None);
                                 self.update_source(run_id, "youtube", "wait", "配信が終了しました。次の配信を待っています");
                                 if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
                                     return;
@@ -1389,8 +1484,11 @@ impl CommentEngine {
             st.run_id += 1;
             st.queue.clear();
             st.status = CommentStatus::default();
+            st.audience.running = false;
+            st.youtube_live = None;
         }
         log::info!("コメント取得を停止");
+        self.emit_audience();
         self.bridge().clear_subtitle();
         crate::tts::stop();
         self.emit_status();
@@ -1533,9 +1631,17 @@ impl CommentEngine {
             } else {
                 posts
             };
+            // コメント数(続きから読むために入れ直したレス・お知らせは数えない)
+            for p in posts.iter().filter(|p| !p.system && !p.catch_up) {
+                let id = if p.source == "bbs" { "peercast" } else { p.source };
+                if let Some(s) = st.audience.get_mut(id) {
+                    s.comments += 1;
+                }
+            }
             st.queue.extend(posts);
             st.status.queue_len = st.queue.len();
         }
+        self.emit_audience();
         self.wake.notify_one();
     }
 
@@ -2355,6 +2461,12 @@ type Engine<'a> = tauri::State<'a, Arc<CommentEngine>>;
 #[tauri::command]
 pub fn comments_get_settings(engine: Engine) -> CommentSettings {
     engine.settings()
+}
+
+/// 視聴者数・コメント数(取得していない時は running: false)
+#[tauri::command]
+pub fn comments_audience(engine: Engine) -> audience::Audience {
+    engine.audience()
 }
 
 #[tauri::command]

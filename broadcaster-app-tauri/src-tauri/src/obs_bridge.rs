@@ -57,6 +57,7 @@ const VOICE_INPUT_HTML: &str = include_str!("../../frontend/voice_input.html");
 const TRANSLATE_WORKER_HTML: &str = include_str!("../../frontend/translate_worker.html");
 // 視聴者アンケートの結果(配信画面に出す)
 const POLL_HTML: &str = include_str!("../../frontend/poll.html");
+const AUDIENCE_HTML: &str = include_str!("../../frontend/audience.html");
 
 /// コメント一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 100;
@@ -120,6 +121,8 @@ struct CommentBridgeState {
     poll: Option<serde_json::Value>,
     /// 今読んでいる掲示板のスレッドのタイトル(コメント字幕に小さく出す。取得していなければNone)
     thread_title: Option<String>,
+    /// 視聴者数・コメント数(comments/audience.rs)
+    audience: Option<serde_json::Value>,
 }
 
 impl CommentBridgeState {
@@ -134,6 +137,9 @@ impl CommentBridgeState {
         }
         if let Some(poll) = &self.poll {
             out.push(serde_json::json!({ "type": "poll", "state": poll }).to_string());
+        }
+        if let Some(a) = &self.audience {
+            out.push(serde_json::json!({ "type": "audience", "state": a }).to_string());
         }
         let items: Vec<&serde_json::Value> = self.history.iter().collect();
         out.push(serde_json::json!({ "type": "commentHistory", "items": items }).to_string());
@@ -303,6 +309,12 @@ impl ObsBridge {
             c.thread_title = title.clone();
         }
         let _ = self.tx.send(serde_json::json!({ "type": "threadTitle", "title": title }).to_string());
+    }
+
+    /// 視聴者数・コメント数を、OBSの画面(audience.html・コメント一覧)に送る
+    pub fn set_audience(&self, state: serde_json::Value) {
+        self.comments.lock().unwrap().audience = Some(state.clone());
+        let _ = self.tx.send(serde_json::json!({ "type": "audience", "state": state }).to_string());
     }
 
     pub fn clear_subtitle(&self) {
@@ -481,6 +493,7 @@ Connection: close
         "/voice_input.html" => ("text/html; charset=utf-8", VOICE_INPUT_HTML),
         "/translate_worker.html" => ("text/html; charset=utf-8", TRANSLATE_WORKER_HTML),
         "/poll.html" => ("text/html; charset=utf-8", POLL_HTML),
+        "/audience.html" => ("text/html; charset=utf-8", AUDIENCE_HTML),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {

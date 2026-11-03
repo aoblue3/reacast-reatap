@@ -1369,6 +1369,7 @@ pub fn run() {
             comments::comments_get_settings,
             comments::comments_save_settings,
             comments::comments_status,
+            comments::comments_audience,
             comments::comments_start,
             comments::comments_stop,
             comments::comments_test,

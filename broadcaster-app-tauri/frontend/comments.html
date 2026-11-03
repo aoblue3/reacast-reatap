@@ -23,6 +23,9 @@
     box-sizing: border-box;
     overflow: hidden;
   }
+  /* 視聴者数・コメント数(「視聴者数・コメント数」タブの「コメント一覧の上にも出す」) */
+  #aud { position: fixed; left: 0; right: 0; top: 0; padding: 4px 8px; box-sizing: border-box; }
+  #list.with-aud { top: var(--aud-h, 0px); }
   /* 新しいレスを下に追加する設定の時は、下端に寄せる */
   #list.bottom { justify-content: flex-end; }
   /* カスタムCSSで使えるクラス:
@@ -112,6 +115,7 @@
 </style>
 </head>
 <body>
+  <div id="aud" class="aud empty"></div>
   <div id="list"></div>
   <div id="adjust">
     <div class="msg">ドラッグで移動 / 右下の角をドラッグで大きさを変更</div>
@@ -124,6 +128,31 @@
     'use strict';
     const C = window.CommentCommon;
     const listEl = document.getElementById('list');
+    const audEl = document.getElementById('aud');
+    let audState = null;
+    {
+      const css = document.createElement('style');
+      css.textContent = C.AUDIENCE_CSS;
+      document.head.appendChild(css);
+    }
+    // 視聴者数・コメント数は、コメント一覧と同じ文字(大きさは少し小さく)で、一覧の上に出す
+    function renderAud() {
+      const a = style.audience;
+      const on = !!a.showInList;
+      audEl.style.display = on ? '' : 'none';
+      if (on) {
+        const s = style.list;
+        audEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
+        audEl.style.fontSize = `${Math.round((Number(s.fontSize) || 20) * 0.9)}px`;
+        audEl.style.fontWeight = 'bold';
+        audEl.style.color = s.bodyColor || '#ffffff';
+        audEl.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+        C.renderAudience(audEl, audState, { ...a, layout: 'row' });
+      }
+      const shown = on && !audEl.classList.contains('empty');
+      listEl.classList.toggle('with-aud', shown);
+      listEl.style.setProperty('--aud-h', shown ? `${audEl.offsetHeight}px` : '0px');
+    }
     let style = C.mergeStyle(null);
     let items = [];
     const PREVIEW = new URLSearchParams(location.search).has('preview');
@@ -288,6 +317,10 @@
       if (msg.type === 'commentStyle') {
         style = C.mergeStyle(msg.style);
         render();
+        renderAud();
+      } else if (msg.type === 'audience') {
+        audState = msg.state;
+        renderAud();
       } else if (msg.type === 'commentHistory') {
         items = Array.isArray(msg.items) ? msg.items.filter(wanted).slice(-100) : [];
         render();
@@ -302,6 +335,8 @@
     // ?preview: ReaCastの設定画面に埋め込むプレビュー用。ブリッジには繋がず、
     // 設定画面から送られてくる見た目とサンプルのレスで描画する。
     if (PREVIEW) {
+      // 設定画面(ダーク)に埋め込むと、色の設定が違うiframeは白く塗られるので合わせる
+      document.documentElement.style.colorScheme = 'dark';
       window.addEventListener('message', (e) => {
         if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
         handle(e.data);

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
+<title>ReaCast 視聴者数・コメント数</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  /* カスタムCSSで使えるクラス: .aud(全体) .aud-item(取得元ごと) .aud-youtube / .aud-twitch / .aud-peercast / .aud-total
+     .aud-icon(取得元の印) .aud-viewers(視聴者数) .aud-comments(コメント数) */
+  #aud { display: inline-flex; padding: 0.25em 0.5em; border-radius: 0.4em; }
+</style>
+<style id="audCss"></style>
+</head>
+<body>
+  <div id="aud" class="aud empty"></div>
+  <script src="shared/error-log.js"></script>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    // 視聴者数・コメント数(comments/audience.rs)。OBSのブラウザソースに貼って使う
+    const C = window.CommentCommon;
+    document.getElementById('audCss').textContent = C.AUDIENCE_CSS;
+    const el = document.getElementById('aud');
+    let style = C.mergeStyle(null);
+    let state = null;
+    const PREVIEW = new URLSearchParams(location.search).has('preview');
+
+    function render() {
+      const s = style.audience;
+      el.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      el.style.fontSize = `${Number(s.fontSize) || 28}px`;
+      el.style.fontWeight = s.bold ? 'bold' : 'normal';
+      el.style.color = s.color;
+      el.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      el.style.background = Number(s.bgOpacity) > 0 ? C.rgba(s.bgColor, s.bgOpacity) : 'transparent';
+      el.classList.toggle('column', s.layout === 'column');
+      C.applyCustomCss(s.customCss);
+      C.renderAudience(el, state, s);
+    }
+
+    function handle(msg) {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        render();
+      } else if (msg.type === 'audience') {
+        state = msg.state;
+        render();
+      }
+    }
+
+    // ?preview: 設定画面に埋め込むプレビュー用(設定画面から見た目とサンプルの数字が届く)
+    if (PREVIEW) {
+      // 設定画面(ダーク)に埋め込むと、色の設定が違うiframeは白く塗られるので合わせる
+      document.documentElement.style.colorScheme = 'dark';
+      window.addEventListener('message', (e) => {
+        if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
+        handle(e.data);
+      });
+    } else {
+      C.connectBridge(handle);
+    }
+    render();
+  </script>
+</body>
+</html>

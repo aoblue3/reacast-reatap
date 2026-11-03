@@ -85,6 +85,7 @@ const subtitlePreview = document.getElementById('subtitlePreview');
 const SUBTITLE_SAMPLE = { no: 69, name: '名無し＠BBSさん', date: '2026/10/08(木) 21:00:00', body: 'プレビュー 123 ABC\n2行目のテキスト', aa: false };
 function renderPreview(animate) {
   renderListPreview();
+  if (typeof renderAudienceNow === 'function') renderAudienceNow();
   if (!settings || !subtitlePreview || !subtitlePreview.contentWindow) return;
   const w = subtitlePreview.contentWindow;
   w.postMessage({ type: 'commentStyle', style: settings.style }, '*');
@@ -105,6 +106,9 @@ function renderListPreview() {
   if (!settings || !listPreview || !listPreview.contentWindow) return;
   listPreview.contentWindow.postMessage({ type: 'commentStyle', style: settings.style }, '*');
   listPreview.contentWindow.postMessage({ type: 'commentHistory', items: LIST_SAMPLES }, '*');
+  // 「コメント一覧の上にも出す」の見た目(取得中なら今の数字、そうでなければ見本)
+  const live = audienceState && audienceState.running;
+  listPreview.contentWindow.postMessage({ type: 'audience', state: live ? audienceState : AUDIENCE_SAMPLE }, '*');
 }
 listPreview.addEventListener('load', renderListPreview);
 
@@ -113,6 +117,48 @@ document.getElementById('listTestBtn').addEventListener('click', () => {
   const name = document.getElementById('listTestName').value;
   if (text) invoke('comments_test_list', { text, name }).catch((e) => showStatusError(String(e)));
 });
+
+// ---- 視聴者数・コメント数(comments/audience.rs。audience.html?previewを埋め込んで同じ描画をさせる) ----
+let audienceState = null;
+// 取得していない時にプレビューに出す見本の数字
+const AUDIENCE_SAMPLE = {
+  running: true,
+  sources: [
+    { id: 'youtube', viewers: 128, comments: 342 },
+    { id: 'twitch', viewers: 35, comments: 87 },
+    { id: 'peercast', viewers: 12, comments: 156 },
+  ],
+};
+{
+  const css = document.createElement('style');
+  css.textContent = window.CommentCommon.AUDIENCE_CSS;
+  document.head.appendChild(css);
+}
+const audiencePreview = document.getElementById('audiencePreview');
+function renderAudienceNow() {
+  if (!settings) return;
+  const cfg = window.CommentCommon.mergeStyle(settings.style).audience;
+  const live = audienceState && audienceState.running;
+  for (const el of document.querySelectorAll('[data-audience-now]')) {
+    // タブの中は、取得していない時も見本を出す(どう見えるか分かるように)
+    const state = el.dataset.audienceNow === 'tab' && !live ? AUDIENCE_SAMPLE : audienceState;
+    window.CommentCommon.renderAudience(el, state, { ...cfg, layout: 'row' });
+  }
+  document.getElementById('audienceNowTitle').textContent = live ? '今の数字' : '今の数字(取得していないので見本です)';
+  if (audiencePreview && audiencePreview.contentWindow) {
+    audiencePreview.contentWindow.postMessage({ type: 'commentStyle', style: settings.style }, '*');
+    audiencePreview.contentWindow.postMessage({ type: 'audience', state: live ? audienceState : AUDIENCE_SAMPLE }, '*');
+  }
+}
+audiencePreview.addEventListener('load', renderAudienceNow);
+listen('comments:audience', (e) => {
+  audienceState = e.payload;
+  renderAudienceNow();
+});
+invoke('comments_audience').then((v) => {
+  audienceState = v;
+  renderAudienceNow();
+}).catch(() => {});
 
 function scheduleSave() {
   clearTimeout(saveTimer);

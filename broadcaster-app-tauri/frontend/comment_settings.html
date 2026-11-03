@@ -297,6 +297,13 @@
   .pending-note:empty, .source-warn:empty { display: none; }
   .simple-wrap .pending-note, .simple-wrap .source-warn { font-size: 13px; }
   button.attention { box-shadow: 0 0 0 2px var(--c-ffd36b); }
+  /* 視聴者数・コメント数(今の数字。shared/comment-common.jsのrenderAudience) */
+  .aud-now { color: var(--c-e6e6ea); }
+  .aud-header { margin-top: 4px; font-size: 13px; }
+  .aud-simple { margin: 6px 0 0; font-size: 16px; }
+  .aud-now-box { margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: var(--c-15161a); font-size: 18px; }
+  .aud-now-title { font-size: 12px; color: var(--c-8d909c); margin-bottom: 4px; }
+  .aud-now-box .aud.empty { display: flex; }
   .simple-indent { margin: 2px 0 10px 28px; }
   .simple-indent .simple-url { margin-top: 4px; grid-template-columns: 3em 1fr auto; }
   .simple-indent input[type=text][readonly] { font-size: 12px !important; padding: 5px 8px !important; }
@@ -362,6 +369,7 @@
       <button class="secondary" id="simpleModeOn" title="よく使う項目だけの画面にします">シンプル</button>
     </div>
     <div id="status">停止中</div>
+    <div class="aud aud-now aud-header" data-audience-now="header"></div>
     <div class="pending-note" data-pending-note></div>
     <div class="source-warn" data-source-warn></div>
   </header>
@@ -375,6 +383,7 @@
       </div>
       <div class="simple-status" id="simpleStatus">停止中</div>
       <div class="simple-sources" id="simpleSources"></div>
+      <div class="aud aud-now aud-simple" data-audience-now="simple"></div>
       <div class="pending-note" data-pending-note></div>
       <div class="source-warn" data-source-warn></div>
       <div class="simple-main-buttons">
@@ -646,6 +655,7 @@
     <button data-tab="subtitle">コメント字幕</button>
     <button data-tab="list">コメント一覧</button>
     <button data-tab="nico">流れるコメント</button>
+    <button data-tab="audience">視聴者数・コメント数</button>
     <button data-tab="aa">AA</button>
     <button data-tab="output">デスクトップに表示</button>
     <div class="nav-group">連動</div>
@@ -699,6 +709,7 @@
       <div class="copy-row"><span style="width:110px">コメント字幕</span><code id="urlSubtitle">http://127.0.0.1:18772/subtitle.html</code><button class="secondary" data-copy="urlSubtitle">コピー</button></div>
       <div class="copy-row"><span style="width:110px">コメント一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
       <div class="copy-row"><span style="width:110px">流れるコメント</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">視聴者数</span><code id="urlAudience2">http://127.0.0.1:18772/audience.html</code><button class="secondary" data-copy="urlAudience2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">自分の声の字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
       <div class="copy-row"><span style="width:110px">アンケート</span><code id="urlPoll">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="urlPoll">コピー</button></div>
@@ -1241,6 +1252,36 @@
         <div class="field"><label>AAだけを流す</label><div><input type="checkbox" data-key="style.nico.aaOnly" /><span class="unit">普通のコメントは流しません</span></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.nico.customCss" placeholder=".nico { letter-spacing: 0.05em; }"></textarea>
+      </details>
+    </section>
+
+    <!-- ================= 視聴者数・コメント数 ================= -->
+    <section data-tab="audience">
+      <p class="lead">YouTube・Twitch・PeerCastの視聴者数と、この配信のコメント数を、取得元のアイコンの横に数字で出します。取得中だけ表示します。<span class="help" data-help="視聴者数は30秒ごとに読み直します。YouTube・Twitchは、サイトで誰でも見られる「視聴中」の人数です(配信していない時は「-」)。PeerCastは、このPCで動いているPeerCast(PeerCastStation・PeerCast YTなど)から、配信しているチャンネルのリスナー数を読みます。コメント数は、取得を始めてから届いた数です(PeerCastは掲示板のレス)。"></span></p>
+      <div class="copy-row"><span style="width:110px">OBSに貼るURL</span><code id="urlAudience">http://127.0.0.1:18772/audience.html</code><button class="secondary" data-copy="urlAudience">コピー</button></div>
+      <div class="aud-now-box"><div class="aud-now-title" id="audienceNowTitle">今の数字</div><div class="aud aud-now" data-audience-now="tab"></div></div>
+      <iframe id="audiencePreview" class="preview-frame" style="height:120px" src="audience.html?preview"></iframe>
+      <div class="field"><label>出し方</label><div><select data-key="style.audience.mode">
+        <option value="separate">取得元ごとに分けて出す</option>
+        <option value="total">合計だけ出す</option>
+        <option value="both">取得元ごと+合計</option>
+      </select></div></div>
+      <div class="field"><label>出す数字</label><div class="inline"><label><input type="checkbox" data-key="style.audience.showViewers" /> 視聴者数</label><label><input type="checkbox" data-key="style.audience.showComments" /> コメント数</label></div></div>
+      <div class="field"><label>並べ方</label><div><select data-key="style.audience.layout">
+        <option value="row">横に並べる</option>
+        <option value="column">縦に並べる</option>
+      </select></div></div>
+      <div class="field"><label>コメント一覧の上にも出す<span class="help" data-help="コメント一覧(OBSのコメント一覧・デスクトップに表示したコメント一覧)の一番上に、同じ数字を出します。文字はコメント一覧の文字に合わせます。"></span></label><div><input type="checkbox" data-key="style.audience.showInList" /></div></div>
+      <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="200" data-key="style.audience.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.audience.bold" /> 太字</label></div></div>
+      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.audience.color" /><input type="color" data-key="style.audience.outlineColor" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(フォント・縁・背景・PeerCast・カスタムCSS)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.audience.fontFamily" /></div></div>
+        <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.audience.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.audience.bgColor" /><input type="number" min="0" max="100" data-key="style.audience.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
+        <div class="field"><label>PeerCastのポート<span class="help" data-help="このPCのPeerCastの番号です。ふつうは7144のままで大丈夫です(PeerCastの設定で変えた時だけ合わせてください)。"></span></label><div><input type="number" min="1" max="65535" data-key="peercastPort" /></div></div>
+        <h3>カスタムCSS(上級者向け)</h3>
+        <textarea class="css" data-key="style.audience.customCss" placeholder=".aud-item { gap: 0.5em; }"></textarea>
       </details>
     </section>
 
