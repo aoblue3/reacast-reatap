@@ -297,6 +297,16 @@
   .pending-note:empty, .source-warn:empty { display: none; }
   .simple-wrap .pending-note, .simple-wrap .source-warn { font-size: 13px; }
   button.attention { box-shadow: 0 0 0 2px var(--c-ffd36b); }
+  /* アドオンの一覧 */
+  .addons-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .addon-card { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 6px; background: var(--c-15161a); border: 1px solid var(--c-33353d); }
+  .addon-card .addon-main { flex: 1 1 auto; min-width: 0; }
+  .addon-card .addon-name { font-weight: bold; }
+  .addon-card .addon-meta { font-size: 12px; color: var(--c-8d909c); }
+  .addon-card .addon-desc { font-size: 12px; margin-top: 2px; }
+  .addon-card .addon-uses { font-size: 12px; margin-top: 2px; color: var(--c-a9acb8); }
+  .addon-card .addon-err { font-size: 12px; margin-top: 2px; color: var(--c-ff8a8a); }
+  .addon-empty { font-size: 13px; color: var(--c-8d909c); padding: 8px 0; }
   /* 視聴者数・コメント数(今の数字。shared/comment-common.jsのrenderAudience) */
   .aud-now { color: var(--c-e6e6ea); }
   .aud-header { margin-top: 4px; font-size: 13px; }
@@ -662,6 +672,7 @@
     <button data-tab="reactions">リアクション連動</button>
     <button data-tab="voice">自分の声の字幕</button>
     <div class="nav-group">その他</div>
+    <button data-tab="addons">アドオン</button>
     <button data-tab="hotkeys">ホットキー</button>
     <button data-tab="misc">設定のリセット</button>
   </nav>
@@ -858,7 +869,7 @@
       <div class="engine-box" data-engine="command">
         <div class="field"><label>ソフトの場所</label><div class="path-row"><input type="text" data-key="commandPath" /><button class="secondary" id="pickExeBtn">参照...</button></div></div>
         <div class="field"><label>引数<span class="help" data-help="#Res#が本文に置き換わります(SpeechCastMeのコマンドライン引渡しと同じ書き方です)。必要なら#No#(番号)・#Name#(名前)・#Time#(時間)も使えます。本文はシェルを通さずそのまま1つの引数として渡します。VOICEROID・A.I.VOICE・CeVIOなどは民安★TALK経由で使えます。"></span></label><div><input type="text" class="wide" data-key="commandArgs" /></div></div>
-        <div class="field"><label>よく使う設定<span class="help" data-help="押したら、ソフトの場所を自分のPCに入っている場所に合わせてください(SofTalkはsoftalkw.exe(またはSofTalk.exe)、AquesTalkはAquesTalkPlayer.exe)。AquesTalkの声を変える時は、引数を「/P &quot;プリセット名&quot; /T #Res#」のようにします(プリセット名はAquesTalkPlayerの画面に出ている名前。例: れいむ、まりさ)。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button><button class="secondary" data-command-preset="aquestalk">AquesTalk(AquesTalkPlayer)</button></div></div>
+        <div class="field"><label>よく使う設定<span class="help" data-help="押したら、ソフトの場所を自分のPCに入っている場所に合わせてください(SofTalkはsoftalkw.exe(またはSofTalk.exe)、AquesTalkはAquesTalkPlayer.exe)。AquesTalkの声を変える時は、引数を「/P &quot;プリセット名&quot; /T #Res#」のようにします(プリセット名はAquesTalkPlayerの画面に出ている名前。例: れいむ、まりさ)。"></span></label><div class="inline"><button class="secondary" data-command-preset="tamiyasu">民安★TALK(vrx.exe)</button><button class="secondary" data-command-preset="softalk">SofTalk</button><button class="secondary" data-command-preset="aquestalk">AquesTalk(AquesTalkPlayer)</button><span id="addonCommandPresets" class="inline"></span></div></div>
         <div class="note">民安★TALKを使う時は、民安★TALKの設定の「ただちに再生」をOFFにしてください(ONだと、長いレスの途中で次のレスが届いた時に読み上げが打ち切られます)。</div>
       </div>
 
@@ -1342,6 +1353,19 @@
           高さ <input type="number" min="5" max="100" data-key="desktopListHeight" data-percent />%
         </div></div>
       </details>
+    </section>
+
+    <!-- ================= アドオン ================= -->
+    <section data-tab="addons">
+      <p class="lead">ReaCastを自分好みに変えたい時は、アプリ(exe)を書き換えずに「アドオン」を使ってください。アドオンはReaCastの外のフォルダに置くので、ReaCastを更新してもそのまま使えます。<span class="help" data-help="アドオンでできるのは、コメント字幕・コメント一覧などの見た目(CSS)、名前欄をランダムな名前にすること、「コマンドで渡す」の読み上げソフトのボタンを足すことです。アドオンの中でプログラムは動かないので、PCの中を勝手に触られることはありません。読み上げソフトのボタンは、押した時に欄に入るだけです(どのソフトを動かすか、欄で確かめてから使ってください)。"></span></p>
+      <div class="inline" style="margin-bottom:8px">
+        <button class="secondary" id="addonsOpenFolder">アドオンのフォルダを開く</button>
+        <button class="secondary" id="addonsReload">読み込み直す</button>
+        <button class="secondary" id="addonsGuide">アドオンの作り方(説明ページ)</button>
+      </div>
+      <div class="field"><label>アドオンを使わない<span class="help" data-help="ONにすると、ONにしてあるアドオンも全部止めます(アドオンを消さずに)。表示がおかしい時に、アドオンのせいかどうかを確かめる時に使ってください。"></span></label><div><input type="checkbox" id="addonsSafeMode" /><span class="unit">不具合の時の確認用</span></div></div>
+      <div id="addonsList" class="addons-list"></div>
+      <p class="hint" id="addonsFolderNote"></p>
     </section>
 
     <!-- ================= ホットキー ================= -->

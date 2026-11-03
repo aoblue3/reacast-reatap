@@ -1592,9 +1592,15 @@ impl CommentEngine {
         self.emit_status();
     }
 
-    fn enqueue(&self, run_id: u64, posts: Vec<Post>) {
+    fn enqueue(&self, run_id: u64, mut posts: Vec<Post>) {
         if posts.is_empty() {
             return;
+        }
+        // アドオンの「名前を置き換える」(同じ人はずっと同じ名前。字幕・一覧・読み上げで同じ)
+        for p in posts.iter_mut().filter(|p| !p.system) {
+            if let Some(name) = crate::addons::rename(p.source, &p.name, &p.person()) {
+                p.name = name;
+            }
         }
         {
             let mut st = self.state.lock().unwrap();
@@ -2655,6 +2661,16 @@ const OBS_GUIDE_URL: &str = "https://github.com/aoblue3/reacast-reatap/blob/main
 #[tauri::command]
 pub fn comments_open_obs_guide() -> Result<(), String> {
     let url = reqwest::Url::parse(OBS_GUIDE_URL).map_err(|e| e.to_string())?;
+    open_in_browser(&url)
+}
+
+/// アドオンの作り方の説明ページ(GitHub)
+const ADDON_GUIDE_URL: &str = "https://github.com/aoblue3/reacast-reatap/blob/main/アドオンの作り方.md";
+
+/// 「アドオンの作り方(説明ページ)」
+#[tauri::command]
+pub fn comments_open_addon_guide() -> Result<(), String> {
+    let url = reqwest::Url::parse(ADDON_GUIDE_URL).map_err(|e| e.to_string())?;
     open_in_browser(&url)
 }
 

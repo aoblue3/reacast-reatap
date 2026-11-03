@@ -601,8 +601,22 @@ function setupAllEmojiFont(version) {
 let allEmojiFontActive = false;
 setupAllEmojiFont(0);
 
+// ---- アドオンの見た目(src-tauri/src/addons.rs の "overlay") ----
+function applyAddonCss(version) {
+  let el = document.getElementById('reacast-addon-css');
+  if (!el) {
+    el = document.createElement('link');
+    el.id = 'reacast-addon-css';
+    el.rel = 'stylesheet';
+    document.head.appendChild(el);
+  }
+  el.href = `http://127.0.0.1:18772/addon.css?page=overlay&v=${version || 0}`;
+}
+applyAddonCss(0);
+
 if (window.__TAURI__ && window.__TAURI__.event) {
   window.__TAURI__.event.listen('emoji-font:changed', () => setupAllEmojiFont(Date.now()));
+  window.__TAURI__.event.listen('addons:changed', () => applyAddonCss(Date.now()));
   const sendStageSize = () => {
     window.__TAURI__.core
       .invoke('set_overlay_stage_size', { w: window.innerWidth, h: window.innerHeight })
@@ -648,6 +662,10 @@ function connectObsBridge(port) {
       if (data.type === 'appVersion') {
         if (seenAppVersion !== null && seenAppVersion !== data.version) location.reload();
         seenAppVersion = data.version;
+        return;
+      }
+      if (data.type === 'addons') {
+        applyAddonCss(Date.now());
         return;
       }
       if (data.type === 'emojiFont') {

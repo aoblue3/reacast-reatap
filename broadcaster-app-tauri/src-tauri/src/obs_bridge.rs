@@ -478,6 +478,20 @@ Connection: close
         return;
     }
 
+    // アドオンの見た目(addons.rs)。使っているアドオンが無ければ空のCSS
+    if font_path == Some("/addon.css") {
+        let page = path.split("page=").nth(1).map(|p| p.split('&').next().unwrap_or_default()).unwrap_or_default();
+        let css = crate::addons::css(page);
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+            css.len()
+        );
+        let _ = socket.write_all(header.as_bytes()).await;
+        let _ = socket.write_all(css.as_bytes()).await;
+        let _ = socket.shutdown().await;
+        return;
+    }
+
     // 「?lang=ja-JP」のような後ろの部分は、どの画面を返すかには関係ない
     let page = path.split('?').next().unwrap_or(path);
     let (content_type, body): (&str, &str) = match page {

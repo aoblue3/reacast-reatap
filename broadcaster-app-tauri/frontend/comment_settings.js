@@ -646,6 +646,89 @@ document.getElementById('ttsPickExe').addEventListener('click', async () => {
   renderFields();
   scheduleSave();
 });
+// ---- アドオン(src-tauri/src/addons.rs。作り方はリポジトリの「アドオンの作り方.md」) ----
+const PAGE_LABELS = { subtitle: 'コメント字幕', comments: 'コメント一覧', nico: '流れるコメント', voice: '自分の声の字幕', audience: '視聴者数', poll: 'アンケート', overlay: 'リアクション' };
+async function renderAddons() {
+  const listEl = document.getElementById('addonsList');
+  let data;
+  try {
+    data = await invoke('addons_list');
+  } catch (e) {
+    listEl.textContent = String(e);
+    return;
+  }
+  if (!data) return;
+  document.getElementById('addonsSafeMode').checked = !!data.safeMode;
+  document.getElementById('addonsFolderNote').textContent = `アドオンのフォルダ: ${data.folder}(この中に、アドオンごとのフォルダを入れます)`;
+  listEl.textContent = '';
+  if (!data.addons.length) {
+    const p = document.createElement('div');
+    p.className = 'addon-empty';
+    p.textContent = 'アドオンはまだありません。もらったアドオンのフォルダを、「アドオンのフォルダを開く」で開いた所に入れて、「読み込み直す」を押してください。';
+    listEl.appendChild(p);
+  }
+  for (const a of data.addons) {
+    const card = document.createElement('label');
+    card.className = 'addon-card';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = a.enabled;
+    box.disabled = !a.compatible || !!a.error;
+    box.addEventListener('change', () => {
+      invoke('addons_set_enabled', { id: a.id, on: box.checked }).catch((e) => showStatusError(String(e)));
+    });
+    card.appendChild(box);
+    const main = document.createElement('div');
+    main.className = 'addon-main';
+    const line = (cls, text) => {
+      if (!text) return;
+      const d = document.createElement('div');
+      d.className = cls;
+      d.textContent = text;
+      main.appendChild(d);
+    };
+    line('addon-name', a.name);
+    line('addon-meta', [a.author && `作った人: ${a.author}`, a.version && `版: ${a.version}`, `フォルダ: ${a.id}`].filter(Boolean).join(' / '));
+    line('addon-desc', a.description);
+    const uses = [];
+    if (a.cssPages.length) uses.push(`見た目(${a.cssPages.map((p) => PAGE_LABELS[p] || p).join('・')})`);
+    if (a.names) uses.push(`名前を置き換える(${a.names}個の名前)`);
+    if (a.tts.length) uses.push(`読み上げソフトのボタン(${a.tts.map((t) => t.label).join('・')})`);
+    line('addon-uses', uses.length ? `変えるもの: ${uses.join('、')}` : '');
+    if (!a.compatible) line('addon-err', `このアドオンには、ReaCast ${a.minReaCast} 以降が必要です(今は ${data.appVersion})。ReaCastを更新してください。`);
+    line('addon-err', a.error);
+    card.appendChild(main);
+    listEl.appendChild(card);
+  }
+  renderAddonCommandPresets();
+}
+async function renderAddonCommandPresets() {
+  const el = document.getElementById('addonCommandPresets');
+  const presets = await invoke('addons_tts_presets').catch(() => []);
+  el.textContent = '';
+  for (const p of presets) {
+    const b = document.createElement('button');
+    b.className = 'secondary';
+    b.textContent = `${p.label}(アドオン)`;
+    b.title = `${p.commandPath} ${p.commandArgs}`;
+    b.addEventListener('click', () => {
+      settings.commandPath = p.commandPath;
+      settings.commandArgs = p.commandArgs;
+      renderFields();
+      scheduleSave();
+    });
+    el.appendChild(b);
+  }
+}
+document.getElementById('addonsOpenFolder').addEventListener('click', () => invoke('addons_open_folder').catch((e) => showStatusError(String(e))));
+document.getElementById('addonsReload').addEventListener('click', () => invoke('addons_reload').then(renderAddons).catch((e) => showStatusError(String(e))));
+document.getElementById('addonsGuide').addEventListener('click', () => invoke('comments_open_addon_guide').catch((e) => showStatusError(String(e))));
+document.getElementById('addonsSafeMode').addEventListener('change', (e) => {
+  invoke('addons_set_safe_mode', { on: e.target.checked }).catch((err) => showStatusError(String(err)));
+});
+listen('addons:changed', renderAddons);
+renderAddons();
+
 for (const btn of document.querySelectorAll('[data-command-preset]')) {
   btn.addEventListener('click', () => {
     Object.assign(settings, COMMAND_PRESETS[btn.dataset.commandPreset]);
@@ -737,7 +820,7 @@ async function resetTab(section) {
 }
 
 for (const section of document.querySelectorAll('main > section[data-tab]')) {
-  if (['thread', 'misc'].includes(section.dataset.tab)) continue;
+  if (['thread', 'misc', 'addons'].includes(section.dataset.tab)) continue;
   const row = document.createElement('div');
   row.className = 'inline tab-reset';
   const btn = document.createElement('button');

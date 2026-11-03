@@ -10,6 +10,7 @@
  */
 (function () {
   const BRIDGE_WS_PORT = 18771; // obs_bridge.rsのOBS_WS_PORTと同じ
+  const BRIDGE_HTTP_PORT = 18772; // obs_bridge.rsのOBS_HTTP_PORTと同じ
 
   // 見た目の既定値。Rust側は見た目の設定を解釈せずそのまま配るだけなので、
   // 既定値はここで一元管理する(設定画面の初期値にもこれを使う)。
@@ -300,6 +301,26 @@
     seenAppVersion = version;
   }
 
+  // ---- アドオンの見た目(src-tauri/src/addons.rs。作り方はリポジトリの「アドオンの作り方.md」) ----
+  // 画面のファイル名から、どの画面かを決める(subtitle.html → subtitle)
+  const ADDON_PAGE = (/([a-z_]+)\.html$/.exec(location.pathname) || [])[1];
+  const ADDON_PAGES = ['subtitle', 'comments', 'nico', 'voice', 'audience', 'poll'];
+  function applyAddonCss(version) {
+    if (!ADDON_PAGES.includes(ADDON_PAGE)) return;
+    let el = document.getElementById('reacast-addon-css');
+    if (!el) {
+      el = document.createElement('link');
+      el.id = 'reacast-addon-css';
+      el.rel = 'stylesheet';
+      // 画面のCSSの後ろ(=アドオンが勝つ)、設定の「カスタムCSS」の前(=配信者のカスタムCSSが勝つ)
+      const custom = document.getElementById('reacast-custom-css');
+      if (custom) document.head.insertBefore(el, custom);
+      else document.head.appendChild(el);
+    }
+    el.href = `http://127.0.0.1:${BRIDGE_HTTP_PORT}/addon.css?page=${ADDON_PAGE}&v=${version || 0}`;
+  }
+  applyAddonCss(0);
+
   function connectBridge(onMessage) {
     const ws = new WebSocket(`ws://127.0.0.1:${BRIDGE_WS_PORT}`);
     ws.addEventListener('message', (event) => {
@@ -316,6 +337,11 @@
       // 新しい絵文字のフォントをダウンロード・削除した → 読み込み直す
       if (data && data.type === 'emojiFont') {
         setupEmojiFont(Date.now());
+        return;
+      }
+      // アドオンをON/OFFした → 見た目を読み込み直す
+      if (data && data.type === 'addons') {
+        applyAddonCss(Date.now());
         return;
       }
       if (data && typeof data.type === 'string') onMessage(data);

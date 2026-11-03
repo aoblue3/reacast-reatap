@@ -1,3 +1,4 @@
+mod addons;
 mod applog;
 mod backup;
 mod comments;
@@ -1226,6 +1227,7 @@ pub fn run() {
             voice::sync(app.handle());
             local_translate::sync(app.handle());
             emoji_font::init(app.handle());
+            addons::init(app.handle());
             if comment_settings.start_on_launch && !comment_settings.thread_url.trim().is_empty() {
                 if engine.start(&comment_settings.thread_url).is_ok() {
                     let h = app.handle().clone();
@@ -1370,6 +1372,12 @@ pub fn run() {
             comments::comments_save_settings,
             comments::comments_status,
             comments::comments_audience,
+            addons::addons_list,
+            addons::addons_set_enabled,
+            addons::addons_set_safe_mode,
+            addons::addons_reload,
+            addons::addons_tts_presets,
+            addons::addons_open_folder,
             comments::comments_start,
             comments::comments_stop,
             comments::comments_test,
@@ -1412,6 +1420,7 @@ pub fn run() {
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,
+            comments::comments_open_addon_guide,
             comments::comments_open_tts_download,
             comments::comments_default_settings,
             comments::comments_desktop_adjusting,
