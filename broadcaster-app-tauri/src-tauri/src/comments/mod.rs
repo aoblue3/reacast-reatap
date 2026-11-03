@@ -71,6 +71,11 @@ pub struct CommentSettings {
     /// 2つ目の掲示板(読むだけ。jpnknとしたらばを両方使う時など)。スレッドのレス・
     /// 書き込み・次スレ建て・続きから読むは、1つ目の掲示板だけ
     pub sub_thread_url: String,
+    /// 掲示板・YouTube・Twitchを使うか(「かんたん設定」のURLの頭のチェック)。OFFならURLが
+    /// 入っていても取得しない(URLは消さずに残しておく)
+    pub use_bbs: bool,
+    pub use_youtube: bool,
+    pub use_twitch: bool,
     pub poll_interval_ms: u64,
     pub auto_next_thread: bool,
     pub next_thread_keyword: String,
@@ -463,6 +468,9 @@ impl Default for CommentSettings {
         Self {
             thread_url: String::new(),
             sub_thread_url: String::new(),
+            use_bbs: true,
+            use_youtube: true,
+            use_twitch: true,
             poll_interval_ms: 7000,
             auto_next_thread: true,
             next_thread_keyword: String::new(),
@@ -1069,24 +1077,24 @@ impl CommentEngine {
     /// それぞれ別のタスクで同時に取得し、すべて同じ順番待ちの列に並べる。
     pub fn start(self: &Arc<Self>, url: &str) -> Result<(), String> {
         let settings = self.settings();
-        let bbs = if url.trim().is_empty() { None } else { Some(source::parse_url(url)?) };
-        let sub_bbs = if settings.sub_thread_url.trim().is_empty() {
+        let bbs = if !settings.use_bbs || url.trim().is_empty() { None } else { Some(source::parse_url(url)?) };
+        let sub_bbs = if !settings.use_bbs || settings.sub_thread_url.trim().is_empty() {
             None
         } else {
             Some(source::parse_url(&settings.sub_thread_url).map_err(|e| format!("2つ目の掲示板: {e}"))?)
         };
-        let youtube = if settings.youtube_target.trim().is_empty() {
+        let youtube = if !settings.use_youtube || settings.youtube_target.trim().is_empty() {
             None
         } else {
             Some(youtube::parse_target(&settings.youtube_target)?)
         };
-        let twitch = if settings.twitch_channel.trim().is_empty() {
+        let twitch = if !settings.use_twitch || settings.twitch_channel.trim().is_empty() {
             None
         } else {
             Some(twitch::parse_channel(&settings.twitch_channel)?)
         };
         if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() {
-            return Err("掲示板のURL、YouTube、Twitchのどれかを指定してください".into());
+            return Err("掲示板のURL、YouTube、Twitchのどれかを指定してください(「かんたん設定」で使うものにチェックが入っているかも確かめてください)".into());
         }
         let mut sources = Vec::new();
         if let Some((board, _)) = &sub_bbs {

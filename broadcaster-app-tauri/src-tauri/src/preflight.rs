@@ -74,12 +74,24 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     let status = engine.status();
     let live = |id: &str| status.sources.iter().find(|x| x.id == id).cloned();
 
-    let (bbs, sub_bbs, youtube, twitch) = tokio::join!(
-        check_bbs(s.thread_url.clone(), false),
-        check_bbs(s.sub_thread_url.clone(), true),
-        check_site("YouTube", s.youtube_target.clone(), live("youtube"), false),
-        check_site("Twitch", s.twitch_channel.clone(), live("twitch"), true),
+    // 「使う」のチェックを外したものは、確かめずに「使わない設定」と出す
+    let used = |on: bool, v: &String| if on { v.clone() } else { String::new() };
+    let (mut bbs, sub_bbs, mut youtube, mut twitch) = tokio::join!(
+        check_bbs(used(s.use_bbs, &s.thread_url), false),
+        check_bbs(used(s.use_bbs, &s.sub_thread_url), true),
+        check_site("YouTube", used(s.use_youtube, &s.youtube_target), live("youtube"), false),
+        check_site("Twitch", used(s.use_twitch, &s.twitch_channel), live("twitch"), true),
     );
+    const OFF: &str = "使わない設定です(「かんたん設定」のチェック)";
+    if !s.use_bbs {
+        bbs = item("掲示板", "skip", OFF);
+    }
+    if !s.use_youtube {
+        youtube = item("YouTube", "skip", OFF);
+    }
+    if !s.use_twitch {
+        twitch = item("Twitch", "skip", OFF);
+    }
 
     let mut out = vec![
         if status.running {
@@ -90,7 +102,7 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
         bbs,
     ];
     // 2つ目の掲示板は、使っている人にだけ出す
-    if !s.sub_thread_url.trim().is_empty() {
+    if s.use_bbs && !s.sub_thread_url.trim().is_empty() {
         out.push(sub_bbs);
     }
     out.extend([youtube, twitch]);

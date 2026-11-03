@@ -244,6 +244,14 @@
   details.adv > summary { cursor: pointer; color: var(--c-a9acb8); margin-bottom: 8px; user-select: none; }
   details.adv > summary:hover { color: var(--c-e6e6ea); }
   /* タブごとの「このタブの設定を最初の状態に戻す」(各タブの一番下) */
+  /* 使う・使わない(「かんたん設定」のURLの頭のチェック、左のメニューのチェック) */
+  .use-check { margin: 0 6px 0 0; vertical-align: -2px; }
+  .field.use-off > div, input.use-off { opacity: 0.4; }
+  #tabs button.use-off { opacity: 0.45; }
+  #tabs .nav-use { float: right; margin: 2px 0 0 6px; cursor: pointer; }
+  .tab-off-note { display: none; margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: var(--c-24262d); border: 1px solid var(--c-3a3d47); color: var(--c-a9acb8); }
+  section.tab-off > .tab-off-note { display: block; }
+  section.tab-off > :not(.tab-off-note):not(.use-master) { opacity: 0.45; }
   .tab-share { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
   .tab-share + .tab-reset { margin-top: 8px; padding-top: 0; border-top: none; }
   .tab-reset { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
@@ -699,11 +707,11 @@
         </div>
       </div>
 
-      <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにしてください。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
-      <div class="field"><label>掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
+      <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにするか、頭のチェックを外してください(チェックを外すと、URLは残したまま使わなくなります)。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
+      <div class="field"><label><input type="checkbox" class="use-check" data-key="useBbs" title="チェックを外すと、URLが入っていても掲示板は使いません" />掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
       <div class="field"><label>2つ目の掲示板<span class="help" data-help="jpnknとしたらばのように、掲示板を2つ同時に読みたい時に入れます(空欄なら使いません)。レスは1つ目の掲示板と同じ順番待ちに並びます。2つ目の掲示板は読むだけで、「スレッドのレス」・書き込み・次スレ建て・落ちた時に続きから読む、は1つ目の掲示板だけです。1000を超えたら次スレへ移るのは、2つ目も同じです。"></span></label><div><input type="text" class="wide" data-key="subThreadUrl" placeholder="空欄なら使いません 例: https://jbbs.shitaraba.net/bbs/read.cgi/カテゴリ/板の番号/スレッド番号/" /></div></div>
-      <div class="field"><label>YouTube Live<span class="help" data-help="おすすめは、自分のチャンネルのURL(https://www.youtube.com/@チャンネルのハンドル)です。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時の、アドレス欄のURLです。これなら配信のたびに貼り直さなくても、公開の配信が始まると自動で読み始めます。限定公開の配信は、配信のページのURL(https://www.youtube.com/watch?v=…)か、YouTube Studioの配信の画面のURLを貼ってください。@から始まるハンドルだけ(例: @チャンネルのハンドル)でも大丈夫です。"></span></label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="おすすめ: 自分のチャンネルのURL(https://www.youtube.com/@…)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
-      <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
+      <div class="field"><label><input type="checkbox" class="use-check" data-key="useYoutube" title="チェックを外すと、URLが入っていてもYouTubeは使いません" />YouTube Live<span class="help" data-help="おすすめは、自分のチャンネルのURL(https://www.youtube.com/@チャンネルのハンドル)です。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時の、アドレス欄のURLです。これなら配信のたびに貼り直さなくても、公開の配信が始まると自動で読み始めます。限定公開の配信は、配信のページのURL(https://www.youtube.com/watch?v=…)か、YouTube Studioの配信の画面のURLを貼ってください。@から始まるハンドルだけ(例: @チャンネルのハンドル)でも大丈夫です。"></span></label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="おすすめ: 自分のチャンネルのURL(https://www.youtube.com/@…)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
+      <div class="field"><label><input type="checkbox" class="use-check" data-key="useTwitch" title="チェックを外すと、チャンネルが入っていてもTwitchは使いません" />Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
       <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
 
       <h3>② 読み上げ</h3>

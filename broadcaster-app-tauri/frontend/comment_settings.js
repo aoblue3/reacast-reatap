@@ -15,6 +15,69 @@ const C = window.CommentCommon;
 let settings = null;
 let saveTimer = null;
 
+// ---- 使う・使わない ----
+// タブごとの「使う」の設定。OFFの時は左のメニューのタブとタブの中身をグレーにする
+// (中身はそのまま変えられる)。NAV_USE_TABSのタブは、左のメニューにもチェックを出す
+const TAB_USE = {
+  fetch: 'useBbs', create: 'useBbs', speech: 'speechEnabled', chime: 'chimeEnabled', aa: 'aaEnabled',
+  reactions: 'reactionLink', voice: 'voiceEnabled', nico: 'style.nico.enabled',
+};
+const NAV_USE_TABS = ['fetch', 'speech', 'chime', 'aa', 'reactions', 'voice', 'nico'];
+// 取得元の「使う」と、そのURLの欄
+const SOURCE_USE = { useBbs: ['threadUrl', 'subThreadUrl'], useYoutube: ['youtubeTarget'], useTwitch: ['twitchChannel'] };
+for (const tab of NAV_USE_TABS) {
+  const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+  if (!btn) continue;
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'nav-use';
+  box.dataset.key = TAB_USE[tab];
+  box.title = 'チェックを外すと、この機能を使いません';
+  // チェックを押した時は、タブを切り替えない
+  box.addEventListener('click', (e) => e.stopPropagation());
+  btn.prepend(box);
+}
+for (const [tab, key] of Object.entries(TAB_USE)) {
+  const section = document.querySelector(`main > section[data-tab="${tab}"]`);
+  if (!section) continue;
+  const note = document.createElement('div');
+  note.className = 'tab-off-note';
+  note.textContent = key === 'useBbs'
+    ? '掲示板を使わない設定になっています(左のメニューのチェックか、「かんたん設定」の「掲示板」のチェックを入れると使います)'
+    : 'この機能は使わない設定になっています(左のメニューのチェックか、下の「使う」の欄をONにすると使います)';
+  section.prepend(note);
+  // タブの中にある「使う」の欄は、グレーにしない
+  const own = section.querySelector(`[data-key="${key}"]`);
+  let row = own;
+  while (row && row.parentElement !== section) row = row.parentElement;
+  if (row) row.classList.add('use-master');
+}
+
+function isUsed(key) {
+  return getPath(settings, key) !== false;
+}
+
+function renderUse() {
+  if (!settings) return;
+  for (const [tab, key] of Object.entries(TAB_USE)) {
+    const on = key === 'useBbs' ? isUsed(key) : !!getPath(settings, key);
+    const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+    if (btn) btn.classList.toggle('use-off', !on);
+    const section = document.querySelector(`main > section[data-tab="${tab}"]`);
+    if (section) section.classList.toggle('tab-off', !on);
+  }
+  for (const [key, inputs] of Object.entries(SOURCE_USE)) {
+    const on = isUsed(key);
+    for (const k of inputs) {
+      for (const el of document.querySelectorAll(`[data-key="${k}"]`)) {
+        const row = el.closest('.field');
+        (row || el).classList.toggle('use-off', !on);
+      }
+    }
+    for (const box of document.querySelectorAll(`.use-check[data-key="${key}"]`)) box.closest('.field').classList.toggle('use-off', !on);
+  }
+}
+
 const fields = Array.from(document.querySelectorAll('[data-key]'));
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
@@ -72,6 +135,7 @@ function renderFields() {
   renderRuleEditors();
   renderEngineBoxes();
   renderShowIf();
+  renderUse();
   if (typeof renderFontPickers === 'function') renderFontPickers();
   renderPresetSelects();
   monitorSelect.value = settings.desktopMonitorId || '';
@@ -180,6 +244,7 @@ function onFieldChange(el) {
   }
   rememberPresetEdit(el.dataset.key);
   renderPreview();
+  renderUse();
   scheduleSave();
 }
 
@@ -2960,7 +3025,11 @@ for (const btn of document.querySelectorAll('#simpleModeOn, [data-simple-on]')) 
 document.getElementById('simpleModeOff').addEventListener('click', () => setSimpleMode(false));
 
 function hasSource() {
-  return !!(settings.threadUrl || settings.subThreadUrl || settings.youtubeTarget || settings.twitchChannel);
+  return !!(
+    (isUsed('useBbs') && (settings.threadUrl || settings.subThreadUrl)) ||
+    (isUsed('useYoutube') && settings.youtubeTarget) ||
+    (isUsed('useTwitch') && settings.twitchChannel)
+  );
 }
 document.getElementById('simpleStart').addEventListener('click', () => {
   if (!hasSource()) {
@@ -3146,6 +3215,9 @@ function sourceSnapshot() {
     (settings.subThreadUrl || '').trim(),
     (settings.youtubeTarget || '').trim(),
     (settings.twitchChannel || '').trim(),
+    isUsed('useBbs'),
+    isUsed('useYoutube'),
+    isUsed('useTwitch'),
   ]);
 }
 startBtn.addEventListener('click', () => {
