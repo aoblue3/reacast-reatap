@@ -1,5 +1,16 @@
 # 更新履歴
 
+## v1.8.2: YouTubeに貼るURLの案内、PeerCastの視聴者数
+
+### 変更(ReaCast)
+
+- **YouTubeに貼るURLの案内**: YouTubeの欄に、どのURLを貼ればいいかを出しました。おすすめは自分のチャンネルのURL(`https://www.youtube.com/@…`)で、公開の配信が始まると自動で読みます。限定公開の配信は、配信のページのURLを貼ります。YouTube Studioの配信の画面のURL(`studio.youtube.com/video/…`)も、そのまま貼れるようになりました。
+
+### 修正(ReaCast)
+
+- **PeerCastの視聴者数が出ないことがある**: PeerCastを2つ動かしていて、配信している方のポートが7144でない時に、視聴者数が出ませんでした。設定のポートのPeerCastで配信が見つからない時は、このPCで動いているほかのPeerCastも自動で探すようにしました。
+
+
 ## v1.8.1: 掲示板を2つ同時に、セットアップのボタンの位置
 
 ### 追加(ReaCast)
