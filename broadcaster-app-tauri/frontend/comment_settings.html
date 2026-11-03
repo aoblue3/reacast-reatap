@@ -1309,7 +1309,7 @@
         <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.audience.fontFamily" /></div></div>
         <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.audience.outlineWidth" /><span class="unit">px</span></div></div>
         <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.audience.bgColor" /><input type="number" min="0" max="100" data-key="style.audience.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
-        <div class="field"><label>PeerCastのポート<span class="help" data-help="このPCのPeerCastの番号です。ふつうは7144のままで大丈夫です(PeerCastの設定で変えた時だけ合わせてください)。"></span></label><div><input type="number" min="1" max="65535" data-key="peercastPort" /></div></div>
+        <div class="field"><label>PeerCastのポート<span class="help" data-help="このPCのPeerCastの番号です。ふつうは7144のままで大丈夫です。この番号のPeerCastで配信が見つからない時は、このPCで動いているほかのPeerCast(PeerCastを2つ動かしている時など)も自動で探します。"></span></label><div><input type="number" min="1" max="65535" data-key="peercastPort" /></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.audience.customCss" placeholder=".aud-item { gap: 0.5em; }"></textarea>
       </details>

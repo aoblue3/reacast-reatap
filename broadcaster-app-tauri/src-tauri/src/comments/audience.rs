@@ -137,6 +137,72 @@ pub async fn fetch_peercast_listeners(client: &reqwest::Client, port: u16) -> Op
     parse_peercast_viewxml(&resp.text().await.ok()?)
 }
 
+/// このPCで動いているPeerCast(PeerCastStation・PecaStationd・PeerCast YTなど)が待ち受けている
+/// ポート。設定のポートで配信が見つからない時に探す(PeerCastを2つ動かしていて、配信している方が
+/// 7144でなかった報告があったため)。Windows以外では探さない
+pub async fn find_peercast_ports() -> Vec<u16> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let run = |cmd: &str, args: &[&str]| {
+                std::process::Command::new(cmd)
+                    .args(args)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default()
+            };
+            let pids = peercast_pids(&run("tasklist", &["/FO", "CSV", "/NH"]));
+            if pids.is_empty() {
+                return Vec::new();
+            }
+            listening_ports(&run("netstat", &["-ano", "-p", "TCP"]), &pids)
+        })
+        .await
+        .unwrap_or_default()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
+/// tasklist /FO CSV /NH の結果から、PeerCastらしい名前のプロセスの番号
+fn peercast_pids(csv: &str) -> Vec<u32> {
+    csv.lines()
+        .filter_map(|l| {
+            let mut cols = l.split("\",\"").map(|c| c.trim_matches('"'));
+            let name = cols.next()?.to_ascii_lowercase();
+            let pid = cols.next()?.parse().ok()?;
+            (name.contains("peercast") || name.contains("pecastation")).then_some(pid)
+        })
+        .collect()
+}
+
+/// netstat -ano -p TCP の結果から、指定したプロセスが待ち受けているポート(小さい順、重複なし)。
+/// 「LISTENING」の文字はWindowsの言語で変わるかもしれないので、相手のアドレスが「:0」かで見る
+fn listening_ports(netstat: &str, pids: &[u32]) -> Vec<u16> {
+    let mut ports: Vec<u16> = netstat
+        .lines()
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            if t.len() != 5 || t[0] != "TCP" || !t[2].ends_with(":0") {
+                return None;
+            }
+            let pid: u32 = t[4].parse().ok()?;
+            if !pids.contains(&pid) {
+                return None;
+            }
+            t[1].rsplit(':').next()?.parse().ok()
+        })
+        .collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,7 +232,30 @@ mod tests {
             let c = reqwest::Client::new();
             println!("Twitch: {:?}", fetch_twitch_viewers(&c, "shroud").await);
             println!("PeerCast: {:?}", fetch_peercast_listeners(&c, 7144).await);
+            for p in find_peercast_ports().await {
+                println!("PeerCast {p}: {:?}", fetch_peercast_listeners(&c, p).await);
+            }
         });
+    }
+
+    #[test]
+    fn finds_peercast_ports() {
+        let tasklist = "\"System\",\"4\",\"Services\",\"0\",\"1,234 K\"
+\"PecaStationd.exe\",\"4436\",\"Services\",\"0\",\"50,000 K\"
+\"PeerCastStation.exe\",\"18668\",\"Console\",\"1\",\"90,000 K\"
+\"chrome.exe\",\"999\",\"Console\",\"1\",\"1 K\"";
+        let pids = peercast_pids(tasklist);
+        assert_eq!(pids, vec![4436, 18668]);
+        let netstat = "
+アクティブな接続
+
+  プロトコル  ローカル アドレス      外部アドレス           状態            PID
+  TCP         0.0.0.0:7144           0.0.0.0:0              LISTENING       4436
+  TCP         0.0.0.0:7552           0.0.0.0:0              LISTENING       18668
+  TCP         127.0.0.1:50000        127.0.0.1:7552         ESTABLISHED     18668
+  TCP         0.0.0.0:80             0.0.0.0:0              LISTENING       999
+";
+        assert_eq!(listening_ports(netstat, &pids), vec![7144, 7552]);
     }
 
     #[test]

@@ -1144,6 +1144,9 @@ impl CommentEngine {
     async fn run_audience(self: Arc<Self>, run_id: u64, twitch: Option<String>) {
         let yt_client = youtube::client();
         let client = source::http_client();
+        // 設定のポートで配信が見つからない時に探した、このPCのPeerCastのポート(5分ごとに探し直す)
+        let mut found_ports: Vec<u16> = Vec::new();
+        let mut found_at: Option<std::time::Instant> = None;
         loop {
             if !self.is_current(run_id) {
                 return;
@@ -1160,7 +1163,22 @@ impl CommentEngine {
                 Some(login) => audience::fetch_twitch_viewers(&client, login).await,
                 None => None,
             };
-            let pc = audience::fetch_peercast_listeners(&client, port).await;
+            let mut pc = audience::fetch_peercast_listeners(&client, port).await;
+            if pc.is_none() && self.state.lock().unwrap().audience.sources.iter().any(|s| s.id == "peercast") {
+                if found_at.map_or(true, |t| t.elapsed() >= Duration::from_secs(300)) {
+                    found_ports = audience::find_peercast_ports().await;
+                    found_at = Some(std::time::Instant::now());
+                }
+                for &p in found_ports.iter().filter(|&&p| p != port) {
+                    pc = audience::fetch_peercast_listeners(&client, p).await;
+                    if pc.is_some() {
+                        // 次からはこのポートを先に見る
+                        found_ports.retain(|&x| x != p);
+                        found_ports.insert(0, p);
+                        break;
+                    }
+                }
+            }
             {
                 let mut st = self.state.lock().unwrap();
                 if st.run_id != run_id {
