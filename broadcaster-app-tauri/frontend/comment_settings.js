@@ -83,6 +83,7 @@ const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const monitorSelect = document.getElementById('desktopMonitor');
+const nicoMonitorSelect = document.getElementById('desktopNicoMonitor');
 
 function getPath(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -139,6 +140,7 @@ function renderFields() {
   if (typeof renderFontPickers === 'function') renderFontPickers();
   renderPresetSelects();
   monitorSelect.value = settings.desktopMonitorId || '';
+  nicoMonitorSelect.value = settings.desktopNicoMonitorId || '';
   for (const el of document.querySelectorAll('[data-desktop-rect]')) {
     const r = el.dataset.desktopRect === 'list' ? settings.desktopListRect : settings.desktopRect;
     el.textContent = r ? `マウスで決めた位置: ${r.x}, ${r.y}(${r.width}×${r.height})` : '既定の位置(下の「既定の位置」の設定)';
@@ -883,7 +885,7 @@ document.getElementById('ttsTestBtn').addEventListener('click', async () => {
 // 設定とみなすものは下の表に書く。見た目のタブは、プリセットとその手直しも含めて見た目を丸ごと戻す。
 const TAB_RESET_EXTRA = {
   speech: ['ttsEngineParams', 'ttsRandomVoices', 'ttsExePaths', ...Object.values(PARAM_LEGACY)],
-  output: ['desktopRect', 'desktopListRect', 'desktopMonitorId'],
+  output: ['desktopRect', 'desktopListRect', 'desktopMonitorId', 'desktopNicoMonitorId'],
 };
 const TAB_RESET_STYLE = { subtitle: 'subtitle', list: 'list', nico: 'nico', aa: 'aa', voice: 'voice' };
 
@@ -1634,7 +1636,7 @@ const SETTINGS_CODE_PREFIX = 'ReaCastSettings1:';
 const SHARE_EXCLUDE = new Set([
   'threadUrl', 'subThreadUrl', 'youtubeTarget', 'twitchChannel', 'postName', 'postMail', 'createName', 'createMail',
   'commandPath', 'chimePath', 'iconFolderBbs', 'iconFolderYoutube', 'iconFolderTwitch', 'ttsDevice', 'ttsExePath',
-  'ttsExePaths', 'voiceMic', 'peercastPort', 'desktopMonitorId', 'desktopRect', 'desktopListRect',
+  'ttsExePaths', 'voiceMic', 'peercastPort', 'desktopMonitorId', 'desktopNicoMonitorId', 'desktopRect', 'desktopListRect',
 ]);
 const SHARE_SKIP_TABS = ['easy', 'thread', 'misc', 'addons'];
 
@@ -2070,19 +2072,32 @@ monitorSelect.addEventListener('change', () => {
   settings.desktopMonitorId = monitorSelect.value || null;
   scheduleSave();
 });
+nicoMonitorSelect.addEventListener('change', () => {
+  settings.desktopNicoMonitorId = nicoMonitorSelect.value || null;
+  scheduleSave();
+});
 
 async function loadMonitors() {
   const monitors = await invoke('list_monitors').catch(() => []);
-  monitorSelect.textContent = '';
-  const def = document.createElement('option');
-  def.value = '';
-  def.textContent = 'メインモニター';
-  monitorSelect.appendChild(def);
-  for (const m of monitors) {
-    const o = document.createElement('option');
-    o.value = m.id;
-    o.textContent = m.label;
-    monitorSelect.appendChild(o);
+  // 流れるコメントは、選ばなければコメント字幕と同じモニター
+  for (const [sel, first] of [[monitorSelect, 'メインモニター'], [nicoMonitorSelect, 'コメント字幕と同じモニター']]) {
+    const keep = sel.value;
+    sel.textContent = '';
+    const def = document.createElement('option');
+    def.value = '';
+    def.textContent = first;
+    sel.appendChild(def);
+    for (const m of monitors) {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.label;
+      sel.appendChild(o);
+    }
+    sel.value = keep;
+  }
+  if (settings) {
+    monitorSelect.value = settings.desktopMonitorId || '';
+    nicoMonitorSelect.value = settings.desktopNicoMonitorId || '';
   }
 }
 

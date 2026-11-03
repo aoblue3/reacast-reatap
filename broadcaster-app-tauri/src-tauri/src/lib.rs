@@ -298,6 +298,62 @@ fn subtitle_target_geometry(app: &tauri::AppHandle, list: bool) -> (PhysicalPosi
 pub(crate) fn sync_subtitle_window(app: &tauri::AppHandle) {
     sync_desktop_window(app, false);
     sync_desktop_window(app, true);
+    sync_nico_window(app);
+}
+
+/// デスクトップに出す流れるコメントの窓のラベル
+const DESKTOP_NICO_LABEL: &str = "dnico";
+
+/// デスクトップの流れるコメントの窓の位置・大きさ(モニターと割合の指定どおり)
+fn nico_target_geometry(app: &tauri::AppHandle) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
+    let s = app.state::<Arc<comments::CommentEngine>>().settings();
+    let monitor = s.desktop_nico_monitor_id.as_deref().or(s.desktop_monitor_id.as_deref());
+    let (monitor_pos, monitor_size) = resolve_overlay_monitor(app, monitor);
+    let region = RegionSpec::clamped(s.desktop_nico_x, s.desktop_nico_y, s.desktop_nico_width, s.desktop_nico_height);
+    apply_overlay_region(monitor_pos, monitor_size, Some(region))
+}
+
+/// 流れるコメントの窓を、設定と取得状態に合わせて作る/閉じる/動かす(sync_desktop_windowと同じ考え方)。
+/// クリックはいつも下の窓に透過する
+fn sync_nico_window(app: &tauri::AppHandle) {
+    let engine = app.state::<Arc<comments::CommentEngine>>();
+    let wanted = engine.desktop_nico_wanted();
+    let topmost = engine.settings().desktop_topmost;
+    match (wanted, app.get_webview_window(DESKTOP_NICO_LABEL)) {
+        (false, Some(win)) => {
+            let _ = win.destroy();
+        }
+        (true, Some(win)) => {
+            let _ = win.set_always_on_top(topmost);
+            let (pos, size) = nico_target_geometry(app);
+            let _ = win.set_position(tauri::Position::Physical(pos));
+            let _ = win.set_size(tauri::Size::Physical(size));
+        }
+        (true, None) => {
+            let (pos, size) = nico_target_geometry(app);
+            let built = WebviewWindowBuilder::new(app, DESKTOP_NICO_LABEL, WebviewUrl::App("nico.html".into()))
+                .additional_browser_args(WEBVIEW_ARGS)
+                .title("ReaCast 流れるコメント")
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(topmost)
+                .skip_taskbar(true)
+                .resizable(false)
+                .shadow(false)
+                .visible(true)
+                .focused(false)
+                .build();
+            match built {
+                Ok(win) => {
+                    let _ = win.set_position(tauri::Position::Physical(pos));
+                    let _ = win.set_size(tauri::Size::Physical(size));
+                    let _ = win.set_ignore_cursor_events(true);
+                }
+                Err(e) => log::warn!("デスクトップの流れるコメントの窓の作成に失敗しました: {e}"),
+            }
+        }
+        (false, None) => {}
+    }
 }
 
 fn desktop_label(list: bool) -> &'static str {
@@ -715,6 +771,16 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                 // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
                 // 最前面ウィンドウに隠される)で、2秒おきに位置と最前面を直す
                 if !bursting {
+                    if let Some(nico) = reassert_handle.get_webview_window(DESKTOP_NICO_LABEL) {
+                        let (pos, size) = nico_target_geometry(&reassert_handle);
+                        if nico.outer_position().ok() != Some(pos) || nico.outer_size().ok() != Some(size) {
+                            let _ = nico.set_position(tauri::Position::Physical(pos));
+                            let _ = nico.set_size(tauri::Size::Physical(size));
+                        }
+                        if reassert_handle.state::<Arc<comments::CommentEngine>>().settings().desktop_topmost {
+                            reassert_topmost(&nico);
+                        }
+                    }
                     for list in [false, true] {
                         if let Some(sub) = reassert_handle.get_webview_window(desktop_label(list)) {
                             realign_subtitle_window(&reassert_handle, &sub, list);

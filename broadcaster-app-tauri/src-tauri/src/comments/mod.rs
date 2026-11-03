@@ -331,6 +331,15 @@ pub struct CommentSettings {
     /// コメント一覧をウィンドウにする(マウスで操作できる。ホイールで過去のコメント、
     /// 右クリックでNG・読み上げ直しなど)。ONの間は取得していない時も出しておく
     pub desktop_list_interactive: bool,
+    // ---- デスクトップに出す流れるコメント ----
+    pub desktop_nico_enabled: bool,
+    /// 出すモニター(Noneならコメント字幕と同じモニター)
+    pub desktop_nico_monitor_id: Option<String>,
+    /// 流す範囲(モニターに対する割合)
+    pub desktop_nico_x: f64,
+    pub desktop_nico_y: f64,
+    pub desktop_nico_width: f64,
+    pub desktop_nico_height: f64,
     /// デスクトップコメント字幕・コメント一覧をほかの窓より前に出す(OFFなら普通の窓と同じ重なり順)
     pub desktop_topmost: bool,
     /// 見た目の設定(フォント・色・縁など)。Rust側では中身を解釈せず、そのまま
@@ -610,6 +619,13 @@ impl Default for CommentSettings {
             desktop_list_height: 0.6,
             desktop_list_rect: None,
             desktop_list_interactive: false,
+            // 画面の上の4分の3(タスクバー・コメント字幕に重ならないように)
+            desktop_nico_enabled: false,
+            desktop_nico_monitor_id: None,
+            desktop_nico_x: 0.0,
+            desktop_nico_y: 0.0,
+            desktop_nico_width: 1.0,
+            desktop_nico_height: 0.75,
             desktop_topmost: true,
             style: serde_json::json!({}),
         }
@@ -1031,6 +1047,14 @@ impl CommentEngine {
         let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
         st.settings.desktop_list_enabled
             && (st.status.running || st.adjusting_list || held || st.settings.desktop_list_interactive)
+    }
+
+    /// デスクトップの流れるコメントの窓を今出しておくべきか(「流れるコメントを使う」もONの時だけ)
+    pub fn desktop_nico_wanted(&self) -> bool {
+        let st = self.state.lock().unwrap();
+        let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
+        let nico_on = st.settings.style.pointer("/nico/enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+        st.settings.desktop_nico_enabled && nico_on && (st.status.running || held)
     }
 
     /// list: falseならデスクトップ字幕、trueならデスクトップのレス一覧
