@@ -116,11 +116,43 @@
     cursor: se-resize;
     background: linear-gradient(135deg, transparent 50%, #ffd23f 50%);
   }
+  /* ---- 「ウィンドウにする」の時(マウスで操作できるデスクトップのコメント一覧) ---- */
+  /* マウスを乗せている間だけ、窓の範囲がわかるように薄い枠を出す */
+  body.interactive:hover::after { content: ''; position: fixed; inset: 0; border: 1px dashed rgba(255, 255, 255, 0.35); pointer-events: none; }
+  #more, #menu, #toast, #reading { font-family: 'Yu Gothic UI', 'ReaCast Emoji', sans-serif; font-size: 13px; text-shadow: none; }
+  /* 過去のコメントを見ている時の「最新に戻る」(最新のコメントの側に出す) */
+  #more { display: none; position: fixed; left: 50%; transform: translateX(-50%); bottom: 6px; z-index: 5; padding: 4px 12px; border-radius: 14px; background: rgba(20, 22, 30, 0.88); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer; white-space: nowrap; }
+  #more.top { bottom: auto; top: 6px; }
+  #more.visible { display: block; }
+  #menu { display: none; position: fixed; z-index: 10; min-width: 220px; max-width: calc(100vw - 8px); padding: 4px 0; background: #24262d; color: #e6e6ea; border: 1px solid #3a3d47; border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); }
+  #menu.visible { display: block; }
+  #menu button { display: block; width: 100%; padding: 5px 14px; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #menu button:hover:not(:disabled) { background: #3b6df0; color: #fff; }
+  #menu button:disabled { color: #7d808c; cursor: default; }
+  #menu hr { border: none; border-top: 1px solid #3a3d47; margin: 4px 0; }
+  #toast { display: none; position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 11; padding: 6px 10px; border-radius: 6px; background: rgba(20, 22, 30, 0.92); color: #fff; }
+  #toast.visible { display: block; }
+  #reading { display: none; position: fixed; inset: 0; z-index: 12; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+  #reading.visible { display: flex; }
+  #reading > div { width: min(320px, calc(100vw - 16px)); padding: 12px; border-radius: 8px; background: #24262d; color: #e6e6ea; border: 1px solid #3a3d47; }
+  #reading .ttl { margin-bottom: 8px; font-weight: bold; word-break: break-all; }
+  #reading input { width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid #3a3d47; border-radius: 4px; background: #16171c; color: #e6e6ea; font: inherit; }
+  #reading .btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+  #reading button { padding: 4px 14px; border: none; border-radius: 4px; background: #3b6df0; color: #fff; font: inherit; cursor: pointer; }
+  #reading button.sub { background: #3a3d47; }
 </style>
 </head>
 <body>
   <div id="aud" class="aud empty"></div>
   <div id="list"></div>
+  <div id="more"></div>
+  <div id="menu"></div>
+  <div id="toast"></div>
+  <div id="reading"><div>
+    <div class="ttl">「<span id="readingWord"></span>」の読み方</div>
+    <input type="text" id="readingInput" placeholder="ひらがな・カタカナで(空欄なら読まない)" />
+    <div class="btns"><button id="readingCancel" class="sub">やめる</button><button id="readingOk">登録</button></div>
+  </div></div>
   <div id="adjust">
     <div class="msg">ドラッグで移動 / 右下の角をドラッグで大きさを変更</div>
     <button id="adjustDone">完了</button>
@@ -284,6 +316,7 @@
         content.appendChild(thumbs);
       }
       el.appendChild(content);
+      el._res = res;
       return el;
     }
 
@@ -291,16 +324,24 @@
       return Math.max(1, Math.min(100, Number(style.list.maxItems) || 30));
     }
 
+    // 覚えておくコメントの数(「ウィンドウにする」の時に、ホイールで見返せる)
+    const HISTORY_MAX = 500;
+    // ホイールで遡っている時の、隠れている新しいコメントの数(0なら最新を表示中)
+    let offset = 0;
+
     function render() {
       applyListStyle();
       listEl.textContent = '';
-      const shown = items.slice(-maxItems());
+      offset = Math.max(0, Math.min(offset, items.length - 1));
+      const end = items.length - offset;
+      const shown = items.slice(Math.max(0, end - maxItems()), end);
       const ordered = style.list.newestFirst ? shown.slice().reverse() : shown;
       for (const res of ordered) {
         const el = buildItem(res);
         el.style.animation = 'none';
         listEl.appendChild(el);
       }
+      renderMore();
     }
 
     // 来たことのある掲示板の種類(2種類以上なら、掲示板のレスにも取得元の印を付ける)
@@ -313,7 +354,13 @@
 
     function add(res) {
       items.push(res);
-      if (items.length > 100) items = items.slice(-100);
+      if (items.length > HISTORY_MAX) items = items.slice(-HISTORY_MAX);
+      // 過去のコメントを見ている間は、表示を動かさない(新しいコメントの数だけ数える)
+      if (offset > 0) {
+        offset++;
+        renderMore();
+        return;
+      }
       // 2つ目の種類の掲示板が来たら、前のレスにも印を付けるために描き直す
       if (noteBoard(res)) {
         render();
@@ -345,11 +392,13 @@
         audState = msg.state;
         renderAud();
       } else if (msg.type === 'commentHistory') {
-        items = Array.isArray(msg.items) ? msg.items.filter(wanted).slice(-100) : [];
+        items = Array.isArray(msg.items) ? msg.items.filter(wanted).slice(-HISTORY_MAX) : [];
+        offset = 0;
         items.forEach(noteBoard);
         render();
       } else if (msg.type === 'commentClear') {
         items = [];
+        offset = 0;
         render();
       } else if (msg.type === 'comment' && msg.res) {
         if (wanted(msg.res)) add(msg.res);
@@ -406,7 +455,205 @@
         tauri.core.invoke('comments_desktop_adjust', { on: false, target: 'list' });
       });
       tauri.event.listen('dlist:adjust', (e) => setAdjusting(e.payload));
+      tauri.event.listen('dlist:interactive', (e) => setInteractive(e.payload));
+      tauri.core.invoke('comments_list_interactive').then(setInteractive).catch(() => {});
       tauri.core.invoke('comments_desktop_adjusting', { target: 'list' }).then(setAdjusting).catch(() => {});
+    }
+
+    // ---- 「ウィンドウにする」(デスクトップのコメント一覧をマウスで操作する) ----
+    // ホイールで過去のコメントを見返し、右クリックでもう一度読み上げる・NGなど
+    let interactive = false;
+    const moreEl = document.getElementById('more');
+    const menuEl = document.getElementById('menu');
+    const toastEl = document.getElementById('toast');
+    const readingEl = document.getElementById('reading');
+    const readingInput = document.getElementById('readingInput');
+
+    function setInteractive(on) {
+      interactive = !!on && DESKTOP;
+      document.body.classList.toggle('interactive', interactive);
+      if (!interactive && offset) {
+        offset = 0;
+        render();
+      }
+      if (!interactive) closeMenu();
+    }
+
+    function renderMore() {
+      const show = interactive && offset > 0;
+      moreEl.classList.toggle('visible', show);
+      if (!show) return;
+      // 最新のコメントがある側(新しい順なら上、古い順なら下)に出す
+      moreEl.classList.toggle('top', !!style.list.newestFirst);
+      const newer = Math.min(offset, items.length);
+      moreEl.textContent = `過去のコメントを表示中(新しいコメント ${newer}件) クリックで最新へ`;
+    }
+    moreEl.addEventListener('click', () => {
+      offset = 0;
+      render();
+    });
+
+    // ホイール1段(だいたい100)で1件ずつ。タッチパッドの細かい動きは溜めてから動かす
+    let wheelAcc = 0;
+    window.addEventListener(
+      'wheel',
+      (e) => {
+        if (!interactive || adjusting) return;
+        e.preventDefault();
+        closeMenu();
+        wheelAcc += e.deltaY;
+        const steps = Math.trunc(wheelAcc / 60);
+        if (!steps) return;
+        wheelAcc -= steps * 60;
+        // 古い順(新しいのが下)なら上に回すと過去へ、新しい順(新しいのが上)なら下に回すと過去へ
+        const older = style.list.newestFirst ? steps : -steps;
+        const max = Math.max(0, items.length - maxItems());
+        const next = Math.max(0, Math.min(max, offset + older));
+        if (next !== offset) {
+          offset = next;
+          render();
+        }
+      },
+      { passive: false },
+    );
+
+    function toast(text) {
+      toastEl.textContent = text;
+      toastEl.classList.add('visible');
+      clearTimeout(toastEl._t);
+      toastEl._t = setTimeout(() => toastEl.classList.remove('visible'), 3500);
+    }
+
+    function closeMenu() {
+      menuEl.classList.remove('visible');
+    }
+
+    function invoke(cmd, args) {
+      return tauri.core.invoke(cmd, args);
+    }
+
+    async function addLine(key, line, done, already) {
+      try {
+        const added = await invoke('comments_add_setting_line', { key, line });
+        toast(added ? done : already);
+        return added;
+      } catch (err) {
+        toast(String(err));
+        return false;
+      }
+    }
+
+    /** 読み方の単語部分は正規表現なので、記号はそのままの文字として扱うようにする */
+    function escapeRegExp(s) {
+      return s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    }
+
+    let readingWord = '';
+    function openReading(word) {
+      readingWord = word;
+      document.getElementById('readingWord').textContent = word;
+      readingInput.value = '';
+      readingEl.classList.add('visible');
+      readingInput.focus();
+    }
+    function submitReading() {
+      const reading = readingInput.value.trim();
+      readingEl.classList.remove('visible');
+      addLine('readingRules', `${escapeRegExp(readingWord)}/${reading}`, `「${readingWord}」の読み方を登録しました`, '既に同じ読み方が登録されています');
+    }
+    document.getElementById('readingOk').addEventListener('click', submitReading);
+    document.getElementById('readingCancel').addEventListener('click', () => readingEl.classList.remove('visible'));
+    readingInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) submitReading();
+      if (e.key === 'Escape') readingEl.classList.remove('visible');
+    });
+
+    async function copyText(text, done) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast(done);
+      } catch (err) {
+        toast(`コピーできませんでした: ${err}`);
+      }
+    }
+
+    /** この人のコメントを読まない(読まない人に足して、一覧からも消す) */
+    async function banPerson(res, label) {
+      const ok = await addLine('ngPeople', res.person, `${label}のコメントを読まないようにしました`, `${label}は既に読まない人に入っています`);
+      if (ok) {
+        items = items.filter((x) => x.person !== res.person);
+        render();
+      }
+    }
+
+    function openMenu(e, res) {
+      const selected = String(window.getSelection() || '').trim().replace(/\s*\n\s*/g, ' ');
+      const short = selected.slice(0, 20);
+      const bbs = res.source === 'bbs';
+      const id = bbs ? (String(res.date || '').match(/ID:([^\s]+)/) || [])[1] : '';
+      // 掲示板はIDがある時だけ(名前だけだと「名無しさん」を全員読まなくなるので)
+      const person = res.person && (!bbs || id) ? res.person : '';
+      const who = bbs ? `ID:${id}` : res.name ? `「${res.name.slice(0, 16)}」` : '';
+      // nullは区切り線
+      const list = [
+        [selected ? `「${short}」をコピー` : '文字を選んでから右クリックするとコピーできます', selected ? () => copyText(selected, `「${short}」をコピーしました`) : null],
+        ['このコメントの本文をコピー', res.body ? () => copyText(res.body, '本文をコピーしました') : null],
+        [selected ? `「${short}」をGoogleで検索` : '文字を選んでから右クリックすると検索できます', selected ? () => invoke('comments_search_web', { text: selected }).catch((err) => toast(String(err))) : null],
+        null,
+        ['もう一度読み上げる', () => invoke('comments_replay_res', { res }).then(() => toast('もう一度読み上げます'), (err) => toast(String(err)))],
+        [
+          bbs && res.no > 0 && !res.sub ? `ここから読み始める(レス${res.no}〜)` : 'ここから読み始める(1つ目の掲示板のレスだけ)',
+          bbs && res.no > 0 && !res.sub
+            ? () => invoke('comments_read_from', { no: res.no }).then((n) => toast(`レス${res.no}から読み上げ直します(${n}件)`), (err) => toast(String(err)))
+            : null,
+        ],
+        null,
+        [selected ? `「${short}」をNGワードに追加` : '文字を選んでから右クリックするとNGワードに追加できます', selected ? () => addLine('ngWords', selected, `「${short}」をNGワードに追加しました`, `「${short}」は既にNGワードにあります`) : null],
+        [selected ? `「${short}」の読み方を登録…` : '文字を選んでから右クリックすると読み方を登録できます', selected ? () => openReading(selected) : null],
+        bbs ? [res.name ? `名前「${res.name.slice(0, 16)}」をNGワードに追加` : '名前がありません', res.name ? () => addLine('ngWords', res.name, `名前「${res.name.slice(0, 16)}」をNGワードに追加しました`, 'その名前は既にNGワードにあります') : null] : undefined,
+        [person ? `この人(${who})のコメントを読まない` : bbs ? 'IDが無いので、この人だけを読まないことはできません' : 'この人のコメントを読まない', person ? () => banPerson(res, who) : null],
+      ];
+      menuEl.textContent = '';
+      for (const item of list) {
+        if (item === undefined) continue;
+        if (!item) {
+          menuEl.appendChild(document.createElement('hr'));
+          continue;
+        }
+        const [label, action] = item;
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.disabled = !action;
+        if (action) {
+          b.addEventListener('click', () => {
+            closeMenu();
+            action();
+          });
+        }
+        menuEl.appendChild(b);
+      }
+      menuEl.classList.add('visible');
+      // 窓からはみ出さないように位置を決める
+      const { offsetWidth: w, offsetHeight: h } = menuEl;
+      menuEl.style.left = `${Math.max(4, Math.min(e.clientX, window.innerWidth - w - 4))}px`;
+      menuEl.style.top = `${Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4))}px`;
+    }
+
+    if (DESKTOP) {
+      window.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (!interactive || adjusting) return;
+        const el = e.target.closest('.item');
+        if (el && el._res && !el._res.system) openMenu(e, el._res);
+        else closeMenu();
+      });
+      document.addEventListener('mousedown', (e) => {
+        if (!menuEl.contains(e.target)) closeMenu();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeMenu();
+      });
+      window.addEventListener('blur', closeMenu);
     }
   </script>
 </body>

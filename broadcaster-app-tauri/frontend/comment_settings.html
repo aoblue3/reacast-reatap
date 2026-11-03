@@ -915,6 +915,8 @@
     <section data-tab="words">
       <h3>NGワード<span class="help" data-help="1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは、表示も読み上げもしません。"></span></h3>
       <textarea data-key="ngWords"></textarea>
+      <h3>読まない人<span class="help" data-help="1行に1人。この人のコメントは、表示も読み上げもしません。掲示板は「ID:xxxx」、YouTubeは「youtube:名前」、Twitchは「twitch:名前」と書きます。デスクトップのコメント一覧を「ウィンドウにする」にしていると、コメントを右クリックして「この人のコメントを読まない」で足せます。"></span></h3>
+      <textarea data-key="ngPeople" placeholder="ID:abcd1234&#10;youtube:名前"></textarea>
       <h3>読み方<span class="help" data-help="上から順に置き換えます。言葉は「、」で区切ると複数まとめて指定できます。読み方を空欄にすると、その言葉は読みません。SpeechCastMeの「読み方」は、テキストで直接編集に切り替えて、そのまま貼り付けられます(¥はバックスラッシュとして扱います)。"></span></h3>
       <div class="rule-editor" data-rules-for="readingRules" data-target="reading"></div>
       <label class="unit"><input type="checkbox" class="rule-text-toggle" data-rules-for="readingRules" /> テキストで直接編集する(上級者向け: 1行に「単語/読み方」、単語は正規表現)</label>
@@ -1342,6 +1344,7 @@
 
       <h3>コメント一覧</h3>
       <div class="field"><label>デスクトップに表示する</label><div><input type="checkbox" data-key="desktopListEnabled" /><span class="unit">取得中だけ表示します</span></div></div>
+      <div class="field"><label>ウィンドウにする<span class="help" data-help="ONにすると、デスクトップのコメント一覧をマウスで操作できるようになります。マウスのホイールで過去のコメント(最大500件)を見返せて、コメントを右クリックすると、もう一度読み上げる・コピー・NGワードに追加・この人のコメントを読まない、などができます。ONの間は、取得していない時もコメント一覧を出しておきます。一覧の上ではクリックが下の窓に届かなくなるので、ゲームの操作の邪魔になる時はOFFにしてください。"></span></label><div><input type="checkbox" data-key="desktopListInteractive" /><span class="unit">ホイールで過去のコメント、右クリックでNG・読み上げ直しなど</span></div></div>
       <div class="field"><label>表示位置<span class="help" data-help="「マウスで位置を調整する」を押すと、コメント一覧の枠が黄色い点線で表示されます。枠をドラッグして好きな場所に動かし、右下の角で大きさを変えて「完了」を押してください。"></span></label><div class="inline">
         <button data-desktop-adjust="list">マウスで位置を調整する</button>
         <button class="secondary" data-desktop-reset="list">既定の位置に戻す</button>

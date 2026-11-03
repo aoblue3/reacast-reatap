@@ -60,7 +60,7 @@ const POLL_HTML: &str = include_str!("../../frontend/poll.html");
 const AUDIENCE_HTML: &str = include_str!("../../frontend/audience.html");
 
 /// コメント一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
-const COMMENT_HISTORY_MAX: usize = 100;
+const COMMENT_HISTORY_MAX: usize = 500;
 
 /// 設定パネルの「表示関連」設定のうち、Taur本体のオーバーレイとOBS側の両方に
 /// 反映する必要があるもの一式(絵文字の大きさ・透明度・連打で大きくなる仕様の

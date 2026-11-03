@@ -225,6 +225,9 @@ pub struct CommentSettings {
     #[serde(default)]
     pub aa_presets_v2: bool,
     pub ng_words: String,
+    /// 読まない人(1行に1人)。掲示板は「ID:xxxx」、配信サイトは「youtube:名前」「twitch:名前」
+    /// (コメント一覧の窓の右クリック「この人のコメントを読まない」で足す)
+    pub ng_people: String,
     // ---- レス着信音 ----
     /// レスを字幕に出す前に、選んだ音を鳴らす(既定OFF。音のファイルは各自で選ぶ)
     pub chime_enabled: bool,
@@ -320,6 +323,9 @@ pub struct CommentSettings {
     pub desktop_list_width: f64,
     pub desktop_list_height: f64,
     pub desktop_list_rect: Option<DesktopRect>,
+    /// コメント一覧をウィンドウにする(マウスで操作できる。ホイールで過去のコメント、
+    /// 右クリックでNG・読み上げ直しなど)。ONの間は取得していない時も出しておく
+    pub desktop_list_interactive: bool,
     /// デスクトップコメント字幕・コメント一覧をほかの窓より前に出す(OFFなら普通の窓と同じ重なり順)
     pub desktop_topmost: bool,
     /// 見た目の設定(フォント・色・縁など)。Rust側では中身を解釈せず、そのまま
@@ -537,6 +543,7 @@ impl Default for CommentSettings {
             reaction_presets_v11: true,
             aa_presets_v2: true,
             ng_words: String::new(),
+            ng_people: String::new(),
             chime_enabled: false,
             chime_path: String::new(),
             chime_volume: 0.6,
@@ -594,6 +601,7 @@ impl Default for CommentSettings {
             desktop_list_width: 0.27,
             desktop_list_height: 0.6,
             desktop_list_rect: None,
+            desktop_list_interactive: false,
             desktop_topmost: true,
             style: serde_json::json!({}),
         }
@@ -738,7 +746,8 @@ impl Post {
 
     /// NGワードが名前・本文・日時の行(「ID:xxxx」を含む)のどれかに含まれるか
     fn is_ng(&self, c: &Compiled) -> bool {
-        text::contains_ng(&format!("{}\n{}", self.name, self.date), &self.body, &c.ng_words)
+        (!self.system && !c.ng_people.is_empty() && c.ng_people.contains(&self.person()))
+            || text::contains_ng(&format!("{}\n{}", self.name, self.date), &self.body, &c.ng_words)
     }
 
     fn to_json(&self, aa: bool) -> serde_json::Value {
@@ -753,6 +762,9 @@ impl Post {
             "source": self.source,
             "board": self.board,
             "avatar": self.avatar,
+            // 同じ人を見分ける文字列(コメント一覧の窓の「この人のコメントを読まない」用)
+            "person": if self.system { String::new() } else { self.person() },
+            "sub": self.sub,
             "paid": self.paid.as_ref().map(|p| serde_json::json!({
                 "kind": p.kind, "amount": p.amount, "color": p.color, "message": p.message,
             })),
@@ -763,6 +775,7 @@ impl Post {
 /// 設定から作る、処理用にコンパイル済みの値(レスごとに作り直さないため)。
 struct Compiled {
     ng_words: Vec<String>,
+    ng_people: std::collections::HashSet<String>,
     aa_patterns: Vec<String>,
     reading_rules: Vec<text::ReadingRule>,
     reaction_rules: Vec<text::ReactionRule>,
@@ -772,6 +785,7 @@ impl Compiled {
     fn from(s: &CommentSettings) -> Self {
         Self {
             ng_words: text::non_empty_lines(&s.ng_words),
+            ng_people: text::non_empty_lines(&s.ng_people).into_iter().map(|l| l.trim().to_string()).collect(),
             aa_patterns: text::non_empty_lines(&s.aa_patterns),
             reading_rules: text::parse_reading_rules(&s.reading_rules),
             reaction_rules: text::parse_reaction_rules(&s.reaction_rules),
@@ -1007,7 +1021,8 @@ impl CommentEngine {
     pub fn desktop_list_wanted(&self) -> bool {
         let st = self.state.lock().unwrap();
         let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
-        st.settings.desktop_list_enabled && (st.status.running || st.adjusting_list || held)
+        st.settings.desktop_list_enabled
+            && (st.status.running || st.adjusting_list || held || st.settings.desktop_list_interactive)
     }
 
     /// list: falseならデスクトップ字幕、trueならデスクトップのレス一覧
@@ -1594,6 +1609,37 @@ impl CommentEngine {
         if reset || !json.is_empty() {
             let _ = self.app.emit("comments:posts", serde_json::json!({ "reset": reset, "posts": json }));
         }
+    }
+
+    /// コメント一覧の窓の右クリック「もう一度読み上げる」。掲示板のレスは番号で探し、
+    /// 配信サイトのコメントは名前・本文から作り直して、順番待ちの先頭に入れる
+    pub fn replay_res(&self, res: &serde_json::Value) -> Result<(), String> {
+        let s = |k: &str| res.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let no = res.get("no").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let sub = res.get("sub").and_then(|v| v.as_bool()).unwrap_or(false);
+        let source = match s("source").as_str() {
+            "youtube" => "youtube",
+            "twitch" => "twitch",
+            "bbs" => "bbs",
+            _ => return Err("このコメントは読み上げ直せません".into()),
+        };
+        if source == "bbs" && no > 0 && !sub && self.replay(no).is_ok() {
+            return Ok(());
+        }
+        let mut post = Post::chat(source, s("name"), s("body"), self.pick_icon(source), res.get("avatar").and_then(|v| v.as_str()).map(String::from));
+        post.no = no;
+        post.date = s("date");
+        if source == "bbs" {
+            post.board = match s("board").as_str() {
+                "jpnkn" => "jpnkn",
+                "shitaraba" => "shitaraba",
+                _ => "bbs",
+            };
+            post.sub = sub;
+        }
+        self.state.lock().unwrap().queue.push_front(post);
+        self.wake.notify_one();
+        Ok(())
     }
 
     /// 設定画面の「テスト表示」用。順番待ちの先頭に割り込ませる。
@@ -2712,6 +2758,50 @@ pub fn comments_get_thread(engine: Engine) -> serde_json::Value {
 #[tauri::command]
 pub fn comments_replay(engine: Engine, no: u32) -> Result<(), String> {
     engine.replay(no)
+}
+
+/// コメント一覧の窓の右クリック「もう一度読み上げる」
+#[tauri::command]
+pub fn comments_replay_res(engine: Engine, res: serde_json::Value) -> Result<(), String> {
+    engine.replay_res(&res)
+}
+
+/// コメント一覧の窓の右クリックから、NGワード・読み方・読まない人に1行足す(既にあれば足さない)。
+/// 設定画面が開いていれば、そちらにも知らせる。足したらtrue
+#[tauri::command(async)]
+pub fn comments_add_setting_line(
+    app: AppHandle,
+    engine: Engine,
+    store: tauri::State<ConfigStore>,
+    key: String,
+    line: String,
+) -> Result<bool, String> {
+    let line = line.trim().replace(['\r', '\n'], " ");
+    if line.is_empty() {
+        return Ok(false);
+    }
+    let mut s = engine.settings();
+    let target = match key.as_str() {
+        "ngWords" => &mut s.ng_words,
+        "ngPeople" => &mut s.ng_people,
+        "readingRules" => &mut s.reading_rules,
+        _ => return Err("この設定には足せません".into()),
+    };
+    if target.lines().any(|l| l.trim() == line) {
+        return Ok(false);
+    }
+    let cur = target.trim_end_matches('\n').to_string();
+    *target = if cur.is_empty() { line } else { format!("{cur}\n{line}") };
+    save_settings(&store, &s)?;
+    engine.apply_settings(s.clone());
+    let _ = app.emit("comments:settings", &s);
+    Ok(true)
+}
+
+/// コメント一覧の窓がウィンドウ(マウスで操作できる)になっているか
+#[tauri::command]
+pub fn comments_list_interactive(engine: Engine) -> bool {
+    engine.settings().desktop_list_interactive
 }
 
 /// 「スレッドのレス」タブの右クリック「ここから読み始める」

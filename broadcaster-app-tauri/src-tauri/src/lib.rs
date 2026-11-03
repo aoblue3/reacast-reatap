@@ -315,7 +315,12 @@ fn sync_desktop_window(app: &tauri::AppHandle, list: bool) {
         }
         (true, Some(win)) => {
             // 位置の調整中はマウスで掴めるようにし、それ以外はクリックを透過する
-            let _ = win.set_ignore_cursor_events(!adjusting);
+            // (コメント一覧を「ウィンドウにする」がONの時は、いつもマウスで操作できる)
+            let interactive = list && engine.settings().desktop_list_interactive;
+            let _ = win.set_ignore_cursor_events(!adjusting && !interactive);
+            if list {
+                let _ = win.emit("dlist:interactive", interactive);
+            }
             let _ = win.set_always_on_top(engine.settings().desktop_topmost || adjusting);
             if !adjusting {
                 let (pos, size) = subtitle_target_geometry(app, list);
@@ -356,7 +361,8 @@ fn create_subtitle_window(app: &tauri::AppHandle, list: bool) -> tauri::Result<(
     win.set_position(tauri::Position::Physical(pos))?;
     win.set_size(tauri::Size::Physical(size))?;
     let adjusting = app.state::<Arc<comments::CommentEngine>>().adjusting(list);
-    let _ = win.set_ignore_cursor_events(!adjusting);
+    let interactive = list && app.state::<Arc<comments::CommentEngine>>().settings().desktop_list_interactive;
+    let _ = win.set_ignore_cursor_events(!adjusting && !interactive);
     Ok(())
 }
 
@@ -1419,6 +1425,9 @@ pub fn run() {
             comments::comments_apply_hotkeys,
             comments::comments_get_thread,
             comments::comments_replay,
+            comments::comments_replay_res,
+            comments::comments_add_setting_line,
+            comments::comments_list_interactive,
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,
