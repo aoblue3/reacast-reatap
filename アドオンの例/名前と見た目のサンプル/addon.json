@@ -1,0 +1,14 @@
+{
+  "name": "名前と見た目のサンプル",
+  "author": "ReaCast",
+  "version": "1.0.0",
+  "description": "掲示板の「名無しさん」を人ごとにランダムな名前にして、コメント一覧の名前をオレンジ色にします",
+  "css": {
+    "comments": "comments.css"
+  },
+  "names": {
+    "replace": ["名無しさん", "名無し", "名無しさん@お腹いっぱい。", "名無し＠BBSさん"],
+    "sources": ["bbs"],
+    "file": "names.txt"
+  }
+}

@@ -1,0 +1,2 @@
+/* コメント一覧の名前を太く、オレンジにする(設定画面の色より優先させるので !important) */
+.item .name { color: #ff9f40 !important; font-weight: bold !important; }
