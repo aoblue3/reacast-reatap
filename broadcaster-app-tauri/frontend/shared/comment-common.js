@@ -172,6 +172,8 @@
       holdMs: 6000,
       // 同時に出しておく段落の数(古いものから消える)
       maxBlocks: 3,
+      // 消える時: true=フェードアウト / false=すぐ消す
+      fadeOut: true,
       customCss: '',
     },
   };

@@ -37,6 +37,8 @@ function setPath(obj, path, value) {
 
 function readField(el) {
   if (el.type === 'checkbox') return el.checked;
+  // ON/OFFを選択肢で選ぶ項目(value="true"/"false"。保存していない時はtrue扱い)
+  if (el.hasAttribute('data-bool')) return el.value !== 'false';
   if (el.hasAttribute('data-int')) return Number(el.value) | 0;
   if (el.type === 'number' || el.type === 'range') {
     const n = Number(el.value);
@@ -48,6 +50,7 @@ function readField(el) {
 
 function writeField(el, value) {
   if (el.type === 'checkbox') el.checked = !!value;
+  else if (el.hasAttribute('data-bool')) el.value = value === false ? 'false' : 'true';
   else if (el.type === 'number' || el.type === 'range') {
     const n = Number(value);
     el.value = Number.isFinite(n) ? String(el.hasAttribute('data-percent') ? Math.round(n * 1000) / 10 : n) : '';
@@ -1051,6 +1054,20 @@ const LIST_PRESETS = {
       ".item::after { content: '✦'; position: absolute; right: 8px; top: 4px; color: #b28dff; font-size: 0.75em; }",
     ].join('\n'),
   },
+  // 病みかわ: パステルピンクの札に黒い太枠と黒い影、内側にピンクの縫い目。角にばんそうこう、
+  // 番号の前に十字。新しいレスはぽんっと出て、ふるふるっと震える
+  yami: {
+    fontFamily: 'Hachi Maru Pop',
+    headFontSize: 13, headBold: false, numberColor: '#9b6bd6', nameColor: '#e0457b', dateColor: '#a7879f',
+    bodyColor: '#3a1f3d', bodyBold: false, outlineWidth: 0, outlineColor: '#ffffff',
+    itemBgColor: '#ffdbe9', itemBgOpacity: 96, itemPadding: 10, itemRadius: 14,
+    customCss: [
+      '.item { border: 2px solid #3a1f3d; box-shadow: 3px 3px 0 #3a1f3d; outline: 2px dashed #ff9cc2; outline-offset: -6px; margin-right: 4px; margin-bottom: calc(var(--item-gap, 10px) + 4px); animation: yami-in 700ms ease-out; }',
+      ".head .no::before { content: '✚ '; color: #ff8fb8; }",
+      ".item::after { content: ''; position: absolute; right: 8px; top: 3px; width: 1.7em; height: 0.56em; transform: rotate(28deg); background: linear-gradient(90deg, #ffc9d6 30%, transparent 30%, transparent 70%, #ffc9d6 70%), radial-gradient(circle, #e9a0b4 28%, transparent 32%) center / 0.2em 0.2em, #fff0f4; border: 1px solid #e9a0b4; border-radius: 0.3em; }",
+      '@keyframes yami-in { 0% { opacity: 0; transform: scale(0.6) rotate(4deg); } 35% { opacity: 1; transform: scale(1.04) rotate(-2deg); } 50% { transform: translateX(-3px) rotate(1deg); } 62% { transform: translateX(3px) rotate(-1deg); } 74% { transform: translateX(-1px); } 100% { transform: none; } }',
+    ].join('\n'),
+  },
   // 羽ペン: 古い紙に羽ペンで書いたような。英字は筆記体(Dancing Script)、日本語はペン字風(Zen Kurenaido)。
   // 紙の色の札に、うすい罫線とセピア色のインク
   quill: {
@@ -1232,6 +1249,22 @@ const SUBTITLE_PRESETS = {
       '#box.visible, #box.appear-aurora-rise.visible { animation: aurora-rise 900ms cubic-bezier(.2, .8, .2, 1), aurora-flow 8s linear infinite; }',
       '.res-head { background: linear-gradient(90deg, #7ce7ff, #c79bff); -webkit-background-clip: text; background-clip: text; color: transparent; }',
       '@keyframes aurora-flow { from { background-position: 0 0, 0% 0; } to { background-position: 0 0, 300% 0; } }',
+    ].join('\n'),
+  },
+  // 病みかわ: パステルピンクに黒い太枠と黒い影、内側にピンクの縫い目、角にばんそうこう。
+  // ぽんっと出て、ふるふるっと震えたあと、下の縁から黒いしずくがとろっと垂れる
+  yami: {
+    fontFamily: 'Hachi Maru Pop', bold: false, color: '#3a1f3d', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffdbe9', bgOpacity: 97, padding: 12, radius: 18, appear: 'yami-pop', translationColor: '#9b6bd6',
+    customCss: [
+      '#box { margin: 0.5em 0.6em 1em 0.2em; border: 3px solid #3a1f3d; box-shadow: 5px 5px 0 #3a1f3d; outline: 2px dashed #ff9cc2; outline-offset: -8px; }',
+      ".res-head { color: #e0457b; }",
+      ".res-head::before { content: '✚ '; color: #ff8fb8; }",
+      "#box::before { content: ''; position: absolute; right: -0.55em; top: -0.3em; width: 1.9em; height: 0.62em; transform: rotate(30deg); background: linear-gradient(90deg, #ffc9d6 30%, transparent 30%, transparent 70%, #ffc9d6 70%), radial-gradient(circle, #e9a0b4 28%, transparent 32%) center / 0.2em 0.2em, #fff0f4; border: 1px solid #e9a0b4; border-radius: 0.3em; }",
+      // しずく(1つの形を box-shadow で増やす。長さは影の位置でずらす)
+      "#box::after { content: ''; position: absolute; left: 16%; top: 100%; width: 0.34em; height: 0.8em; margin-top: -2px; background: #3a1f3d; border-radius: 0 0 0.17em 0.17em / 0 0 0.3em 0.3em; box-shadow: 2.2em -0.32em 0 #3a1f3d, 5.6em -0.14em 0 -0.04em #3a1f3d; transform-origin: top; }",
+      '#box.visible::after { animation: yami-drip 1400ms ease-in 500ms both; }',
+      '@keyframes yami-drip { from { transform: scaleY(0); } to { transform: scaleY(1); } }',
     ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る
@@ -1527,6 +1560,258 @@ document.getElementById('presetImportOk').addEventListener('click', () => {
   presetImportDialog.classList.remove('visible');
   presetMsg(data.group, '読み込みました');
 });
+
+// ---- 設定の共有コード(全部・タブごと) ----
+// 中身は {app:'ReaCast', kind:'settings', version:1, scope:'all'|タブ, values:{設定の場所: 値}}。
+// 共有コードはこのJSONをUTF-8のbase64にして、先頭に SETTINGS_CODE_PREFIX を付けたもの。
+// URL・名前・PCごとの場所(ソフト・音・アイコンのフォルダ、マイク、出力先)は入れない
+const SETTINGS_CODE_PREFIX = 'ReaCastSettings1:';
+const SHARE_EXCLUDE = new Set([
+  'threadUrl', 'subThreadUrl', 'youtubeTarget', 'twitchChannel', 'postName', 'postMail', 'createName', 'createMail',
+  'commandPath', 'chimePath', 'iconFolderBbs', 'iconFolderYoutube', 'iconFolderTwitch', 'ttsDevice', 'ttsExePath',
+  'ttsExePaths', 'voiceMic', 'peercastPort', 'desktopMonitorId', 'desktopRect', 'desktopListRect',
+]);
+const SHARE_SKIP_TABS = ['easy', 'thread', 'misc', 'addons'];
+
+/** そのタブで共有する設定の場所の一覧。見た目のタブは見た目を丸ごと(プリセットの手直しも) */
+function tabShareKeys(section) {
+  const tab = section.dataset.tab;
+  const keys = new Set();
+  for (const el of section.querySelectorAll('[data-key], [data-hotkey]')) {
+    if (el.closest('section') !== section) continue;
+    const k = el.dataset.key || el.dataset.hotkey;
+    keys.add(k.startsWith('ttsEngineParams.') ? 'ttsEngineParams' : k);
+  }
+  for (const k of TAB_RESET_EXTRA[tab] || []) keys.add(k);
+  const part = TAB_RESET_STYLE[tab];
+  if (part) {
+    for (const k of Array.from(keys)) if (k.startsWith(`style.${part}.`)) keys.delete(k);
+    keys.add(`style.${part}`);
+    if (PRESET_GROUPS[part]) keys.add(`style.presets.${part}`);
+  }
+  for (const k of SHARE_EXCLUDE) keys.delete(k);
+  return keys;
+}
+
+function shareSections() {
+  return Array.from(document.querySelectorAll('main > section[data-tab]')).filter((s) => !SHARE_SKIP_TABS.includes(s.dataset.tab));
+}
+
+function shareKeys(scope) {
+  if (scope !== 'all') {
+    const section = document.querySelector(`main > section[data-tab="${scope}"]`);
+    return section && !SHARE_SKIP_TABS.includes(scope) ? tabShareKeys(section) : new Set();
+  }
+  const keys = new Set();
+  for (const s of shareSections()) for (const k of tabShareKeys(s)) keys.add(k);
+  // 見た目は全部(「デスクトップに表示」タブにある見た目の欄も含めて)
+  for (const k of Array.from(keys)) if (k.startsWith('style.')) keys.delete(k);
+  keys.add('style');
+  return keys;
+}
+
+function tabName(tab) {
+  if (tab === 'all') return '全部の設定';
+  const b = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+  return `「${b ? b.textContent.trim() : tab}」タブ`;
+}
+
+function settingsShareCode(scope) {
+  const values = {};
+  for (const k of shareKeys(scope)) {
+    const v = getPath(settings, k);
+    if (v !== undefined) values[k] = v;
+  }
+  // まだ一度も変えていない見た目の項目も同じになるように、既定値で埋めて渡す
+  if (values.style) values.style = { ...C.mergeStyle(values.style), presets: values.style.presets };
+  for (const [k, v] of Object.entries(values)) {
+    const m = /^style\.(\w+)$/.exec(k);
+    if (m && C.DEFAULT_STYLE[m[1]]) values[k] = C.mergeStyle({ [m[1]]: v })[m[1]];
+  }
+  return SETTINGS_CODE_PREFIX + toBase64(JSON.stringify({ app: 'ReaCast', kind: 'settings', version: 1, scope, values }));
+}
+
+/** 型が今の設定と同じ値だけを受け取る(壊れた共有コードで画面がおかしくならないように) */
+function sameShape(v, ref) {
+  if (ref === undefined || ref === null) {
+    return v === null || ['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'object' && JSON.stringify(v).length < 200000);
+  }
+  if (Array.isArray(ref)) return Array.isArray(v);
+  if (typeof v !== typeof ref) return false;
+  if (typeof v === 'string') return v.length <= 50000;
+  if (typeof v === 'number') return Number.isFinite(v);
+  return true;
+}
+
+function cleanStylePart(part, v) {
+  const defaults = C.DEFAULT_STYLE[part];
+  const out = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [k, x] of Object.entries(v)) if (k in defaults && sameShape(x, defaults[k])) out[k] = x;
+  return out;
+}
+
+/** 共有コードを確かめて {scope, values} にする */
+function parseSettingsShare(text) {
+  let raw = String(text || '').trim();
+  if (!raw) throw new Error('共有コードを貼り付けてください');
+  let obj;
+  try {
+    if (raw.startsWith(SETTINGS_CODE_PREFIX)) raw = fromBase64(raw.slice(SETTINGS_CODE_PREFIX.length).replace(/\s+/g, ''));
+    obj = JSON.parse(raw);
+  } catch {
+    throw new Error('共有コードの形式が正しくありません(途中で切れていないか確かめてください)');
+  }
+  if (!obj || obj.app !== 'ReaCast' || obj.kind !== 'settings' || typeof obj.scope !== 'string' || !obj.values || typeof obj.values !== 'object') {
+    throw new Error('ReaCastの設定の共有コードではありません');
+  }
+  const allowed = shareKeys(obj.scope);
+  if (!allowed.size) throw new Error('このバージョンのReaCastには無いタブの共有コードです');
+  const values = {};
+  for (const [k, v] of Object.entries(obj.values)) {
+    if (!allowed.has(k)) continue;
+    if (k === 'style') {
+      if (!v || typeof v !== 'object') continue;
+      const style = {};
+      for (const part of Object.keys(C.DEFAULT_STYLE)) style[part] = cleanStylePart(part, v[part]);
+      if (v.presets && typeof v.presets === 'object' && JSON.stringify(v.presets).length < 200000) style.presets = v.presets;
+      values.style = style;
+      continue;
+    }
+    const m = /^style\.(\w+)$/.exec(k);
+    if (m && C.DEFAULT_STYLE[m[1]]) {
+      values[k] = cleanStylePart(m[1], v);
+      continue;
+    }
+    if (k.startsWith('style.presets.')) {
+      if (v && typeof v === 'object' && JSON.stringify(v).length < 200000) values[k] = v;
+      continue;
+    }
+    if (sameShape(v, getPath(settings, k))) values[k] = v;
+  }
+  return { scope: obj.scope, values };
+}
+
+function applySettingsShare(data) {
+  const copy = (x) => JSON.parse(JSON.stringify(x));
+  for (const [k, v] of Object.entries(data.values)) {
+    if (k === 'style') {
+      for (const [part, x] of Object.entries(v)) {
+        if (part === 'presets') settings.style.presets = copy(x);
+        else settings.style[part] = { ...C.DEFAULT_STYLE[part], ...copy(x) };
+      }
+    } else if (/^style\.\w+$/.test(k) && C.DEFAULT_STYLE[k.slice(6)]) {
+      settings.style[k.slice(6)] = { ...C.DEFAULT_STYLE[k.slice(6)], ...copy(v) };
+    } else {
+      setPath(settings, k, copy(v));
+    }
+  }
+  // 見た目のプリセットの選択肢も、読み込んだものに合わせる
+  for (const group of Object.keys(PRESET_GROUPS)) {
+    const st = settings.style.presets && settings.style.presets[group];
+    for (const sel of document.querySelectorAll(`[data-preset-group="${group}"]`)) if (st && st.current) sel.value = st.current;
+  }
+  renderFields();
+  scheduleSave();
+  if (Object.keys(data.values).some((k) => k.startsWith('hotkey'))) setTimeout(() => applyHotkeys(), 400);
+}
+
+async function copySettingsShare(scope, msgEl) {
+  try {
+    await navigator.clipboard.writeText(settingsShareCode(scope));
+    msgEl.textContent = `${tabName(scope)}の共有コードをコピーしました(URL・名前・PCの中の場所は入っていません)`;
+  } catch {
+    msgEl.textContent = 'コピーできませんでした';
+  }
+}
+
+const settingsImportDialog = document.getElementById('settingsImportDialog');
+const settingsImportText = document.getElementById('settingsImportText');
+const settingsImportInfo = document.getElementById('settingsImportInfo');
+let settingsImportMsgEl = null;
+
+function previewSettingsImport() {
+  settingsImportInfo.style.color = '';
+  const text = settingsImportText.value.trim();
+  if (!text) {
+    settingsImportInfo.textContent = '';
+    return null;
+  }
+  try {
+    // 見た目の共有コード(プリセットの横のボタンで作ったもの)も、ここで読み込めるようにする
+    if (text.startsWith(PRESET_CODE_PREFIX)) {
+      const p = parsePresetShare(text);
+      settingsImportInfo.textContent = `${PRESET_GROUP_NAMES[p.group]}の見た目の共有コードです(元のプリセット: ${presetLabel(p.group, p.base)})`;
+      return { preset: p };
+    }
+    const data = parseSettingsShare(text);
+    const notes = [`${tabName(data.scope)}の共有コードです(${Object.keys(data.values).length}項目)`];
+    notes.push(
+      data.scope === 'all'
+        ? '今の設定が、読み込んだ設定に置き換わります(URL・名前・PCの中の場所はそのまま)'
+        : `${tabName(data.scope)}の設定が、読み込んだ設定に置き換わります(ほかのタブはそのまま)`,
+    );
+    const json = JSON.stringify(data.values);
+    // カスタムCSSが外のサーバーの画像・フォントを読み込むと、OBSで開いている間そのサーバーに
+    // こちらのIPアドレスが伝わる。知らない人の共有コードの時に気づけるようにする
+    if (/url\s*\(\s*['"]?\s*(https?:)?\/\/|@import/i.test(json)) notes.push('※ カスタムCSSが外のサイトの画像・フォントを読み込みます(信頼できる人の共有コードか確かめてください)');
+    if ('commandArgs' in data.values || 'ttsUrl' in data.values) notes.push('※ 読み上げソフトに渡す引数・URLも置き換わります');
+    settingsImportInfo.textContent = notes.join('\n');
+    return data;
+  } catch (e) {
+    settingsImportInfo.textContent = e.message;
+    settingsImportInfo.style.color = 'var(--c-ff8a8a)';
+    return null;
+  }
+}
+
+function openSettingsImport(msgEl) {
+  settingsImportMsgEl = msgEl;
+  settingsImportText.value = '';
+  settingsImportInfo.textContent = '';
+  settingsImportDialog.classList.add('visible');
+  settingsImportText.focus();
+}
+settingsImportText.addEventListener('input', previewSettingsImport);
+document.getElementById('settingsImportCancel').addEventListener('click', () => settingsImportDialog.classList.remove('visible'));
+document.getElementById('settingsImportOk').addEventListener('click', () => {
+  const data = previewSettingsImport();
+  if (!data) {
+    if (!settingsImportText.value.trim()) settingsImportInfo.textContent = '共有コードを貼り付けてください';
+    return;
+  }
+  if (data.preset) applyPresetShare(data.preset);
+  else applySettingsShare(data);
+  settingsImportDialog.classList.remove('visible');
+  if (settingsImportMsgEl) settingsImportMsgEl.textContent = '読み込みました';
+});
+
+function shareButtons(scope, msgEl) {
+  const copy = document.createElement('button');
+  copy.className = 'secondary';
+  copy.textContent = scope === 'all' ? '全部の設定の共有コードをコピー' : 'このタブの共有コードをコピー';
+  copy.addEventListener('click', () => copySettingsShare(scope, msgEl));
+  const load = document.createElement('button');
+  load.className = 'secondary';
+  load.textContent = '共有コードを読み込む';
+  load.addEventListener('click', () => openSettingsImport(msgEl));
+  return [copy, load];
+}
+
+for (const section of shareSections()) {
+  const row = section.querySelector(':scope > .tab-reset');
+  if (!row) continue;
+  const share = document.createElement('div');
+  share.className = 'inline tab-share';
+  const msg = document.createElement('span');
+  msg.className = 'unit';
+  share.append(...shareButtons(section.dataset.tab, msg), msg);
+  row.before(share);
+}
+{
+  const msg = document.getElementById('shareAllMsg');
+  document.getElementById('shareAllButtons').prepend(...shareButtons('all', msg));
+}
 
 // ---- デスクトップ字幕・デスクトップのレス一覧の位置調整 ----
 // target: 'subtitle'(コメント字幕) / 'list'(コメント一覧)

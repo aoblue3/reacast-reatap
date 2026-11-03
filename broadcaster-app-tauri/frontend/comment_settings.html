@@ -244,6 +244,8 @@
   details.adv > summary { cursor: pointer; color: var(--c-a9acb8); margin-bottom: 8px; user-select: none; }
   details.adv > summary:hover { color: var(--c-e6e6ea); }
   /* タブごとの「このタブの設定を最初の状態に戻す」(各タブの一番下) */
+  .tab-share { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
+  .tab-share + .tab-reset { margin-top: 8px; padding-top: 0; border-top: none; }
   .tab-reset { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--c-33353d); }
   details.adv[open] > summary { margin-bottom: 10px; }
   h3 .help, .lead .help { font-weight: normal; }
@@ -941,6 +943,7 @@
           <option value="retro">レトロ(ファミコン風、1文字ずつ)</option>
           <option value="ff">FF風(青いウィンドウがカクカク開く)</option>
           <option value="cute">ゆめかわ(パステルピンクがぷるんと弾む)</option>
+          <option value="yami">病みかわ(ピンクと黒、ばんそうこう、ふるふる震えて垂れる)</option>
           <option value="quill">羽ペン(紙に羽ペンで1文字ずつ書く)</option>
           <option value="dq">DQ風(ドラクエのウィンドウに1文字ずつ)</option>
           <option value="oc">OC風(黒い吹き出しが右からバチッと)</option>
@@ -963,6 +966,7 @@
         <option value="p5-slash">斜めに切り込む(P5風)</option>
         <option value="ff-open">ウィンドウがカクカク開く(FF風)</option>
         <option value="cute-bounce">ぷるんと弾む(ゆめかわ)</option>
+        <option value="yami-pop">ぽんっと出て、ふるふる震える(病みかわ)</option>
         <option value="quill-write">紙が出て、羽ペンが1文字ずつ書く(羽ペン)</option>
         <option value="oc-bolt">右からバチッと飛び込む(OC風)</option>
         <option value="aurora-rise">ぼかしからふわっと浮かぶ(オーロラ)</option>
@@ -1176,6 +1180,7 @@
         <div class="field"><label>縦の位置</label><div><select data-key="style.voice.valign"><option value="bottom">下</option><option value="top">上</option></select></div></div>
         <div class="field"><label>同時に出す段落の数<span class="help" data-help="話し終わった1文(+翻訳)を1段落として、最近のものをこの数だけ積み上げて残します。"></span></label><div><input type="number" min="1" max="5" data-key="style.voice.maxBlocks" /></div></div>
         <div class="field"><label>最低表示時間<span class="help" data-help="長い文は、翻訳を読み切れるように自動でもっと長く出します。"></span></label><div><input type="number" min="1000" step="500" data-key="style.voice.holdMs" /><span class="unit">ミリ秒</span></div></div>
+        <div class="field"><label>消え方</label><div><select data-key="style.voice.fadeOut" data-bool><option value="true">フェードアウト</option><option value="false">すぐ消す</option></select></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.voice.customCss" placeholder=".translation { font-style: italic; }"></textarea>
       </details>
@@ -1193,6 +1198,7 @@
           <option value="retro">レトロ(ファミコン風のドット文字)</option>
           <option value="ff">FF風(青いグラデーションのウィンドウ)</option>
           <option value="cute">ゆめかわ(パステルピンクのふんわり)</option>
+          <option value="yami">病みかわ(ピンクと黒、ばんそうこう)</option>
           <option value="quill">羽ペン(紙に手書きの筆記体)</option>
           <option value="dq">DQ風(ドラクエのウィンドウ)</option>
           <option value="oc">OC風(右寄せの黒い吹き出し、稲妻のしっぽ)</option>
@@ -1395,10 +1401,25 @@
 
     <!-- ================= テスト・リセット ================= -->
     <section data-tab="misc">
+      <h3>設定の共有<span class="help" data-help="今の設定を共有コード(文字)にして、ほかの配信者に渡したり、別のPCで同じ設定にしたりできます。もらった共有コードは「共有コードを読み込む」に貼り付けると、同じ設定になります。掲示板・YouTube・TwitchのURL、書き込む名前、PCの中の場所(読み上げソフト・音・アイコンのフォルダ)、マイク・音の出力先は入りません。タブごとの共有コードは、各タブの一番下で作れます。"></span></h3>
+      <div class="inline" id="shareAllButtons"><span class="unit" id="shareAllMsg"></span></div>
       <h3>設定を最初の状態に戻す</h3>
       <div class="inline"><button class="secondary" id="resetAllBtn">全部の設定を最初の状態に戻す</button><span class="help" data-help="コメント読み上げ・字幕のすべての設定(取得先・読み上げ・字幕・見た目・プリセットの手直し・ホットキーなど)を、初めて使った時の状態に戻します。元に戻せないので、残しておきたい時は先にコントロールパネルの「設定を書き出す」で保存してください。"></span><span class="unit" id="resetAllMsg"></span></div>
     </section>
   </main>
+  </div>
+
+  <div id="settingsImportDialog" class="modal">
+    <div>
+      <div style="margin-bottom: 6px; font-weight: bold">設定の共有コードを読み込む</div>
+      <div class="unit" style="margin: 0 0 6px">もらった共有コード(ReaCastSettings1: で始まる文字)を貼り付けてください。見た目の共有コード(ReaCastPreset1:)も読み込めます。</div>
+      <textarea id="settingsImportText" style="min-height: 110px; font-family: Consolas, monospace; font-size: 12px" placeholder="ReaCastSettings1:..."></textarea>
+      <div id="settingsImportInfo" class="hint" style="min-height: 1.4em; white-space: pre-wrap"></div>
+      <div class="inline" style="justify-content: flex-end; margin-top: 6px">
+        <button class="secondary" id="settingsImportCancel">キャンセル</button>
+        <button id="settingsImportOk">読み込む</button>
+      </div>
+    </div>
   </div>
 
   <div id="presetImportDialog" class="modal">
