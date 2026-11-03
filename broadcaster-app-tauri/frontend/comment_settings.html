@@ -421,8 +421,8 @@
           <input type="text" data-key="threadUrl" placeholder="https://bbs.jpnkn.com/test/read.cgi/…" />
           <div class="simple-hint">コメントが書き込まれる掲示板のページ(スレッド)のURL。板のURLを入れると、その板の一番新しいスレッドを読みます。</div>
           <label class="simple-label">YouTube</label>
-          <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/@…" />
-          <div class="simple-hint">配信のページか、チャンネルのURL(@から始まる名前でも大丈夫です)。</div>
+          <input type="text" data-key="youtubeTarget" placeholder="例: https://www.youtube.com/@チャンネルのハンドル" />
+          <div class="simple-hint"><b>おすすめ: 自分のチャンネルのURL</b>(https://www.youtube.com/@… の形)。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時のアドレスです。貼っておけば、公開の配信が始まると自動で読みます(配信のたびに貼り直さなくて大丈夫です)。<br>限定公開の配信は、配信のページのURL(watch?v=…)を貼ってください。</div>
           <label class="simple-label">Twitch</label>
           <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
           <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
@@ -566,8 +566,8 @@
         <input type="text" data-key="threadUrl" placeholder="https://bbs.jpnkn.com/test/read.cgi/…" />
         <div class="simple-hint">コメントが書き込まれる掲示板のページ(スレッド)のURL。板のURLを入れると、その板の一番新しいスレッドを読みます。</div>
         <label class="simple-label">YouTube</label>
-        <input type="text" data-key="youtubeTarget" placeholder="https://www.youtube.com/@…" />
-        <div class="simple-hint">配信のページか、チャンネルのURL(@から始まる名前でも大丈夫です)。</div>
+        <input type="text" data-key="youtubeTarget" placeholder="例: https://www.youtube.com/@チャンネルのハンドル" />
+        <div class="simple-hint"><b>おすすめ: 自分のチャンネルのURL</b>(https://www.youtube.com/@… の形)。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時のアドレスです。貼っておけば、公開の配信が始まると自動で読みます(配信のたびに貼り直さなくて大丈夫です)。<br>限定公開の配信は、配信のページのURL(watch?v=…)を貼ってください。</div>
         <label class="simple-label">Twitch</label>
         <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
         <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
@@ -700,7 +700,7 @@
       <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにしてください。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
       <div class="field"><label>掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
       <div class="field"><label>2つ目の掲示板<span class="help" data-help="jpnknとしたらばのように、掲示板を2つ同時に読みたい時に入れます(空欄なら使いません)。レスは1つ目の掲示板と同じ順番待ちに並びます。2つ目の掲示板は読むだけで、「スレッドのレス」・書き込み・次スレ建て・落ちた時に続きから読む、は1つ目の掲示板だけです。1000を超えたら次スレへ移るのは、2つ目も同じです。"></span></label><div><input type="text" class="wide" data-key="subThreadUrl" placeholder="空欄なら使いません 例: https://jbbs.shitaraba.net/bbs/read.cgi/カテゴリ/板の番号/スレッド番号/" /></div></div>
-      <div class="field"><label>YouTube Live</label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="配信のURL、またはチャンネルのURL・@ハンドル" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
+      <div class="field"><label>YouTube Live<span class="help" data-help="おすすめは、自分のチャンネルのURL(https://www.youtube.com/@チャンネルのハンドル)です。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時の、アドレス欄のURLです。これなら配信のたびに貼り直さなくても、公開の配信が始まると自動で読み始めます。限定公開の配信は、配信のページのURL(https://www.youtube.com/watch?v=…)か、YouTube Studioの配信の画面のURLを貼ってください。@から始まるハンドルだけ(例: @チャンネルのハンドル)でも大丈夫です。"></span></label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="おすすめ: 自分のチャンネルのURL(https://www.youtube.com/@…)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
       <div class="field"><label>Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
       <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
 

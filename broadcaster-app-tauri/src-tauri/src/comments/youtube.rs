@@ -59,6 +59,8 @@ pub fn parse_target(input: &str) -> Result<Target, String> {
     let segs: Vec<&str> = url.path_segments().map(|x| x.filter(|p| !p.is_empty()).collect()).unwrap_or_default();
     match segs.as_slice() {
         ["live" | "shorts" | "embed", id, ..] if vid.is_match(id) => Ok(Target::Video(id.to_string())),
+        // YouTube Studioの配信の画面(studio.youtube.com/video/動画ID/livestreaming)
+        ["video", id, ..] if vid.is_match(id) => Ok(Target::Video(id.to_string())),
         [first, ..] if first.starts_with('@') => Ok(Target::Channel(format!("https://www.youtube.com/{first}"))),
         ["channel" | "c" | "user", name, ..] => {
             Ok(Target::Channel(format!("https://www.youtube.com/{}/{name}", segs[0])))
@@ -385,6 +387,15 @@ mod tests {
             parse_target("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa").unwrap(),
             Target::Channel("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa".into())
         );
+        assert_eq!(
+            parse_target("https://studio.youtube.com/video/dQw4w9WgXcQ/livestreaming").unwrap(),
+            Target::Video("dQw4w9WgXcQ".into())
+        );
+        assert_eq!(
+            parse_target("https://studio.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/livestreaming").unwrap(),
+            Target::Channel("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa".into())
+        );
+        assert_eq!(parse_target("https://www.youtube.com/live_chat?is_popout=1&v=dQw4w9WgXcQ").unwrap(), Target::Video("dQw4w9WgXcQ".into()));
         assert!(parse_target("https://example.com/x").is_err());
         assert!(parse_target("").is_err());
     }
