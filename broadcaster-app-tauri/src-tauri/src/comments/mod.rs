@@ -2037,7 +2037,12 @@ impl CommentEngine {
                         created = true;
                         warned = true;
                         let msg = match source::list_threads(&client, &board).await {
-                            Ok(list) => match source::pick_next(&list, &reader.thread.key, &settings.next_thread_keyword) {
+                            Ok(list) => match source::pick_next(
+                                &list,
+                                &reader.thread.key,
+                                reader.title.as_deref().unwrap_or(""),
+                                &settings.next_thread_keyword,
+                            ) {
                                 Some(t) => format!("次スレ「{}」は既に建っています", t.title),
                                 None => match self.next_thread_draft() {
                                     Ok((title, body)) => match source::create_thread(
@@ -2078,7 +2083,12 @@ impl CommentEngine {
                     if settings.auto_next_thread && reader.last_no >= 1000 {
                         match source::list_threads(&client, &board).await {
                             Ok(list) => {
-                                if let Some(next) = source::pick_next(&list, &reader.thread.key, &settings.next_thread_keyword) {
+                                if let Some(next) = source::pick_next(
+                                    &list,
+                                    &reader.thread.key,
+                                    reader.title.as_deref().unwrap_or(""),
+                                    &settings.next_thread_keyword,
+                                ) {
                                     // 次スレのレスは1番から全部新着として扱う
                                     reader = ThreadReader::new(ThreadRef { board: board.clone(), key: next.key.clone() });
                                     seen = SeenPosts::default();

@@ -319,6 +319,34 @@ fn parse_subject(text: &str, shitaraba: bool) -> Vec<ThreadInfo> {
     out
 }
 
+/// タイトルの中の数字(全角も)を、出てくる順に全部
+fn numbers_in(title: &str) -> Vec<u128> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for c in title.chars().chain(std::iter::once(' ')) {
+        match c {
+            '0'..='9' => cur.push(c),
+            '０'..='９' => cur.push(char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap()),
+            _ => {
+                if let Ok(n) = cur.parse() {
+                    out.push(n);
+                }
+                cur.clear();
+            }
+        }
+    }
+    out
+}
+
+/// titleが、prevの続きのスレッドに見えるか。prevの最後の数字に1を足した数字がある、または
+/// 数字を除くとprevと同じタイトル。同じ板に別の用途のスレッド(要望スレ・雑談スレなど)が
+/// 後から立っていても、次スレと間違えないようにする
+fn follows(prev: &str, title: &str) -> bool {
+    let strip = |s: &str| s.chars().filter(|c| !c.is_ascii_digit() && !('０'..='９').contains(c)).collect::<String>();
+    let next = numbers_in(prev).last().map(|n| n + 1);
+    next.is_some_and(|n| numbers_in(title).contains(&n)) || strip(prev).trim() == strip(title).trim()
+}
+
 /// 板の中から「今使っている(現行の)スレッド」を選ぶ(板のURLが入力された時用)。
 ///
 /// 埋まった(1000に達した)スレッドのうち一番新しいものの、すぐ次に立った
@@ -326,7 +354,8 @@ fn parse_subject(text: &str, shitaraba: bool) -> Vec<ThreadInfo> {
 /// スレッド」を選んでいたため、現行スレが終わる前に次スレを建てておくと、
 /// 開始・再起動した時に現行スレではなく建てたばかりの次スレを読んでしまっていた。
 /// keywordが空でなければタイトルにそれを含むスレッドだけで判断する(合うものが
-/// 無ければ条件なしで選び直す)。
+/// 無ければ条件なしで選び直す)。埋まったスレッドの続きに見えるスレッド(follows)があれば、
+/// その中から選ぶ。
 pub fn pick_current<'a>(threads: &'a [ThreadInfo], keyword: &str) -> Option<&'a ThreadInfo> {
     let key = |t: &ThreadInfo| t.key.parse::<u64>().unwrap_or(0);
     let choose = |use_keyword: bool| {
@@ -334,25 +363,36 @@ pub fn pick_current<'a>(threads: &'a [ThreadInfo], keyword: &str) -> Option<&'a 
             .iter()
             .filter(|t| !use_keyword || keyword.is_empty() || t.title.contains(keyword))
             .collect();
-        let last_full = pool.iter().filter(|t| t.count >= 1000).map(|t| key(t)).max().unwrap_or(0);
-        pool.into_iter()
-            .filter(|t| t.count < 1000 && key(t) > last_full)
-            .min_by_key(|t| key(t))
+        let last_full = pool.iter().filter(|t| t.count >= 1000).max_by_key(|t| key(t)).copied();
+        let after: Vec<&ThreadInfo> = pool
+            .iter()
+            .copied()
+            .filter(|t| t.count < 1000 && key(t) > last_full.map_or(0, key))
+            .collect();
+        let continued = after.iter().copied().filter(|t| last_full.is_some_and(|p| follows(&p.title, &t.title)));
+        continued.min_by_key(|t| key(t)).or_else(|| after.iter().copied().min_by_key(|t| key(t)))
     };
     choose(true).or_else(|| choose(false))
 }
 
 /// 今のスレッドより後に立った、まだ埋まっていないスレッドのうち一番古いもの
 /// (=次スレ)を選ぶ。keywordが空でなければ、タイトルにそれを含むものに限る。
-pub fn pick_next(threads: &[ThreadInfo], current_key: &str, keyword: &str) -> Option<ThreadInfo> {
+/// keywordが空の時は、今のタイトル(current_title)の続きに見えるもの(follows)に限る。
+/// 今のタイトルに数字が無い時だけは、続きに見えるものが無ければ条件なしで選ぶ。
+pub fn pick_next(threads: &[ThreadInfo], current_key: &str, current_title: &str, keyword: &str) -> Option<ThreadInfo> {
     let cur: u64 = current_key.parse().unwrap_or(0);
-    threads
+    let key = |t: &&ThreadInfo| t.key.parse::<u64>().unwrap_or(0);
+    let pool: Vec<&ThreadInfo> = threads
         .iter()
-        .filter(|t| t.key.parse::<u64>().unwrap_or(0) > cur)
-        .filter(|t| t.count < 1000)
+        .filter(|t| key(t) > cur && t.count < 1000)
         .filter(|t| keyword.is_empty() || t.title.contains(keyword))
-        .min_by_key(|t| t.key.parse::<u64>().unwrap_or(0))
-        .cloned()
+        .collect();
+    if !keyword.is_empty() {
+        return pool.into_iter().min_by_key(key).cloned();
+    }
+    let continued = pool.iter().copied().filter(|t| follows(current_title, &t.title)).min_by_key(key);
+    let numbered = !numbers_in(current_title).is_empty();
+    continued.or_else(|| if numbered { None } else { pool.iter().copied().min_by_key(key) }).cloned()
 }
 
 /// 次スレを建てる。2ch互換の掲示板は`/test/bbs.cgi`にShift_JISのフォームで、したらばは
@@ -659,9 +699,9 @@ mod tests {
         assert_eq!(nch[2].title, "雑談 (part2)");
         assert_eq!(nch[2].count, 12);
         assert_eq!(pick_current(&nch, "").unwrap().key, "1700000003");
-        assert_eq!(pick_next(&nch, "1700000002", "").unwrap().key, "1700000003");
-        assert!(pick_next(&nch, "1700000003", "").is_none());
-        assert!(pick_next(&nch, "1700000002", "存在しない").is_none());
+        assert_eq!(pick_next(&nch, "1700000002", "538", "").unwrap().key, "1700000003");
+        assert!(pick_next(&nch, "1700000003", "539", "").is_none());
+        assert!(pick_next(&nch, "1700000002", "538", "存在しない").is_none());
 
         // 現行スレ(539)が終わる前に次スレ(540)を建てていても、現行スレを選ぶ
         let early = parse_subject(
@@ -670,7 +710,7 @@ mod tests {
         );
         assert_eq!(pick_current(&early, "").unwrap().title, "539");
         // 現行スレが1000に達したら、次スレへ(既存のpick_next)
-        assert_eq!(pick_next(&early, "1700000003", "").unwrap().title, "540");
+        assert_eq!(pick_next(&early, "1700000003", "539", "").unwrap().title, "540");
         // 埋まったスレッドが一覧に無い板では、まだ埋まっていない一番古いスレッド
         let fresh = parse_subject("1700000006.dat<>2 (3)\n1700000005.dat<>1 (500)\n", false);
         assert_eq!(pick_current(&fresh, "").unwrap().title, "1");
@@ -684,6 +724,34 @@ mod tests {
 
         let sh = parse_subject("1700000002.cgi,次のスレ(3)\n1700000001.cgi,前のスレ(1000)\n1700000002.cgi,次のスレ(3)\n", true);
         assert_eq!(sh.len(), 2);
-        assert_eq!(pick_next(&sh, "1700000001", "").unwrap().title, "次のスレ");
+        assert_eq!(pick_next(&sh, "1700000001", "前のスレ", "").unwrap().title, "次のスレ");
+    }
+
+    #[test]
+    fn skips_other_threads_on_the_same_board() {
+        // 配信スレの後に、要望・質問スレが立っている板
+        let list = parse_subject(
+            "1793900000.dat<>555 (2)
+1793780799.dat<>Reacast･ReaTap要望質問スレッド Part1 (20)
+1793727555.dat<>554 (1001)
+",
+            false,
+        );
+        assert_eq!(pick_next(&list, "1793727555", "554", "").unwrap().title, "555");
+        // 次スレがまだ無ければ、要望スレを次スレと間違えない(次スレを建てられる)
+        let not_yet = parse_subject(
+            "1793780799.dat<>Reacast･ReaTap要望質問スレッド Part1 (20)
+1793727555.dat<>554 (900)
+",
+            false,
+        );
+        assert!(pick_next(&not_yet, "1793727555", "554", "").is_none());
+        // 起動した時も、埋まったスレの続きの方を選ぶ
+        assert_eq!(pick_current(&list, "").unwrap().title, "555");
+        // 全角の数字・飾りが付いたタイトルでも、続きと分かる
+        let deco = parse_subject("1700000005.dat<>配信スレ★１３【雑談】 (1)
+1700000004.dat<>雑談 (3)
+", false);
+        assert_eq!(pick_next(&deco, "1700000003", "配信スレ★１２", "").unwrap().key, "1700000005");
     }
 }
