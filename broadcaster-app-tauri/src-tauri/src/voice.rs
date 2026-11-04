@@ -426,9 +426,73 @@ pub(crate) fn launch_app_window(
         "--disable-backgrounding-occluded-windows".into(),
         // 窓を閉じた後も裏で動き続けて、右下(タスクトレイ)にアイコンを出す機能を止める
         "--disable-background-mode".into(),
+        // フォルダが大きくならないように: キャッシュは20MBまで、使わない機能のための
+        // モデル(検索候補・ページの分析など)は取りに行かない
+        "--disk-cache-size=20971520".into(),
+        "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints".into(),
     ];
+    // 音声認識はネットの音声認識を使うので、ブラウザの部品(買い物・ウォレット・動画の保護など。
+    // Edgeでは数百MBになる)は要らない。PCの中での翻訳は、翻訳の部品(TranslateKit)を
+    // ダウンロードして使うので止めない
+    if purpose != "translate" {
+        args.push("--disable-component-update".into());
+    }
     args.extend(extra_args.iter().map(|a| a.to_string()));
+    trim_profile(&profile, purpose != "translate");
     Ok((EdgeProcess::spawn(&exe, &args)?, name))
+}
+
+/// 専用のプロフィールの中の、なくても困らない物(キャッシュ・部品のダウンロードの残り・
+/// 使わない機能の部品)を消す(開く前に毎回。消せない物はそのまま)。
+/// components: 部品も消す(部品を取りに行かない音声認識の窓だけ。翻訳の部品は消さない)
+fn trim_profile(profile: &std::path::Path, components: bool) {
+    const ALWAYS: &[&str] = &[
+        "component_crx_cache",
+        "Default/Cache",
+        "Default/Code Cache",
+        "Default/GPUCache",
+        "GrShaderCache",
+        "GraphiteDawnCache",
+        "ShaderCache",
+        "optimization_guide_model_store",
+        "OnDeviceHeadSuggestModel",
+        "WasmTtsEngine",
+    ];
+    const COMPONENTS: &[&str] = &[
+        "ProvenanceData",
+        "WidevineCdm",
+        "Edge Entity Extraction",
+        "Edge Wallet",
+        "Edge Shopping",
+        "Subresource Filter",
+    ];
+    let mut freed = 0u64;
+    for dir in ALWAYS.iter().chain(if components { COMPONENTS } else { &[] }) {
+        let path = profile.join(dir);
+        if path.is_dir() {
+            let size = dir_size(&path);
+            if std::fs::remove_dir_all(&path).is_ok() {
+                freed += size;
+            }
+        }
+    }
+    if freed >= 1_000_000 {
+        log::info!("{}の要らないファイルを消しました({}MB)", profile.file_name().and_then(|n| n.to_str()).unwrap_or_default(), freed / 1_000_000);
+    }
+}
+
+fn dir_size(path: &std::path::Path) -> u64 {
+    std::fs::read_dir(path)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| match e.metadata() {
+                    Ok(m) if m.is_dir() => dir_size(&e.path()),
+                    Ok(m) => m.len(),
+                    Err(_) => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 /// 設定に合わせて、Edgeの音声認識の窓を開く・閉じる・開き直す。
@@ -887,5 +951,27 @@ mod job_tests {
         p.kill();
         std::thread::sleep(std::time::Duration::from_millis(500));
         assert!(!p.is_running());
+    }
+}
+
+#[cfg(test)]
+mod trim_tests {
+    #[test]
+    fn trims_caches_but_keeps_translate_models() {
+        let dir = std::env::temp_dir().join(format!("reacast-trim-{}", std::process::id()));
+        for d in ["component_crx_cache", "Default/Cache", "TranslateKit", "ProvenanceData", "Default/Local Storage"] {
+            std::fs::create_dir_all(dir.join(d)).unwrap();
+            std::fs::write(dir.join(d).join("x"), b"123").unwrap();
+        }
+        super::trim_profile(&dir, false);
+        assert!(!dir.join("component_crx_cache").exists());
+        assert!(!dir.join("Default/Cache").exists());
+        assert!(dir.join("TranslateKit").exists());
+        assert!(dir.join("ProvenanceData").exists());
+        assert!(dir.join("Default/Local Storage").exists());
+        super::trim_profile(&dir, true);
+        assert!(!dir.join("ProvenanceData").exists());
+        assert!(dir.join("TranslateKit").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
