@@ -25,6 +25,12 @@ jobs:
         with:
           node-version: 20
 
+      # 画面のスクリプトに書き間違いがあると、その画面が丸ごと動かなくなるので、ビルドの前に確かめる
+      - name: Check frontend scripts
+        shell: bash
+        run: |
+          git ls-files '*.js' ':!:*node_modules*' | while read -r f; do node --check "$f" || exit 1; done
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 

@@ -1164,8 +1164,7 @@ const LIST_PRESETS = {
       '.item { margin: 10px 10px 16px; border: 5px solid #e4aa10; box-shadow: 0 0 0 2px #000000, inset 0 0 0 3px #fff6d4, inset 0 0 0 5px #000000; animation: kamitora-in 240ms steps(4, end); }',
       ".item::before { content: ''; position: absolute; inset: -10px; pointer-events: none; background: linear-gradient(#fff6d4, #fff6d4) left 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) left 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#000000, #000000) left 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) left 0px bottom 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px bottom 0px / 14px 14px no-repeat; }",
       '@keyframes kamitora-in { from { opacity: 0; transform: translateY(-6px) scale(1, 0.2); } to { opacity: 1; transform: none; } }',
-    ].join('
-'),
+    ].join('\n'),
   },
   // 羽ペン: 古い紙に羽ペンで書いたような。英字は筆記体(Dancing Script)、日本語はペン字風(Zen Kurenaido)。
   // 紙の色の札に、うすい罫線とセピア色のインク
@@ -1374,8 +1373,7 @@ const SUBTITLE_PRESETS = {
     customCss: [
       '#box { -webkit-font-smoothing: none; margin: 12px; border: 5px solid #e4aa10; box-shadow: 0 0 0 2px #000000, inset 0 0 0 3px #fff6d4, inset 0 0 0 5px #000000; }',
       "#box::before { content: ''; position: absolute; inset: -10px; pointer-events: none; background: linear-gradient(#fff6d4, #fff6d4) left 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) left 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#000000, #000000) left 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) left 0px bottom 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px bottom 0px / 14px 14px no-repeat; }",
-    ].join('
-'),
+    ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る
   cute: {
