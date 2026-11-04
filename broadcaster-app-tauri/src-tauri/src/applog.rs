@@ -74,6 +74,35 @@ pub fn set_log_level(store: tauri::State<crate::config_store::ConfigStore>, leve
     Ok(())
 }
 
+/// 種類ごとの、最後に書いた失敗(同じ失敗を毎回書かないため)
+static LAST_FAILURE: std::sync::Mutex<Option<std::collections::HashMap<&'static str, String>>> = std::sync::Mutex::new(None);
+
+/// 失敗を警告として書く。前回と同じ失敗が続いている間は書かない(レスのたびに同じ行が
+/// 並ばないように)。直ったら`recovered`を呼ぶ
+pub fn warn_once(kind: &'static str, message: String) {
+    note_failure(kind, message);
+}
+
+/// 書いたらtrue
+fn note_failure(kind: &'static str, message: String) -> bool {
+    let mut last = LAST_FAILURE.lock().unwrap();
+    let map = last.get_or_insert_with(Default::default);
+    if map.get(kind) == Some(&message) {
+        return false;
+    }
+    log::warn!("{message}(同じ失敗が続く間は、直るまで書きません)");
+    map.insert(kind, message);
+    true
+}
+
+/// `warn_once`で書いた失敗が直った(直ったことを1行だけ書く)
+pub fn recovered(kind: &'static str, message: &str) {
+    let mut last = LAST_FAILURE.lock().unwrap();
+    if last.as_mut().and_then(|m| m.remove(kind)).is_some() {
+        log::info!("{message}");
+    }
+}
+
 /// panicをログに残す(既定の処理=標準エラー出力もそのまま行う)。
 pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
@@ -118,4 +147,16 @@ pub fn open_log_dir(app: AppHandle) -> Result<(), String> {
         return Err("Windows以外では未対応です".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn same_failure_is_written_once() {
+        assert!(super::note_failure("test-kind", "a".into()));
+        assert!(!super::note_failure("test-kind", "a".into()));
+        assert!(super::note_failure("test-kind", "b".into()));
+        super::recovered("test-kind", "ok");
+        assert!(super::note_failure("test-kind", "b".into()));
+    }
 }

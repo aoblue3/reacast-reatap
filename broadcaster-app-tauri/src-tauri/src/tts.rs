@@ -436,9 +436,17 @@ pub fn play_wav(wav: Vec<u8>, s: &CommentSettings) -> Result<u64, String> {
 pub fn speak_bouyomi(s: &CommentSettings, text: &str) {
     let (s, text) = (s.clone(), text.to_string());
     tauri::async_runtime::spawn(async move {
-        if talk_bouyomi(&s, &text).await.is_err() && ensure_running(&s, Duration::from_secs(30)).await.is_ok() {
-            if let Err(e) = talk_bouyomi(&s, &text).await {
-                log::warn!("{e}");
+        match talk_bouyomi(&s, &text).await {
+            Ok(_) => crate::applog::recovered("bouyomi", "棒読みちゃんに繋がるようになりました"),
+            Err(first) => {
+                let r = match ensure_running(&s, Duration::from_secs(30)).await {
+                    Ok(_) => talk_bouyomi(&s, &text).await.map(|_| ()),
+                    Err(_) => Err(first),
+                };
+                match r {
+                    Ok(()) => crate::applog::recovered("bouyomi", "棒読みちゃんに繋がるようになりました"),
+                    Err(e) => crate::applog::warn_once("bouyomi", e.to_string()),
+                }
             }
         }
     });

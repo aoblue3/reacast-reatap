@@ -2340,13 +2340,14 @@ impl CommentEngine {
                 }
                 match result {
                     Ok(Some((w, ms))) => {
+                        crate::applog::recovered("speech", "読み上げ: 声を作れるようになりました");
                         speech_ms = ms + 150;
                         wav = Some(w);
                     }
                     Ok(None) => {}
                     Err(e) => {
                         // 読み上げソフトが起動していない等。声は出ないので待たない
-                        log::warn!("読み上げ: {e}");
+                        crate::applog::warn_once("speech", format!("読み上げ: {e}"));
                         speech_ms = 0;
                     }
                 }
@@ -2405,8 +2406,9 @@ impl CommentEngine {
                     crate::tts::EngineKind::Bouyomi => crate::tts::speak_bouyomi(&settings, &spoken),
                     _ => {
                         if let Some(w) = wav {
-                            if let Err(e) = crate::tts::play_wav(w, &settings) {
-                                log::warn!("読み上げ: {e}");
+                            match crate::tts::play_wav(w, &settings) {
+                                Ok(_) => crate::applog::recovered("speech-play", "読み上げ: 声を鳴らせるようになりました"),
+                                Err(e) => crate::applog::warn_once("speech-play", format!("読み上げ: {e}")),
                             }
                         }
                     }
@@ -2572,11 +2574,15 @@ fn run_speech_command(s: &CommentSettings, post: &Post, spoken: &str) {
     match cmd.spawn() {
         // 終了コードの回収だけ別スレッドで行う(プロセスハンドルを残さないため)
         Ok(mut child) => {
+            crate::applog::recovered("speech-command", "読み上げコマンドを起動できるようになりました");
             std::thread::spawn(move || {
                 let _ = child.wait();
             });
         }
-        Err(e) => log::warn!("読み上げコマンドの起動に失敗しました: {e}"),
+        Err(e) => crate::applog::warn_once(
+            "speech-command",
+            format!("読み上げコマンドの起動に失敗しました({}): {e}。「声・速さ」タブの「ソフトの場所」を確かめてください", s.command_path.trim()),
+        ),
     }
 }
 
