@@ -3362,6 +3362,299 @@ function spawnThunder(opts) {
 }
 
 /**
+ * 🐓 にわとり: 怒ったにわとりが出てきて、💢を出して左右にバタバタ走り回る。画面に生き物の
+ * リアクション(creature:true。🐶🐈🐸など。👶は襲わない)がいれば、一番近い子に飛びかかり、
+ * 画面の端から仲間のにわとりが次々に飛んできて突っつく。突っつかれた子は、ブルブル震えてから
+ * くるくる吹っ飛んで消える。暴れている間に生き物が出てきたら、その子に襲いかかる。誰も
+ * いなければ、しばらく暴れてから消える。動きはtransformだけ(光らせない)。
+ */
+let chickenStyleAdded = false;
+const CHICKEN_RAGE_MS = 3400;
+
+function addChickenStyle() {
+  addHotelStyle();
+  if (chickenStyleAdded) return;
+  chickenStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .ck-flap { display: inline-block; animation: ck-flap 130ms steps(2) infinite; }
+    @keyframes ck-flap { 0% { transform: translateY(0) rotate(-8deg); } 100% { transform: translateY(-14%) rotate(8deg); } }
+    .ck-anger { position: absolute; animation: ck-anger 520ms steps(2) infinite; }
+    @keyframes ck-anger { 0% { transform: scale(0.8); } 100% { transform: scale(1.15); } }
+    .ck-hit { display: inline-block; animation: ck-hit 70ms linear infinite; }
+    @keyframes ck-hit {
+      0% { transform: translate(0, 0) rotate(0deg); } 33% { transform: translate(-6%, 2%) rotate(-6deg); }
+      66% { transform: translate(5%, -3%) rotate(5deg); } 100% { transform: translate(0, 0) rotate(0deg); }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnChicken(opts) {
+  addChickenStyle();
+  // 出る場所・走り回り方・仲間が飛んでくる向きは、OBSと自分の画面で同じになるように種から決める
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = stageW();
+  const vh = stageH();
+  const base = settings.baseSizePx;
+  const cSize = base * 1.1;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item chicken-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  box.style.transition = 'opacity 500ms ease-in';
+  stage.appendChild(box);
+  activeItems.push(box);
+  let finished = false;
+  const finish = (afterMs) => {
+    if (finished) return;
+    finished = true;
+    setTimeout(() => (box.style.opacity = '0'), afterMs);
+    setTimeout(() => {
+      box.remove();
+      const idx = activeItems.indexOf(box);
+      if (idx !== -1) activeItems.splice(idx, 1);
+    }, afterMs + 550);
+  };
+
+  /** 🐓を1羽作る(左向きの絵なので、右へ進む時は裏返す) */
+  const makeChicken = (size) => {
+    const el = document.createElement('span');
+    el.className = 'hotel-part';
+    el.style.fontSize = `${size}px`;
+    el.style.left = '0';
+    el.style.top = '0';
+    el.style.willChange = 'transform';
+    const face = document.createElement('span');
+    face.style.display = 'inline-block';
+    const flap = document.createElement('span');
+    flap.className = 'reaction-glyph ck-flap';
+    setGlyph(flap, '🐓');
+    face.appendChild(flap);
+    el.appendChild(face);
+    return { el, face };
+  };
+  const faceTo = (c, dx) => (c.face.style.transform = dx > 0 ? 'scaleX(-1)' : '');
+
+  // ---- 親分の🐓: 画面の下の方に出てきて、💢を出して左右に走っては止まる ----
+  const boss = makeChicken(cSize);
+  boss.el.style.zIndex = '2';
+  const groundY = vh - cSize * (1.15 + rnd() * 0.5);
+  let bx = vw * (0.15 + rnd() * 0.7);
+  const anger = document.createElement('span');
+  anger.className = 'ck-anger reaction-glyph';
+  anger.style.fontSize = `${cSize * 0.45}px`;
+  anger.style.left = `${cSize * 0.6}px`;
+  anger.style.top = `${-cSize * 0.25}px`;
+  setGlyph(anger, '💢');
+  boss.el.appendChild(anger);
+  boss.el.style.transform = `translate(${bx}px, ${groundY}px)`;
+  box.appendChild(boss.el);
+  boss.el.animate(
+    [{ transform: `translate(${bx}px, ${groundY + cSize * 0.4}px) scale(0.3)` }, { transform: `translate(${bx}px, ${groundY}px) scale(1)` }],
+    { duration: 220, easing: 'ease-out' },
+  );
+  const DASH_MS = 520;
+  const dashes = [];
+  for (let i = 0; i < 6; i++) {
+    const dir = rnd() < 0.5 ? -1 : 1;
+    const nx = Math.max(cSize * 0.3, Math.min(vw - cSize * 1.3, bx + dir * base * (1.2 + rnd() * 1.8)));
+    dashes.push([bx, nx]);
+    bx = nx;
+  }
+  const total = dashes.length * DASH_MS;
+  const frames = [];
+  dashes.forEach(([a, b], i) => {
+    const t0 = (i * DASH_MS) / total;
+    const t1 = ((i + 0.6) * DASH_MS) / total;
+    frames.push({ transform: `translate(${a}px, ${groundY}px)`, offset: t0 });
+    frames.push({ transform: `translate(${(a + b) / 2}px, ${groundY - cSize * 0.25}px)`, offset: (t0 + t1) / 2 });
+    frames.push({ transform: `translate(${b}px, ${groundY}px)`, offset: t1 });
+  });
+  frames.push({ transform: `translate(${bx}px, ${groundY}px)`, offset: 1 });
+  const run = boss.el.animate(frames, { duration: total, delay: 250, easing: 'linear', fill: 'forwards' });
+  let attacking = false;
+  dashes.forEach(([a, b], i) => setTimeout(() => !attacking && faceTo(boss, b - a), 250 + i * DASH_MS));
+
+  // ---- 襲う相手を探す(OBSと自分の画面で同じ刻みで確かめる) ----
+  const startAt = opts && typeof opts.at === 'number' && Math.abs(opts.at - Date.now()) < 3000 ? opts.at : Date.now();
+  const isPrey = (o) => o.dataset.creature && o.dataset.emojiId !== 'baby' && !o.dataset.dating && !o.dataset.starred && o.isConnected;
+  simAdd(startAt, (now) => {
+    if (!box.isConnected) return false;
+    const t = now - startAt;
+    if (t < 300) return true;
+    const br = rectOf(boss.el);
+    const cx = br.left + br.width / 2;
+    const cy = br.top + br.height / 2;
+    let best = null;
+    let bestD = Infinity;
+    const consider = (o, isItem) => {
+      const r = rectOf(o);
+      if (!(r.width > 0)) return;
+      const d = Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = { el: o, isItem };
+      }
+    };
+    for (const o of activeItems) if (o !== box && isPrey(o)) consider(o, true);
+    for (const o of stage.querySelectorAll('[data-actor][data-creature]')) {
+      if (box.contains(o) || !isPrey(o) || o.dataset.noStar || o.closest('.star-scene, .chicken-scene')) continue;
+      if (sceneVisible(o)) consider(o, false);
+    }
+    if (best) {
+      attack(best);
+      return false;
+    }
+    if (t < CHICKEN_RAGE_MS) return true;
+    // 誰もいなかった: 暴れたまま消える
+    finish(0);
+    return false;
+  });
+
+  /** 生き物を、この場面の中に連れてくる(元の場面からは見えなくする) */
+  function grab(t) {
+    if (t.isItem) {
+      t.el.dataset.dating = '1';
+      return takeOver(t.el, box).el;
+    }
+    const r0 = rectOf(t.el);
+    const copy = t.el.cloneNode(true);
+    t.el.dataset.starred = '1';
+    t.el.style.visibility = 'hidden';
+    copy.style.transition = 'none';
+    copy.style.position = 'relative';
+    copy.style.left = '0';
+    copy.style.top = '0';
+    copy.style.opacity = '1';
+    const el = document.createElement('span');
+    el.className = 'hotel-part';
+    el.appendChild(copy);
+    box.appendChild(el);
+    el.style.left = `${r0.left}px`;
+    el.style.top = `${r0.top}px`;
+    const r1 = rectOf(copy);
+    el.style.left = `${r0.left + (r0.left - r1.left)}px`;
+    el.style.top = `${r0.top + (r0.top - r1.top)}px`;
+    return el;
+  }
+
+  function attack(t) {
+    attacking = true;
+    const prey = grab(t);
+    prey.dataset.starred = '1';
+    prey.style.zIndex = '1';
+    const r = rectOf(prey);
+    const px = r.left + r.width / 2;
+    const py = r.top + r.height / 2;
+    const size = Math.max(r.width, r.height) || base;
+    // 震える係(中身を包む)
+    const shaker = document.createElement('span');
+    shaker.className = 'ck-hit';
+    while (prey.firstChild) shaker.appendChild(prey.firstChild);
+    prey.appendChild(shaker);
+
+    // 親分が、ぴょんと飛びかかる
+    const from = rectOf(boss.el);
+    run.cancel();
+    const sx = from.left;
+    const sy = from.top;
+    const tx = px - cSize * 0.5 + (sx < px ? -size * 0.35 : size * 0.35);
+    const ty = py - cSize * 0.5;
+    faceTo(boss, tx - sx);
+    boss.el.style.transform = `translate(${tx}px, ${ty}px)`;
+    boss.el.animate(
+      [
+        { transform: `translate(${sx}px, ${sy}px)` },
+        { transform: `translate(${(sx + tx) / 2}px, ${Math.min(sy, ty) - cSize * 0.8}px)`, offset: 0.5 },
+        { transform: `translate(${tx}px, ${ty}px)` },
+      ],
+      { duration: 380, easing: 'ease-in' },
+    );
+
+    // 仲間が画面の端から次々に飛んできて、突っついて反対側へ抜けていく
+    const FLOCK = 7;
+    const GAP_MS = 170;
+    const FLY_MS = 900;
+    const far = Math.hypot(vw, vh) * 0.6;
+    for (let i = 0; i < FLOCK; i++) {
+      const ang = rnd() * Math.PI * 2;
+      const len = Math.hypot(Math.cos(ang), Math.sin(ang) * 0.6);
+      const dx = Math.cos(ang) / len;
+      const dy = (Math.sin(ang) * 0.6) / len;
+      const s = cSize * (0.8 + rnd() * 0.3);
+      const ax = px - dx * far - s / 2;
+      const ay = py - dy * far - s / 2;
+      const zx = px + dx * far - s / 2;
+      const zy = py + dy * far - s / 2;
+      setTimeout(() => {
+        if (!box.isConnected) return;
+        const c = makeChicken(s);
+        c.el.style.zIndex = '3';
+        c.el.style.transform = `translate(${ax}px, ${ay}px)`;
+        faceTo(c, dx);
+        box.appendChild(c.el);
+        c.el.animate([{ transform: `translate(${ax}px, ${ay}px)` }, { transform: `translate(${zx}px, ${zy}px)` }], {
+          duration: FLY_MS,
+          easing: 'linear',
+          fill: 'forwards',
+        });
+        setTimeout(() => c.el.remove(), FLY_MS + 30);
+      }, 420 + i * GAP_MS);
+    }
+    // 突っつかれた所から、💨がぽっぽっと出る
+    for (let i = 0; i < 4; i++) {
+      const a = rnd() * Math.PI * 2;
+      setTimeout(() => {
+        if (!box.isConnected) return;
+        const p = document.createElement('span');
+        p.className = 'hotel-part reaction-glyph';
+        setGlyph(p, '💨');
+        const ps = size * 0.4;
+        p.style.fontSize = `${ps}px`;
+        p.style.left = `${px - ps / 2 + Math.cos(a) * size * 0.4}px`;
+        p.style.top = `${py - ps / 2 + Math.sin(a) * size * 0.4}px`;
+        p.style.zIndex = '4';
+        box.appendChild(p);
+        p.animate(
+          [
+            { transform: 'scale(0.4)', opacity: 1 },
+            { transform: `translate(${Math.cos(a) * size * 0.5}px, ${Math.sin(a) * size * 0.5}px) scale(1.1)`, opacity: 0 },
+          ],
+          { duration: 420, easing: 'ease-out', fill: 'forwards' },
+        );
+        setTimeout(() => p.remove(), 450);
+      }, 600 + i * 300);
+    }
+
+    // 最後に吹っ飛ばされて、くるくる回りながら画面の外へ。親分は勝ちほこってバタバタ
+    const KO_AT = 420 + FLOCK * GAP_MS + 200;
+    setTimeout(() => {
+      if (!prey.isConnected) return;
+      shaker.classList.remove('ck-hit');
+      anger.style.display = 'none';
+      const side = px < vw / 2 ? -1 : 1;
+      prey.animate(
+        [
+          { transform: 'translate(0, 0) rotate(0deg)' },
+          { transform: `translate(${side * vw * 0.25}px, ${-vh * 0.35}px) rotate(${side * 360}deg)`, offset: 0.45 },
+          { transform: `translate(${side * vw * 0.6}px, ${-vh * 0.2}px) rotate(${side * 900}deg)` },
+        ],
+        { duration: 1000, easing: 'ease-out', fill: 'forwards' },
+      );
+      setTimeout(() => prey.remove(), 1000);
+    }, KO_AT);
+    finish(KO_AT + 1300);
+  }
+}
+
+/**
  * 💴 お金: 下から放り投げられたお札が、くるくる裏返りながら左右に揺れて舞い落ちる。
  * 落ちた時に、画面に🐷がいれば、お札がそこへ吸い込まれて🐷が貯金箱のようにぷくっと
  * 膨らむ(続けて入れるとだんだん丸くなる)。🐷がいなくてほかの生き物がいれば、一番近い子が
@@ -3707,6 +4000,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'money') {
     spawnMoney(opts);
+    return;
+  }
+  if (emojiId === 'chicken') {
+    spawnChicken(opts);
     return;
   }
 

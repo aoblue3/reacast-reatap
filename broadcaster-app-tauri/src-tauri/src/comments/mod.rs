@@ -234,6 +234,9 @@ pub struct CommentSettings {
     /// 💴を足した時の、既定のルールの追加
     #[serde(default)]
     pub reaction_presets_v11: bool,
+    /// 🐓を足した時の、既定のルールの追加
+    #[serde(default)]
+    pub reaction_presets_v12: bool,
     /// AAになる条件の文字列を増やした時の、既定の文字列の追加
     #[serde(default)]
     pub aa_presets_v2: bool,
@@ -445,6 +448,7 @@ const DEFAULT_REACTION_RULES: &[&str] = &[
     "流れ星|⭐|🌟/star",
     "雷|かみなり|カミナリ|⚡/thunder",
     "お金|おかね|💴|投げ銭|スパチャ|課金/money",
+    "にわとり|ニワトリ|鶏|コッコ|🐓|🐔/chicken",
     "バナナ|ばなな/banana",
     // 動物など
     "わんわん|ワンワン|わんこ|ワンコ|🐶/dog",
@@ -570,6 +574,7 @@ impl Default for CommentSettings {
             reaction_presets_v9: true,
             reaction_presets_v10: true,
             reaction_presets_v11: true,
+            reaction_presets_v12: true,
             aa_presets_v2: true,
             ng_words: String::new(),
             ng_people: String::new(),
@@ -2622,7 +2627,7 @@ pub fn load_settings(store: &ConfigStore) -> CommentSettings {
         add_reading_presets(&mut s);
         let _ = save_settings(store, &s);
     }
-    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 || !s.reaction_presets_v9 || !s.reaction_presets_v10 || !s.reaction_presets_v11 {
+    if !s.reaction_presets_v2 || !s.reaction_presets_v3 || !s.reaction_presets_v4 || !s.reaction_presets_v5 || !s.reaction_presets_v6 || !s.reaction_presets_v7 || !s.reaction_presets_v8 || !s.reaction_presets_v9 || !s.reaction_presets_v10 || !s.reaction_presets_v11 || !s.reaction_presets_v12 {
         add_reaction_presets(&mut s);
         let _ = save_settings(store, &s);
     }
@@ -2700,6 +2705,7 @@ fn add_reaction_presets(s: &mut CommentSettings) {
     s.reaction_presets_v9 = true;
     s.reaction_presets_v10 = true;
     s.reaction_presets_v11 = true;
+    s.reaction_presets_v12 = true;
 }
 
 fn save_settings(store: &ConfigStore, settings: &CommentSettings) -> Result<(), String> {
