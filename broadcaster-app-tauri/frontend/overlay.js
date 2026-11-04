@@ -3362,14 +3362,14 @@ function spawnThunder(opts) {
 }
 
 /**
- * 🐓 にわとり: 怒ったにわとりが出てきて、💢を出して左右にバタバタ走り回る。画面に生き物の
+ * 🐓 にわとり: 怒ったにわとりが出てきて、💢を出して左右に少しバタバタ走る。画面に生き物の
  * リアクション(creature:true。🐶🐈🐸など。👶は襲わない)がいれば、一番近い子に飛びかかり、
- * 画面の端から仲間のにわとりが次々に飛んできて突っつく。突っつかれた子は、ブルブル震えてから
+ * 画面の端から仲間のにわとりが3羽飛んできて突っつく(うるさくならないよう、数・動きは控えめ)。突っつかれた子は、ブルブル震えてから
  * くるくる吹っ飛んで消える。暴れている間に生き物が出てきたら、その子に襲いかかる。誰も
  * いなければ、しばらく暴れてから消える。動きはtransformだけ(光らせない)。
  */
 let chickenStyleAdded = false;
-const CHICKEN_RAGE_MS = 3400;
+const CHICKEN_RAGE_MS = 2400;
 
 function addChickenStyle() {
   addHotelStyle();
@@ -3377,14 +3377,14 @@ function addChickenStyle() {
   chickenStyleAdded = true;
   const st = document.createElement('style');
   st.textContent = `
-    .ck-flap { display: inline-block; animation: ck-flap 130ms steps(2) infinite; }
-    @keyframes ck-flap { 0% { transform: translateY(0) rotate(-8deg); } 100% { transform: translateY(-14%) rotate(8deg); } }
-    .ck-anger { position: absolute; animation: ck-anger 520ms steps(2) infinite; }
-    @keyframes ck-anger { 0% { transform: scale(0.8); } 100% { transform: scale(1.15); } }
-    .ck-hit { display: inline-block; animation: ck-hit 70ms linear infinite; }
+    .ck-flap { display: inline-block; animation: ck-flap 240ms steps(2) infinite; }
+    @keyframes ck-flap { 0% { transform: translateY(0) rotate(-4deg); } 100% { transform: translateY(-7%) rotate(4deg); } }
+    .ck-anger { position: absolute; animation: ck-anger 800ms steps(2) infinite; }
+    @keyframes ck-anger { 0% { transform: scale(0.9); } 100% { transform: scale(1.05); } }
+    .ck-hit { display: inline-block; animation: ck-hit 110ms linear infinite; }
     @keyframes ck-hit {
-      0% { transform: translate(0, 0) rotate(0deg); } 33% { transform: translate(-6%, 2%) rotate(-6deg); }
-      66% { transform: translate(5%, -3%) rotate(5deg); } 100% { transform: translate(0, 0) rotate(0deg); }
+      0% { transform: translate(0, 0) rotate(0deg); } 33% { transform: translate(-3%, 1%) rotate(-3deg); }
+      66% { transform: translate(3%, -2%) rotate(3deg); } 100% { transform: translate(0, 0) rotate(0deg); }
     }
   `;
   document.head.appendChild(st);
@@ -3398,7 +3398,7 @@ function spawnChicken(opts) {
   const vw = stageW();
   const vh = stageH();
   const base = settings.baseSizePx;
-  const cSize = base * 1.1;
+  const cSize = base;
 
   const box = document.createElement('div');
   box.className = 'reaction-item chicken-scene' + (opts && opts.mark ? ' self-mark' : '');
@@ -3460,11 +3460,11 @@ function spawnChicken(opts) {
     [{ transform: `translate(${bx}px, ${groundY + cSize * 0.4}px) scale(0.3)` }, { transform: `translate(${bx}px, ${groundY}px) scale(1)` }],
     { duration: 220, easing: 'ease-out' },
   );
-  const DASH_MS = 520;
+  const DASH_MS = 700;
   const dashes = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 3; i++) {
     const dir = rnd() < 0.5 ? -1 : 1;
-    const nx = Math.max(cSize * 0.3, Math.min(vw - cSize * 1.3, bx + dir * base * (1.2 + rnd() * 1.8)));
+    const nx = Math.max(cSize * 0.3, Math.min(vw - cSize * 1.3, bx + dir * base * (0.6 + rnd() * 0.8)));
     dashes.push([bx, nx]);
     bx = nx;
   }
@@ -3474,7 +3474,7 @@ function spawnChicken(opts) {
     const t0 = (i * DASH_MS) / total;
     const t1 = ((i + 0.6) * DASH_MS) / total;
     frames.push({ transform: `translate(${a}px, ${groundY}px)`, offset: t0 });
-    frames.push({ transform: `translate(${(a + b) / 2}px, ${groundY - cSize * 0.25}px)`, offset: (t0 + t1) / 2 });
+    frames.push({ transform: `translate(${(a + b) / 2}px, ${groundY - cSize * 0.12}px)`, offset: (t0 + t1) / 2 });
     frames.push({ transform: `translate(${b}px, ${groundY}px)`, offset: t1 });
   });
   frames.push({ transform: `translate(${bx}px, ${groundY}px)`, offset: 1 });
@@ -3572,23 +3572,23 @@ function spawnChicken(opts) {
     boss.el.animate(
       [
         { transform: `translate(${sx}px, ${sy}px)` },
-        { transform: `translate(${(sx + tx) / 2}px, ${Math.min(sy, ty) - cSize * 0.8}px)`, offset: 0.5 },
+        { transform: `translate(${(sx + tx) / 2}px, ${Math.min(sy, ty) - cSize * 0.4}px)`, offset: 0.5 },
         { transform: `translate(${tx}px, ${ty}px)` },
       ],
       { duration: 380, easing: 'ease-in' },
     );
 
     // 仲間が画面の端から次々に飛んできて、突っついて反対側へ抜けていく
-    const FLOCK = 7;
-    const GAP_MS = 170;
-    const FLY_MS = 900;
+    const FLOCK = 3;
+    const GAP_MS = 320;
+    const FLY_MS = 1100;
     const far = Math.hypot(vw, vh) * 0.6;
     for (let i = 0; i < FLOCK; i++) {
       const ang = rnd() * Math.PI * 2;
       const len = Math.hypot(Math.cos(ang), Math.sin(ang) * 0.6);
       const dx = Math.cos(ang) / len;
       const dy = (Math.sin(ang) * 0.6) / len;
-      const s = cSize * (0.8 + rnd() * 0.3);
+      const s = cSize * (0.75 + rnd() * 0.2);
       const ax = px - dx * far - s / 2;
       const ay = py - dy * far - s / 2;
       const zx = px + dx * far - s / 2;
@@ -3609,7 +3609,7 @@ function spawnChicken(opts) {
       }, 420 + i * GAP_MS);
     }
     // 突っつかれた所から、💨がぽっぽっと出る
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       const a = rnd() * Math.PI * 2;
       setTimeout(() => {
         if (!box.isConnected) return;
@@ -3630,10 +3630,10 @@ function spawnChicken(opts) {
           { duration: 420, easing: 'ease-out', fill: 'forwards' },
         );
         setTimeout(() => p.remove(), 450);
-      }, 600 + i * 300);
+      }, 650 + i * 450);
     }
 
-    // 最後に吹っ飛ばされて、くるくる回りながら画面の外へ。親分は勝ちほこってバタバタ
+    // 最後に吹っ飛ばされて、回りながら画面の外へ。親分は勝ちほこってバタバタ
     const KO_AT = 420 + FLOCK * GAP_MS + 200;
     setTimeout(() => {
       if (!prey.isConnected) return;
@@ -3643,8 +3643,8 @@ function spawnChicken(opts) {
       prey.animate(
         [
           { transform: 'translate(0, 0) rotate(0deg)' },
-          { transform: `translate(${side * vw * 0.25}px, ${-vh * 0.35}px) rotate(${side * 360}deg)`, offset: 0.45 },
-          { transform: `translate(${side * vw * 0.6}px, ${-vh * 0.2}px) rotate(${side * 900}deg)` },
+          { transform: `translate(${side * vw * 0.2}px, ${-vh * 0.25}px) rotate(${side * 180}deg)`, offset: 0.45 },
+          { transform: `translate(${side * vw * 0.5}px, ${-vh * 0.15}px) rotate(${side * 420}deg)` },
         ],
         { duration: 1000, easing: 'ease-out', fill: 'forwards' },
       );
