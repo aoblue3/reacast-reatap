@@ -1152,6 +1152,21 @@ const LIST_PRESETS = {
       '@keyframes yami-in { 0% { opacity: 0; transform: scale(0.6) rotate(4deg); } 35% { opacity: 1; transform: scale(1.04) rotate(-2deg); } 50% { transform: translateX(-3px) rotate(1deg); } 62% { transform: translateX(3px) rotate(-1deg); } 74% { transform: translateX(-1px); } 100% { transform: none; } }',
     ].join('\n'),
   },
+  // 神トラ風(スーパーファミコンの2Dアクションの冒険): 夜の色のウィンドウに白とグレーの二重の縁、
+  // 影付きのドット文字。番号の前に赤いハート、番号は金色、名前は緑。新しいレスは上からカクッと開く
+  kamitora: {
+    fontFamily: 'DotGothic16',
+    headFontSize: 0, headBold: false, numberColor: '#f8d038', nameColor: '#58d858', dateColor: '#a0a0b8',
+    bodyColor: '#f8f8f8', bodyBold: false, outlineWidth: 0, outlineColor: '#000000',
+    itemBgColor: '#000020', itemBgOpacity: 88, itemPadding: 10, itemRadius: 6,
+    customCss: [
+      '.item:not(.aa) { -webkit-font-smoothing: none; }',
+      '.item { border: 3px solid #e8e8e8; box-shadow: 0 0 0 2px #303050, inset 0 0 0 2px #707088; animation: kamitora-in 240ms steps(4, end); }',
+      '.head, .body { text-shadow: 2px 2px 0 #000000; }',
+      ".head .no::before { content: '♥'; color: #e83820; margin-right: 0.25em; }",
+      '@keyframes kamitora-in { from { opacity: 0; transform: translateY(-6px) scale(1, 0.2); } to { opacity: 1; transform: none; } }',
+    ].join('\n'),
+  },
   // 羽ペン: 古い紙に羽ペンで書いたような。英字は筆記体(Dancing Script)、日本語はペン字風(Zen Kurenaido)。
   // 紙の色の札に、うすい罫線とセピア色のインク
   quill: {
@@ -1349,6 +1364,19 @@ const SUBTITLE_PRESETS = {
       "#box::after { content: ''; position: absolute; left: 16%; top: 100%; width: 0.34em; height: 0.8em; margin-top: -2px; background: #3a1f3d; border-radius: 0 0 0.17em 0.17em / 0 0 0.3em 0.3em; box-shadow: 2.2em -0.32em 0 #3a1f3d, 5.6em -0.14em 0 -0.04em #3a1f3d; transform-origin: top; }",
       '#box.visible::after { animation: yami-drip 1400ms ease-in 500ms both; }',
       '@keyframes yami-drip { from { transform: scaleY(0); } to { transform: scaleY(1); } }',
+    ].join('\n'),
+  },
+  // 神トラ風: 夜の色のウィンドウに白とグレーの二重の縁。ウィンドウがカクッと開いて、
+  // ドット文字が1文字ずつ。名前の前に赤いハート、右下で緑の宝石がぴょこぴょこ
+  kamitora: {
+    fontFamily: 'DotGothic16', bold: false, color: '#f8f8f8', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#000020', bgOpacity: 88, padding: 12, radius: 6, appear: 'kamitora-open', translationColor: '#f8d038',
+    customCss: [
+      '#box { -webkit-font-smoothing: none; margin: 0 0.3em 0.6em 0; border: 3px solid #e8e8e8; box-shadow: 0 0 0 2px #303050, inset 0 0 0 2px #707088, 4px 4px 0 2px rgba(0, 0, 0, 0.35); text-shadow: 2px 2px 0 #000000 !important; }',
+      '.res-head { color: #f8d038; }',
+      ".res-head::before { content: '♥ '; color: #e83820; }",
+      "#box::after { content: ''; position: absolute; right: 0.5em; bottom: -0.45em; width: 0.5em; height: 0.85em; background: linear-gradient(90deg, #78f078 50%, #20a030 50%); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); animation: kamitora-gem 0.9s steps(1) infinite; }",
+      '@keyframes kamitora-gem { 50% { transform: translateY(-3px); } }',
     ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る

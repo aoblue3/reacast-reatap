@@ -4,6 +4,7 @@ mod config_store;
 mod emoji_font;
 mod hotkeys;
 mod pcwmp;
+mod support_thread;
 pub mod updater;
 
 use config_store::ConfigStore;
@@ -854,6 +855,7 @@ pub fn run() {
             updater::get_app_version,
             applog::log_from_frontend,
             applog::open_log_dir,
+            support_thread::open_support_thread,
             backup::export_settings,
             backup::import_settings,
             updater::download_and_apply_update,

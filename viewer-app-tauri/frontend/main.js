@@ -1500,6 +1500,9 @@ async function init() {
       document.getElementById('backupMsg').textContent = String(err);
     }
   });
+  document.getElementById('supportThreadBtn').addEventListener('click', () => {
+    invoke('open_support_thread').catch((err) => console.error('要望・質問スレを開けませんでした', err));
+  });
   document.getElementById('openLogDirBtn').addEventListener('click', () => {
     invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
   });

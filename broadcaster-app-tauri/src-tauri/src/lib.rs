@@ -10,6 +10,7 @@ mod local_translate;
 mod obs_bridge;
 mod preflight;
 mod stats;
+mod support_thread;
 mod tts;
 mod voice;
 pub mod updater;
@@ -1454,6 +1455,7 @@ pub fn run() {
             applog::get_log_level,
             applog::set_log_level,
             applog::open_log_dir,
+            support_thread::open_support_thread,
             updater::download_and_apply_update,
             open_comment_settings,
             comments::comments_get_settings,

@@ -160,6 +160,12 @@
     82% { transform: var(--off) translateX(1px) rotate(0); }
     100% { opacity: 1; transform: var(--off) scale(1) rotate(0); }
   }
+  /* 神トラ風: ウィンドウが上からカクッと開いて、そのあと1文字ずつ(show参照) */
+  #box.appear-kamitora-open.visible { transform-origin: center top; animation: kamitora-open 200ms steps(4, end); }
+  @keyframes kamitora-open {
+    0% { opacity: 1; transform: var(--off) scale(1, 0.1); }
+    100% { opacity: 1; transform: var(--off) scale(1, 1); }
+  }
   #box.aa {
     white-space: pre;
     word-break: normal;
@@ -246,7 +252,7 @@
     // アンカー先のレスを先に表示している最中か(斜体で表示する)
     let quotedMode = false;
 
-    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'oc-bolt', 'aurora-rise', 'bbs-load', 'yami-pop'];
+    const APPEARS = ['fade', 'slide-left', 'slide-up', 'pop-left', 'p5-slash', 'ff-open', 'neon-flicker', 'wipe-left', 'cute-bounce', 'quill-write', 'oc-bolt', 'aurora-rise', 'bbs-load', 'yami-pop', 'kamitora-open'];
     // 羽ペン(「インクで書かれていく」の時に、書いている先を走る)
     const QUILL_SVG =
       '<svg viewBox="0 0 40 40"><path d="M37 3 C 26 4 14 12 9 27 L 7 31 L 10 30 C 20 26 31 17 37 3 Z" fill="#f4efe2" stroke="#6b4a2a" stroke-width="1.2"/>' +
@@ -394,7 +400,7 @@
       const body = String(res.body || '');
       const appear = style.subtitle.appear;
       const quill = appear === 'quill-write';
-      const typewriter = (appear === 'typewriter' || quill) && !res.aa && !replay && body.length > 1;
+      const typewriter = (appear === 'typewriter' || appear === 'kamitora-open' || quill) && !res.aa && !replay && body.length > 1;
       // スライド等のアニメーションを毎回最初から再生し直す
       box.classList.remove('visible');
       void box.offsetWidth;
