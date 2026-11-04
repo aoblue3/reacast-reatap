@@ -115,6 +115,8 @@ struct CommentBridgeState {
     icon_files: std::collections::HashMap<String, Vec<std::path::PathBuf>>,
     style: Option<serde_json::Value>,
     history: VecDeque<serde_json::Value>,
+    /// コメント一覧が変わるたびに増える番号(「コメント一覧を残す」の保存用)
+    history_rev: u64,
     /// 今表示中の字幕と、それが消える時刻
     subtitle: Option<(serde_json::Value, Instant)>,
     /// 視聴者アンケートの今の状態(OBSを後から開いた時にも出すため)
@@ -275,6 +277,7 @@ impl ObsBridge {
             while c.history.len() > COMMENT_HISTORY_MAX {
                 c.history.pop_front();
             }
+            c.history_rev += 1;
         }
         let _ = self.tx.send(serde_json::json!({ "type": "comment", "res": res }).to_string());
     }
@@ -288,8 +291,30 @@ impl ObsBridge {
     /// コメント機能: 取得を止めた時に字幕を消す。
     /// コメント機能: コメント一覧を空にする(開始・再開始時)。
     pub fn clear_comments(&self) {
-        self.comments.lock().unwrap().history.clear();
+        {
+            let mut c = self.comments.lock().unwrap();
+            c.history.clear();
+            c.history_rev += 1;
+        }
         let _ = self.tx.send(serde_json::json!({ "type": "commentClear" }).to_string());
+    }
+
+    /// 今のコメント一覧(変わるたびに増える番号と、中身)
+    pub fn comment_history(&self) -> (u64, Vec<serde_json::Value>) {
+        let c = self.comments.lock().unwrap();
+        (c.history_rev, c.history.iter().cloned().collect())
+    }
+
+    /// 保存しておいたコメント一覧を戻す(「コメント一覧を残す」で、起動した時)
+    pub fn restore_comments(&self, items: Vec<serde_json::Value>) {
+        let items: Vec<_> = items.into_iter().filter(|v| v.is_object()).collect();
+        {
+            let mut c = self.comments.lock().unwrap();
+            let skip = items.len().saturating_sub(COMMENT_HISTORY_MAX);
+            c.history = items.iter().skip(skip).cloned().collect();
+        }
+        let items: Vec<serde_json::Value> = self.comments.lock().unwrap().history.iter().cloned().collect();
+        let _ = self.tx.send(serde_json::json!({ "type": "commentHistory", "items": items }).to_string());
     }
 
     /// 視聴者アンケートの状態(質問・選択肢・票の数・終わったか)をOBSの画面に送る。

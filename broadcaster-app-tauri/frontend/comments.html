@@ -197,6 +197,8 @@
 
     function applyListStyle() {
       const s = style.list;
+      // 「コメント一覧を使う」がOFFの時は何も出さない
+      document.body.style.display = s.enabled === false ? 'none' : '';
       listEl.style.fontFamily = C.cssFontFamily(s.fontFamily);
       listEl.style.fontSize = `${Number(s.fontSize) || 20}px`;
       listEl.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);

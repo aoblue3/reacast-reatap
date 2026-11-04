@@ -18,11 +18,14 @@ let saveTimer = null;
 // ---- 使う・使わない ----
 // タブごとの「使う」の設定。OFFの時は左のメニューのタブとタブの中身をグレーにする
 // (中身はそのまま変えられる)。NAV_USE_TABSのタブは、左のメニューにもチェックを出す
+// 値は「使う」の設定(1つ目が、左のメニューのチェックとタブの中の「使う」の欄)。どれかがOFFならグレー
 const TAB_USE = {
-  fetch: 'useBbs', create: 'useBbs', speech: 'speechEnabled', chime: 'chimeEnabled', aa: 'aaEnabled',
-  reactions: 'reactionLink', voice: 'voiceEnabled', nico: 'style.nico.enabled',
+  fetch: ['useBbs'], create: ['autoCreateThread', 'useBbs'], speech: ['speechEnabled'], chime: ['chimeEnabled'],
+  words: ['ngEnabled'], subtitle: ['style.subtitle.enabled'], list: ['style.list.enabled'], aa: ['aaEnabled'],
+  nico: ['style.nico.enabled'], audience: ['audienceEnabled'], output: ['desktopUse'], reactions: ['reactionLink'],
+  voice: ['voiceEnabled'],
 };
-const NAV_USE_TABS = ['fetch', 'speech', 'chime', 'aa', 'reactions', 'voice', 'nico'];
+const NAV_USE_TABS = ['fetch', 'create', 'speech', 'chime', 'words', 'subtitle', 'list', 'aa', 'nico', 'audience', 'output', 'reactions', 'voice'];
 // 取得元の「使う」と、そのURLの欄
 const SOURCE_USE = { useBbs: ['threadUrl', 'subThreadUrl'], useYoutube: ['youtubeTarget'], useTwitch: ['twitchChannel'] };
 for (const tab of NAV_USE_TABS) {
@@ -31,13 +34,13 @@ for (const tab of NAV_USE_TABS) {
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.className = 'nav-use';
-  box.dataset.key = TAB_USE[tab];
+  box.dataset.key = TAB_USE[tab][0];
   box.title = 'チェックを外すと、この機能を使いません';
   // チェックを押した時は、タブを切り替えない
   box.addEventListener('click', (e) => e.stopPropagation());
   btn.prepend(box);
 }
-for (const [tab, key] of Object.entries(TAB_USE)) {
+for (const [tab, [key]] of Object.entries(TAB_USE)) {
   const section = document.querySelector(`main > section[data-tab="${tab}"]`);
   if (!section) continue;
   const note = document.createElement('div');
@@ -53,14 +56,17 @@ for (const [tab, key] of Object.entries(TAB_USE)) {
   if (row) row.classList.add('use-master');
 }
 
+const DEFAULT_ON_KEYS = new Set(['useBbs', 'useYoutube', 'useTwitch', 'ngEnabled', 'audienceEnabled', 'desktopUse', 'style.subtitle.enabled', 'style.list.enabled', 'style.nico.enabled']);
+
 function isUsed(key) {
   return getPath(settings, key) !== false;
 }
 
 function renderUse() {
   if (!settings) return;
-  for (const [tab, key] of Object.entries(TAB_USE)) {
-    const on = key === 'useBbs' ? isUsed(key) : !!getPath(settings, key);
+  for (const [tab, keys] of Object.entries(TAB_USE)) {
+    // 既定でONの設定(取得元・見た目の「使う」等)は、保存されていなければON
+    const on = keys.every((key) => (DEFAULT_ON_KEYS.has(key) ? isUsed(key) : !!getPath(settings, key)));
     const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
     if (btn) btn.classList.toggle('use-off', !on);
     const section = document.querySelector(`main > section[data-tab="${tab}"]`);
@@ -955,6 +961,17 @@ for (const section of document.querySelectorAll('main > section[data-tab]')) {
     }
   });
 }
+
+// ---- コメント一覧を空にする(「コメント一覧を残す」の時に、新しい配信の前に) ----
+document.getElementById('clearListBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('clearListMsg');
+  try {
+    await invoke('comments_clear_list');
+    msg.textContent = 'コメント一覧を空にしました';
+  } catch (e) {
+    msg.textContent = String(e);
+  }
+});
 
 // ---- 参照ボタン ----
 document.getElementById('pickExeBtn').addEventListener('click', async () => {

@@ -921,6 +921,7 @@
 
     <!-- ================= NGワード・読み方 ================= -->
     <section data-tab="words">
+      <div class="field"><label>NGワード・荒らし対策を使う<span class="help" data-help="OFFにすると、NGワード・読まない人・荒らし対策を全部使いません(書いた内容は消えずに残ります)。下の「読み方」は、OFFの時も使います。"></span></label><div><input type="checkbox" data-key="ngEnabled" /></div></div>
       <h3>NGワード<span class="help" data-help="1行に1つ。名前・本文・ID(日時の行)のどれかに含まれるレスは、表示も読み上げもしません。"></span></h3>
       <textarea data-key="ngWords"></textarea>
       <h3>読まない人<span class="help" data-help="1行に1人。この人のコメントは、表示も読み上げもしません。掲示板は「ID:xxxx」、YouTubeは「youtube:名前」、Twitchは「twitch:名前」と書きます。デスクトップのコメント一覧を「ウィンドウにする」にしていると、コメントを右クリックして「この人のコメントを読まない」で足せます。"></span></h3>
@@ -943,6 +944,7 @@
 
     <!-- ================= コメント字幕 ================= -->
     <section data-tab="subtitle">
+      <div class="field"><label>コメント字幕を使う<span class="help" data-help="OFFにすると、OBSに貼ったままでも字幕を出しません(デスクトップにも出しません)。読み上げはそのまま続きます。"></span></label><div><input type="checkbox" data-key="style.subtitle.enabled" /></div></div>
       <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・字幕の出し方(アニメーション)・カスタムCSSがそのデザインに変わります(文字の大きさ・位置などはそのまま)。下で手直しした内容はプリセットごとに覚えておきます。"></span></label><div class="inline">
         <select id="subtitlePreset" data-preset-group="subtitle">
           <option value="default">デフォルト</option>
@@ -1198,6 +1200,8 @@
 
     <!-- ================= コメント一覧 ================= -->
     <section data-tab="list">
+      <div class="field"><label>コメント一覧を使う<span class="help" data-help="OFFにすると、OBSに貼ったままでもコメント一覧を出しません(デスクトップにも出しません)。"></span></label><div><input type="checkbox" data-key="style.list.enabled" /></div></div>
+      <div class="field"><label>コメント一覧を残す<span class="help" data-help="ONにすると、ReaCastを再起動した時や、落ちた後にもう一度起動した時に、その時のコメント一覧(最新の500件まで)に戻ります。「開始」し直しても空にしません。新しい配信の前に空にしたい時は「コメント一覧を空にする」を押してください。"></span></label><div class="inline"><input type="checkbox" data-key="keepCommentList" /><button class="secondary" id="clearListBtn">コメント一覧を空にする</button><span class="unit" id="clearListMsg"></span></div></div>
       <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・見出し・カスタムCSSがそのデザインに変わります(文字の大きさ・件数などはそのまま)。下で手直しした内容はプリセットごとに覚えておくので、別のプリセットに切り替えて戻ってきても、手直しした見た目になります。「このプリセットの初期値に戻す」で手直しを消せます。"></span></label><div class="inline">
         <select id="listPreset" data-preset-group="list">
           <option value="default">デフォルト</option>
@@ -1297,6 +1301,7 @@
 
     <!-- ================= 視聴者数・コメント数 ================= -->
     <section data-tab="audience">
+      <div class="field"><label>視聴者数・コメント数を使う<span class="help" data-help="OFFにすると、視聴者数を読みに行かず、OBSに貼ったままでも何も出しません(コメント一覧の上にも出しません)。次に「開始」した時から変わります。"></span></label><div><input type="checkbox" data-key="audienceEnabled" /></div></div>
       <p class="lead">YouTube・Twitch・PeerCastの視聴者数と、この配信のコメント数を、取得元のアイコンの横に数字で出します。取得中だけ表示します。<span class="help" data-help="視聴者数は30秒ごとに読み直します。YouTube・Twitchは、サイトで誰でも見られる「視聴中」の人数です(配信していない時は「-」)。PeerCastは、このPCで動いているPeerCast(PeerCastStation・PeerCast YTなど)から、配信しているチャンネルのリスナー数を読みます。コメント数は、取得を始めてから届いた数です(PeerCastは掲示板のレス)。"></span></p>
       <div class="copy-row"><span style="width:110px">OBSに貼るURL</span><code id="urlAudience">http://127.0.0.1:18772/audience.html</code><button class="secondary" data-copy="urlAudience">コピー</button></div>
       <div class="aud-now-box"><div class="aud-now-title" id="audienceNowTitle">今の数字</div><div class="aud aud-now" data-audience-now="tab"></div></div>
@@ -1334,6 +1339,7 @@
 
     <!-- ================= デスクトップに表示 ================= -->
     <section data-tab="output">
+      <div class="field"><label>デスクトップに表示を使う<span class="help" data-help="OFFにすると、コメント字幕・コメント一覧・流れるコメントを、PCの画面に出しません(下の「デスクトップに表示する」の設定は残ります)。"></span></label><div><input type="checkbox" data-key="desktopUse" /></div></div>
       <p class="lead">OBSの「画面キャプチャ」「ウィンドウキャプチャ」で配信している方向けです。コメント字幕やコメント一覧をPCの画面に重ねて出すので、OBSにURLを貼らなくても、そのまま配信に映ります。<span class="help" data-help="コメント字幕・コメント一覧は常に最前面に表示され、クリックは下のウィンドウに透過するので、ゲーム等の操作は邪魔しません。DirectXの排他フルスクリーンのゲームの上だけは、Windowsの仕組み上どのツールでも重ねられないので、ボーダーレスウィンドウ設定にしてください。OBSの「ウィンドウキャプチャ」でゲームの窓だけを映している時は、字幕は映らないので、「画面キャプチャ」を使ってください。OBSのブラウザソースで配信している方は、ここをOFFにしておくと、自分の画面に字幕が出ません。"></span></p>
       <div class="inline" style="margin-bottom:6px"><button class="secondary" data-open-guide>OBSでの設定方法(説明ページ)</button></div>
       <div class="field"><label>最前面に表示する<span class="help" data-help="ONにすると、コメント字幕・コメント一覧を、ゲームやブラウザなどほかの窓より前に出します。OFFにすると普通の窓と同じで、後から開いた窓や、クリックした窓の後ろに隠れます。"></span></label><div><input type="checkbox" data-key="desktopTopmost" /></div></div>

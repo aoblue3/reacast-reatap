@@ -1289,6 +1289,7 @@ pub fn run() {
             let engine = comments::CommentEngine::new(app.handle().clone(), comment_settings.clone());
             engine.apply_settings(comment_settings.clone());
             app.manage(engine.clone());
+            engine.start_history_keeper();
             if let Err(e) = comments::hotkeys::apply(app.handle(), &comment_settings) {
                 log::warn!("{e}");
             }
@@ -1494,6 +1495,7 @@ pub fn run() {
             comments::comments_replay_res,
             comments::comments_add_setting_line,
             comments::comments_list_interactive,
+            comments::comments_clear_list,
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,

@@ -16,6 +16,8 @@
   // 既定値はここで一元管理する(設定画面の初期値にもこれを使う)。
   const DEFAULT_STYLE = {
     subtitle: {
+      // OFFにすると字幕を出さない(OBSのソースを消さなくても止められる。デスクトップにも出さない)
+      enabled: true,
       fontFamily: 'BIZ UDゴシック',
       fontSize: 40,
       bold: true,
@@ -72,6 +74,8 @@
       shrinkToHeight: true,
     },
     list: {
+      // OFFにするとコメント一覧を出さない(デスクトップにも出さない)
+      enabled: true,
       fontFamily: 'BIZ UDゴシック',
       fontSize: 22,
       // 見出し(レス番号・名前・時刻)の文字の大きさ(px。0なら本文の80%)と色

@@ -256,6 +256,8 @@
      * プリセットの部分(フォント・色・背景・出し方・カスタムCSS)だけ既定に戻す。 */
     function setStyle(raw) {
       style = C.mergeStyle(raw);
+      // 「コメント字幕を使う」がOFFの時は何も出さない
+      document.body.style.display = style.subtitle.enabled === false ? 'none' : '';
       const desktop = !PREVIEW && !!(window.__TAURI__ && window.__TAURI__.core);
       if (desktop && style.subtitle.desktopUsePreset === false) {
         for (const k of C.SUBTITLE_PRESET_KEYS) style.subtitle[k] = C.DEFAULT_STYLE.subtitle[k];

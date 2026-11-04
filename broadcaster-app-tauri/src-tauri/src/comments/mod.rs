@@ -76,6 +76,14 @@ pub struct CommentSettings {
     pub use_bbs: bool,
     pub use_youtube: bool,
     pub use_twitch: bool,
+    /// 「NGワード・荒らし対策」タブを使う(OFFならNGワード・読まない人・荒らし対策を全部使わない。読み方は使う)
+    pub ng_enabled: bool,
+    /// 「視聴者数・コメント数」タブを使う(OFFなら視聴者数を読みに行かない)
+    pub audience_enabled: bool,
+    /// 「デスクトップに表示」タブを使う(OFFならコメント字幕・コメント一覧・流れるコメントをPCの画面に出さない)
+    pub desktop_use: bool,
+    /// 再起動・落ちた後もコメント一覧を残す(開始し直しても空にしない。comment-history.jsonに保存)
+    pub keep_comment_list: bool,
     pub poll_interval_ms: u64,
     pub auto_next_thread: bool,
     pub next_thread_keyword: String,
@@ -480,6 +488,10 @@ impl Default for CommentSettings {
             use_bbs: true,
             use_youtube: true,
             use_twitch: true,
+            ng_enabled: true,
+            audience_enabled: true,
+            desktop_use: true,
+            keep_comment_list: false,
             poll_interval_ms: 7000,
             auto_next_thread: true,
             next_thread_keyword: String::new(),
@@ -808,13 +820,22 @@ struct Compiled {
 impl Compiled {
     fn from(s: &CommentSettings) -> Self {
         Self {
-            ng_words: text::non_empty_lines(&s.ng_words),
-            ng_people: text::non_empty_lines(&s.ng_people).into_iter().map(|l| l.trim().to_string()).collect(),
+            ng_words: if s.ng_enabled { text::non_empty_lines(&s.ng_words) } else { Vec::new() },
+            ng_people: if s.ng_enabled {
+                text::non_empty_lines(&s.ng_people).into_iter().map(|l| l.trim().to_string()).collect()
+            } else {
+                Default::default()
+            },
             aa_patterns: text::non_empty_lines(&s.aa_patterns),
             reading_rules: text::parse_reading_rules(&s.reading_rules),
             reaction_rules: text::parse_reaction_rules(&s.reaction_rules),
         }
     }
+}
+
+/// 見た目の設定の「使う」(style.<part>.enabled。無ければ使う)
+pub(crate) fn style_on(s: &CommentSettings, part: &str) -> bool {
+    s.style.pointer(&format!("/{part}/enabled")).and_then(|v| v.as_bool()).unwrap_or(true)
 }
 
 fn detect_aa(s: &CommentSettings, c: &Compiled, post: &Post) -> bool {
@@ -1038,14 +1059,19 @@ impl CommentEngine {
     pub fn desktop_wanted(&self) -> bool {
         let st = self.state.lock().unwrap();
         let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
-        st.settings.desktop_enabled && (st.status.running || st.adjusting || held)
+        st.settings.desktop_use
+            && style_on(&st.settings, "subtitle")
+            && st.settings.desktop_enabled
+            && (st.status.running || st.adjusting || held)
     }
 
     /// デスクトップのレス一覧のウィンドウを今出しておくべきか(desktop_wantedと同じ条件)。
     pub fn desktop_list_wanted(&self) -> bool {
         let st = self.state.lock().unwrap();
         let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
-        st.settings.desktop_list_enabled
+        st.settings.desktop_use
+            && style_on(&st.settings, "list")
+            && st.settings.desktop_list_enabled
             && (st.status.running || st.adjusting_list || held || st.settings.desktop_list_interactive)
     }
 
@@ -1054,7 +1080,7 @@ impl CommentEngine {
         let st = self.state.lock().unwrap();
         let held = st.desktop_hold_until.map(|t| t > std::time::Instant::now()).unwrap_or(false);
         let nico_on = st.settings.style.pointer("/nico/enabled").and_then(|v| v.as_bool()).unwrap_or(true);
-        st.settings.desktop_nico_enabled && nico_on && (st.status.running || held)
+        st.settings.desktop_use && st.settings.desktop_nico_enabled && nico_on && (st.status.running || held)
     }
 
     /// list: falseならデスクトップ字幕、trueならデスクトップのレス一覧
@@ -1144,7 +1170,11 @@ impl CommentEngine {
                     counts.push(audience::SourceCount { id, ..Default::default() });
                 }
             }
-            st.audience = audience::Audience { running: true, sources: counts };
+            // 「視聴者数・コメント数」を使わない時は、何も出さない
+            if !settings.audience_enabled {
+                counts.clear();
+            }
+            st.audience = audience::Audience { running: settings.audience_enabled, sources: counts };
             st.youtube_live = None;
             st.run_id
         };
@@ -1156,8 +1186,10 @@ impl CommentEngine {
         );
         self.emit_status();
         self.emit_thread_reset();
-        // 開始(再開始)のたびにコメント一覧を空にしてから始める
-        self.bridge().clear_comments();
+        // 開始(再開始)のたびにコメント一覧を空にしてから始める(「コメント一覧を残す」がONなら残す)
+        if !settings.keep_comment_list {
+            self.bridge().clear_comments();
+        }
         let initial = self.settings().initial_text;
         if !initial.trim().is_empty() {
             self.bridge().push_comment(Post::system(initial).to_json(false));
@@ -1175,7 +1207,7 @@ impl CommentEngine {
             let me = self.clone();
             tauri::async_runtime::spawn(async move { me.run_youtube(run_id, target).await });
         }
-        {
+        if settings.audience_enabled {
             let me = self.clone();
             let channel = twitch.clone();
             tauri::async_runtime::spawn(async move { me.run_audience(run_id, channel).await });
@@ -1683,6 +1715,50 @@ impl CommentEngine {
         self.wake.notify_one();
     }
 
+    /// 「コメント一覧を残す」: 起動した時に前のコメント一覧を戻し、その後は変わるたびに
+    /// (3秒おきにまとめて)comment-history.jsonに書く。OFFの間はファイルを消しておく
+    /// (後でONにした時に、ずっと前の一覧が出てこないように)
+    pub fn start_history_keeper(self: &Arc<Self>) {
+        let Ok(dir) = self.app.path().app_data_dir() else { return };
+        let path = dir.join("comment-history.json");
+        let bridge = self.bridge();
+        if self.settings().keep_comment_list {
+            if let Some(items) = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|v| v.get("items").and_then(|i| i.as_array()).cloned())
+            {
+                log::info!("コメント一覧を前回の続きから戻しました({}件)", items.len());
+                bridge.restore_comments(items);
+            }
+        }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let mut saved_rev = bridge.comment_history().0;
+            loop {
+                std::thread::sleep(Duration::from_secs(3));
+                if !me.settings().keep_comment_list {
+                    if path.exists() {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    saved_rev = u64::MAX;
+                    continue;
+                }
+                let (rev, items) = bridge.comment_history();
+                if rev == saved_rev {
+                    continue;
+                }
+                let text = serde_json::json!({ "savedAt": now_ms(), "items": items }).to_string();
+                let tmp = path.with_extension("json.tmp");
+                let ok = std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, &path));
+                match ok {
+                    Ok(()) => saved_rev = rev,
+                    Err(e) => log::warn!("コメント一覧を保存できませんでした: {e}"),
+                }
+            }
+        });
+    }
+
     fn bridge(&self) -> ObsBridge {
         self.app.state::<ObsBridge>().inner().clone()
     }
@@ -1737,7 +1813,7 @@ impl CommentEngine {
                 }
             }
             // 荒らし対策(ONの時だけ)。続きから読むために入れ直したレス・お知らせは見ない
-            let posts: Vec<Post> = if st.settings.spam_filter {
+            let posts: Vec<Post> = if st.settings.spam_filter && st.settings.ng_enabled {
                 let rules = spam_rules(&st.settings);
                 let now = std::time::Instant::now();
                 posts
@@ -2289,7 +2365,7 @@ impl CommentEngine {
             // 同じ番号で送る(字幕の画面が、今出ている字幕の翻訳だけを下に添える)。
             // 読み上げはしない。コメント一覧・流れるコメントには出さない。
             static SUBTITLE_TID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-            let tid = (settings.subtitle_translate && linkable && !aa && !post.body.trim().is_empty())
+            let tid = (settings.subtitle_translate && style_on(&settings, "subtitle") && linkable && !aa && !post.body.trim().is_empty())
                 .then(|| SUBTITLE_TID.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
             let mut subtitle_json = post.to_json(aa);
             if let Some(tid) = tid {
@@ -2438,7 +2514,7 @@ fn next_interval(backlog: usize, shown_ms: u64, speech_ms: u64, exact_speech: bo
         } else {
             s.turbo_interval_ms
         }
-    } else if s.wait_for_display {
+    } else if s.wait_for_display && style_on(s, "subtitle") {
         s.read_interval_ms.max(shown_ms).max(speech_ms)
     } else {
         s.read_interval_ms.max(speech_ms)
@@ -2463,7 +2539,7 @@ fn speech_text(post: &Post, aa: bool, s: &CommentSettings, c: &Compiled) -> Stri
     let body = if aa {
         let quoted = if s.aa_read_quoted_only { text::quoted_only(&post.body) } else { String::new() };
         if quoted.is_empty() { s.aa_fixed_reading.clone() } else { quoted }
-    } else if s.spam_filter && s.spam_compress_repeats {
+    } else if s.spam_filter && s.ng_enabled && s.spam_compress_repeats {
         // 荒らし対策: 同じ文字が20文字より長く続く所は5文字にして読む(読み方の置き換えより先に)
         spam::compress_repeats(&post.body, 20, 5)
     } else {
@@ -2828,6 +2904,12 @@ pub fn comments_add_setting_line(
     engine.apply_settings(s.clone());
     let _ = app.emit("comments:settings", &s);
     Ok(true)
+}
+
+/// 「コメント一覧を空にする」(コメント一覧を残す設定の時に、新しい配信の前に使う)
+#[tauri::command]
+pub fn comments_clear_list(engine: Engine) {
+    engine.bridge().clear_comments();
 }
 
 /// コメント一覧の窓がウィンドウ(マウスで操作できる)になっているか
