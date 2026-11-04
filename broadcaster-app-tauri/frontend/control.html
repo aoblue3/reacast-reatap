@@ -433,6 +433,7 @@
     </div>
     <div class="row" style="margin-bottom: 0;">
       <button id="openLogDirBtn" class="secondary">ログフォルダを開く</button><span class="help" data-help="不具合が起きた時は、ログフォルダの中のファイル(ReaCast.log など)を送ってもらえると原因を調べやすくなります。"></span>
+      <label class="muted" style="margin-left: 10px">ログを残す <select id="logLevelSelect"><option value="all">全部(おすすめ)</option><option value="problems">エラーと警告だけ</option><option value="off">残さない</option></select></label><span class="help" data-help="ログは1つのファイルが1MBを超えると新しいファイルになり、古いものは5つまでしか残さないので、全部で約6MBより大きくはなりません。書く量を減らしたい時は「エラーと警告だけ」、書かせたくない時は「残さない」にしてください(「残さない」の間は、不具合が起きても原因を調べられません)。"></span>
     </div>
   </div>
 

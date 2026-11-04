@@ -119,8 +119,17 @@
   /* ---- 「ウィンドウにする」の時(マウスで操作できるデスクトップのコメント一覧) ---- */
   /* マウスを乗せている間だけ、窓の範囲がわかるように薄い枠を出す */
   body.interactive:hover::after { content: ''; position: fixed; inset: 0; border: 1px dashed rgba(255, 255, 255, 0.35); pointer-events: none; }
-  #more, #menu, #toast, #reading { font-family: 'Yu Gothic UI', 'ReaCast Emoji', sans-serif; font-size: 13px; text-shadow: none; }
+  #bar, #more, #menu, #toast, #reading { font-family: 'Yu Gothic UI', 'ReaCast Emoji', sans-serif; font-size: 13px; text-shadow: none; }
   /* 過去のコメントを見ている時の「最新に戻る」(最新のコメントの側に出す) */
+  /* マウスを乗せている間だけ出す、上の帯(ドラッグで移動・過去のコメントのボタン)と右下の角(大きさ) */
+  #bar { display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 6; height: 26px; align-items: center; gap: 4px; padding: 0 4px; box-sizing: border-box; background: rgba(20, 22, 30, 0.82); color: #fff; cursor: move; user-select: none; }
+  body.interactive:hover #bar { display: flex; }
+  body.adjusting #bar, body.adjusting #igrip { display: none !important; }
+  #bar .grab { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.8; }
+  #bar button { padding: 1px 8px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 4px; background: rgba(255, 255, 255, 0.08); color: #fff; font: inherit; font-size: 12px; cursor: pointer; }
+  #bar button:hover { background: #3b6df0; }
+  #igrip { display: none; position: fixed; right: 0; bottom: 0; z-index: 6; width: 18px; height: 18px; cursor: se-resize; background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.6) 50%); }
+  body.interactive:hover #igrip { display: block; }
   #more { display: none; position: fixed; left: 50%; transform: translateX(-50%); bottom: 6px; z-index: 5; padding: 4px 12px; border-radius: 14px; background: rgba(20, 22, 30, 0.88); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer; white-space: nowrap; }
   #more.top { bottom: auto; top: 6px; }
   #more.visible { display: block; }
@@ -145,6 +154,8 @@
 <body>
   <div id="aud" class="aud empty"></div>
   <div id="list"></div>
+  <div id="bar"><span class="grab" title="ドラッグで移動">⠿ ドラッグで移動</span><button id="barOlder" title="古いコメントへ(キーボードの↑↓・PageUp・PageDownでも動かせます)">古い方へ</button><button id="barNewer" title="新しいコメントへ">新しい方へ</button><button id="barLatest" title="一番新しいコメントへ(Endキー)">最新</button></div>
+  <div id="igrip" title="ドラッグで大きさを変える"></div>
   <div id="more"></div>
   <div id="menu"></div>
   <div id="toast"></div>
@@ -495,6 +506,20 @@
       render();
     });
 
+    /** 過去のコメントの方へn件動かす(マイナスなら新しい方へ) */
+    function scrollOlder(n) {
+      const max = Math.max(0, items.length - maxItems());
+      const next = Math.max(0, Math.min(max, offset + n));
+      if (next !== offset) {
+        offset = next;
+        render();
+      }
+    }
+    /** 画面の上の方へn件(新しい順なら新しい方、古い順なら古い方) */
+    function scrollUp(n) {
+      scrollOlder(style.list.newestFirst ? -n : n);
+    }
+
     // ホイール1段(だいたい100)で1件ずつ。タッチパッドの細かい動きは溜めてから動かす
     let wheelAcc = 0;
     window.addEventListener(
@@ -507,17 +532,33 @@
         const steps = Math.trunc(wheelAcc / 60);
         if (!steps) return;
         wheelAcc -= steps * 60;
-        // 古い順(新しいのが下)なら上に回すと過去へ、新しい順(新しいのが上)なら下に回すと過去へ
-        const older = style.list.newestFirst ? steps : -steps;
-        const max = Math.max(0, items.length - maxItems());
-        const next = Math.max(0, Math.min(max, offset + older));
-        if (next !== offset) {
-          offset = next;
-          render();
-        }
+        // 上に回すと画面の上の方のコメントへ
+        scrollUp(-steps);
       },
       { passive: false },
     );
+
+    // キーボード(一覧をクリックしてから): ↑↓で1件、PageUp・PageDownで1画面分、Homeで一番古い、Endで最新
+    window.addEventListener('keydown', (e) => {
+      if (!interactive || adjusting || readingEl.classList.contains('visible')) return;
+      const page = Math.max(1, maxItems() - 1);
+      const keys = {
+        ArrowUp: () => scrollUp(1),
+        ArrowDown: () => scrollUp(-1),
+        PageUp: () => scrollUp(page),
+        PageDown: () => scrollUp(-page),
+        Home: () => scrollOlder(items.length),
+        End: () => scrollOlder(-items.length),
+      };
+      if (keys[e.key]) {
+        e.preventDefault();
+        keys[e.key]();
+      }
+    });
+    // 上の帯のボタン(1画面分ずつ)
+    document.getElementById('barOlder').addEventListener('click', () => scrollOlder(Math.max(1, maxItems() - 1)));
+    document.getElementById('barNewer').addEventListener('click', () => scrollOlder(-Math.max(1, maxItems() - 1)));
+    document.getElementById('barLatest').addEventListener('click', () => scrollOlder(-items.length));
 
     function toast(text) {
       toastEl.textContent = text;
@@ -642,6 +683,39 @@
     }
 
     if (DESKTOP) {
+      // 上の帯を掴んで移動、右下の角で大きさを変える。動かした位置は少し待ってから保存する
+      // (動かしている最中に、ReaCastが前の位置へ戻さないように知らせておく)
+      const win = tauri.window.getCurrentWindow();
+      document.getElementById('bar').addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.target.closest('button')) return;
+        userMoveUntil = Date.now() + 15000;
+        tauri.core.invoke('comments_desktop_moved', { save: false }).catch(() => {});
+        win.startDragging();
+      });
+      document.getElementById('igrip').addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        userMoveUntil = Date.now() + 15000;
+        tauri.core.invoke('comments_desktop_moved', { save: false }).catch(() => {});
+        win.startResizeDragging('SouthEast');
+      });
+      let moveSaveTimer = null;
+      let lastMoved = 0;
+      // 帯・角を掴んだ後の動きだけを保存する(ReaCastが窓を置き直した時は保存しない)
+      let userMoveUntil = 0;
+      const onMoved = () => {
+        const now = Date.now();
+        if (!interactive || adjusting || now > userMoveUntil) return;
+        userMoveUntil = Math.max(userMoveUntil, now + 2000);
+        if (now - lastMoved > 500) {
+          lastMoved = now;
+          tauri.core.invoke('comments_desktop_moved', { save: false }).catch(() => {});
+        }
+        clearTimeout(moveSaveTimer);
+        moveSaveTimer = setTimeout(() => tauri.core.invoke('comments_desktop_moved', { save: true }).catch(() => {}), 600);
+      };
+      if (win.onMoved) win.onMoved(onMoved);
+      if (win.onResized) win.onResized(onMoved);
       window.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         if (!interactive || adjusting) return;

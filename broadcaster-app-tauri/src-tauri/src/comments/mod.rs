@@ -355,7 +355,7 @@ pub struct CommentSettings {
     pub style: serde_json::Value,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopRect {
     pub x: i32,
@@ -3169,6 +3169,28 @@ fn desktop_target(target: &Option<String>) -> (bool, &'static str, &'static str)
 #[tauri::command]
 pub fn comments_desktop_adjusting(engine: Engine, target: Option<String>) -> bool {
     engine.adjusting(desktop_target(&target).0)
+}
+
+/// 「ウィンドウにする」にしたコメント一覧を、マウスで動かした・大きさを変えた。
+/// save: trueなら、今の位置・大きさを「マウスで決めた位置」として保存する
+#[tauri::command(async)]
+pub fn comments_desktop_moved(app: AppHandle, engine: Engine, store: tauri::State<ConfigStore>, save: bool) -> Result<(), String> {
+    crate::LIST_MOVED_AT_MS.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+    if !save {
+        return Ok(());
+    }
+    let Some(win) = app.get_webview_window(crate::DESKTOP_LIST_LABEL) else { return Ok(()) };
+    let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { return Ok(()) };
+    let mut s = engine.settings();
+    let rect = Some(DesktopRect { x: pos.x, y: pos.y, width: size.width, height: size.height });
+    if s.desktop_list_rect == rect {
+        return Ok(());
+    }
+    s.desktop_list_rect = rect;
+    save_settings(&store, &s)?;
+    engine.apply_settings(s.clone());
+    let _ = app.emit("comments:settings", &s);
+    Ok(())
 }
 
 /// デスクトップ字幕(またはレス一覧)をマウスで動かすモードの開始/終了。終了した時点の

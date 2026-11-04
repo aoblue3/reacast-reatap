@@ -5,7 +5,7 @@
 //! (`%LOCALAPPDATA%\<identifier>\logs`)にファイルとして書き残し、画面側
 //! (shared/error-log.js)のエラーやRustのpanicもここに集める。
 //! 利用者には設定画面の「ログフォルダを開く」から送ってもらう想定。
-//! viewer-app-tauri/src-tauri/src/applog.rs と同じ内容。
+//! viewer-app-tauri/src-tauri/src/applog.rs と同じ内容(ログの残し方の設定はReaCastだけ)。
 
 use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
@@ -28,6 +28,50 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
         .rotation_strategy(RotationStrategy::KeepSome(KEEP_FILES))
         .timezone_strategy(TimezoneStrategy::UseLocal)
         .build()
+}
+
+/// ログの残し方の設定(ConfigStoreのキー)。"all"=全部(既定) / "problems"=エラーと警告だけ / "off"=残さない
+const LOG_LEVEL_KEY: &str = "logLevel";
+
+fn level_filter(level: &str) -> log::LevelFilter {
+    match level {
+        "problems" => log::LevelFilter::Warn,
+        "off" => log::LevelFilter::Off,
+        _ => log::LevelFilter::Info,
+    }
+}
+
+fn saved_level(store: &crate::config_store::ConfigStore) -> String {
+    store.get(LOG_LEVEL_KEY).and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "all".into())
+}
+
+/// 保存してあるログの残し方を使う(起動時、設定を読み込んだ後に呼ぶ)
+pub fn apply_saved_level(store: &crate::config_store::ConfigStore) {
+    let level = saved_level(store);
+    if level != "all" {
+        log::info!("ログの残し方: {level}");
+    }
+    log::set_max_level(level_filter(&level));
+}
+
+#[tauri::command]
+pub fn get_log_level(store: tauri::State<crate::config_store::ConfigStore>) -> String {
+    saved_level(&store)
+}
+
+/// ログの残し方を変える(すぐに効く)
+#[tauri::command]
+pub fn set_log_level(store: tauri::State<crate::config_store::ConfigStore>, level: String) -> Result<(), String> {
+    let level = match level.as_str() {
+        "problems" | "off" => level,
+        _ => "all".to_string(),
+    };
+    store.set(LOG_LEVEL_KEY.to_string(), serde_json::json!(level)).map_err(|e| e.to_string())?;
+    // 変えたことは残す(「残さない」にする時は、その前に書く)
+    log::set_max_level(log::LevelFilter::Info);
+    log::info!("ログの残し方を変えました: {level}");
+    log::set_max_level(level_filter(&level));
+    Ok(())
 }
 
 /// panicをログに残す(既定の処理=標準エラー出力もそのまま行う)。

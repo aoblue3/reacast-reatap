@@ -378,7 +378,7 @@ fn sync_desktop_window(app: &tauri::AppHandle, list: bool) {
                 let _ = win.emit("dlist:interactive", interactive);
             }
             let _ = win.set_always_on_top(engine.settings().desktop_topmost || adjusting);
-            if !adjusting {
+            if !adjusting && !(list && list_moving_now()) {
                 let (pos, size) = subtitle_target_geometry(app, list);
                 let _ = win.set_position(tauri::Position::Physical(pos));
                 let _ = win.set_size(tauri::Size::Physical(size));
@@ -423,9 +423,19 @@ fn create_subtitle_window(app: &tauri::AppHandle, list: bool) -> tauri::Result<(
 }
 
 /// デスクトップ字幕ウィンドウのずれを直す(realign_overlay_windowと同じ理由)。
+/// 「ウィンドウにする」にしたコメント一覧を、最後にマウスで動かした時刻(ミリ秒)。
+/// 動かしている最中に、決めてある位置へ戻してしまわないように使う
+pub(crate) static LIST_MOVED_AT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn list_moving_now() -> bool {
+    let at = LIST_MOVED_AT_MS.load(std::sync::atomic::Ordering::SeqCst);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    now.saturating_sub(at) < 3000
+}
+
 fn realign_subtitle_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow, list: bool) {
     // マウスで動かしている最中は戻さない
-    if app.state::<Arc<comments::CommentEngine>>().adjusting(list) {
+    if app.state::<Arc<comments::CommentEngine>>().adjusting(list) || (list && list_moving_now()) {
         return;
     }
     let (pos, size) = subtitle_target_geometry(app, list);
@@ -1237,6 +1247,7 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             let config_path = app_data_dir.join("broadcaster-config.json");
             let store = ConfigStore::load(config_path);
+            applog::apply_saved_level(&store);
 
             // 初回起動時のみ部屋の認証情報を生成し、以後は同じものを使い続ける
             // (配信者が一度伝えた合言葉がずっと有効であるようにするため)
@@ -1440,6 +1451,8 @@ pub fn run() {
             updater::check_for_update,
             updater::get_app_version,
             applog::log_from_frontend,
+            applog::get_log_level,
+            applog::set_log_level,
             applog::open_log_dir,
             updater::download_and_apply_update,
             open_comment_settings,
@@ -1496,6 +1509,7 @@ pub fn run() {
             comments::comments_add_setting_line,
             comments::comments_list_interactive,
             comments::comments_clear_list,
+            comments::comments_desktop_moved,
             comments::comments_read_from,
             comments::comments_search_web,
             comments::comments_open_obs_guide,

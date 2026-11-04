@@ -1140,5 +1140,10 @@ async function connectRelay(creds, relayAddress, passphrase) {
   document.getElementById('openLogDirBtn').addEventListener('click', () => {
     invoke('open_log_dir').catch((err) => console.error('ログフォルダを開けませんでした', err));
   });
+  {
+    const sel = document.getElementById('logLevelSelect');
+    invoke('get_log_level').then((v) => (sel.value = v)).catch(() => {});
+    sel.addEventListener('change', () => invoke('set_log_level', { level: sel.value }).catch((err) => console.error(err)));
+  }
   checkForUpdateOnStartup();
 })();
