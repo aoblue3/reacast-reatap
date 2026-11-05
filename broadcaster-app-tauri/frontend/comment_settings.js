@@ -1369,10 +1369,11 @@ const SUBTITLE_PRESETS = {
   // 白いドット文字に紺色のふち。ウィンドウがカクッと開いて、1文字ずつ
   kamitora: {
     fontFamily: 'DotGothic16', bold: false, color: '#f8f8f8', outlineWidth: 3, outlineColor: '#000040',
-    bgColor: '#000020', bgOpacity: 0, padding: 16, radius: 0, appear: 'kamitora-open', translationColor: '#f8e088',
+    bgColor: '#000020', bgOpacity: 0, padding: 20, radius: 0, appear: 'kamitora-open', translationColor: '#f8e088',
     customCss: [
-      '#box { -webkit-font-smoothing: none; margin: 12px; border: 5px solid #e4aa10; box-shadow: 0 0 0 2px #000000, inset 0 0 0 3px #fff6d4, inset 0 0 0 5px #000000; }',
-      "#box::before { content: ''; position: absolute; inset: -10px; pointer-events: none; background: linear-gradient(#fff6d4, #fff6d4) left 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) left 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#000000, #000000) left 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) left 0px bottom 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px bottom 0px / 14px 14px no-repeat; }",
+      // 枠は内側の影で描く(外側の線・余白にすると、字幕の高さを収める計算に入らず、長い字幕・翻訳付きで下が切れる)
+      '#box { -webkit-font-smoothing: none; box-shadow: inset 0 0 0 2px #000000, inset 0 0 0 7px #e4aa10, inset 0 0 0 10px #fff6d4, inset 0 0 0 12px #000000; }',
+      "#box::before { content: ''; position: absolute; inset: -1px; pointer-events: none; background: linear-gradient(#fff6d4, #fff6d4) left 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px top 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) left 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#fff6d4, #fff6d4) right 5px bottom 5px / 4px 4px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px top 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) left 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#e4aa10, #e4aa10) right 2px bottom 2px / 10px 10px no-repeat, linear-gradient(#000000, #000000) left 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px top 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) left 0px bottom 0px / 14px 14px no-repeat, linear-gradient(#000000, #000000) right 0px bottom 0px / 14px 14px no-repeat; }",
     ].join('\n'),
   },
   // ゆめかわ: パステルピンクの丸い吹き出し、ハートときらきらがふわふわ、ぷるんと弾んで出る
