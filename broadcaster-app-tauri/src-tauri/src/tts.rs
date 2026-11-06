@@ -267,7 +267,6 @@ fn pick_speaker(s: &CommentSettings, source: &str, person: &str) -> CommentSetti
         "youtube" => s.tts_speaker_youtube.trim(),
         "twitch" => s.tts_speaker_twitch.trim(),
         "niconico" => s.tts_speaker_niconico.trim(),
-        "openrec" => s.tts_speaker_openrec.trim(),
         _ => "",
     };
     if !per.is_empty() {

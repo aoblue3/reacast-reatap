@@ -29,9 +29,9 @@
   /* 新しいレスを下に追加する設定の時は、下端に寄せる */
   #list.bottom { justify-content: flex-end; }
   /* カスタムCSSで使えるクラス:
-     .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .avatar(YouTube・Twitch・ニコ生・OPENRECの人のアイコン) .name(名前)
+     .item(レス全体) .icon(アイコン) .content .head(見出し) .no(番号) .avatar(YouTube・Twitch・ニコ生の人のアイコン) .name(名前)
      .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA) .item.system(お知らせ)
-     .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch / .item.src-niconico / .item.src-openrec(取得元ごと)
+     .src(取得元の印) .item.src-bbs / .item.src-youtube / .item.src-twitch / .item.src-niconico(取得元ごと)
      .item.board-jpnkn / .item.board-shitaraba / .item.board-bbs(掲示板の種類ごと。bbsはそのほかの掲示板) */
   /* 応援(スーパーチャット・ビッツ等)。カスタムCSSでは .item.paid / .paid-superchat / .paid-sticker /
      .paid-member / .paid-bits / .paid-sub / .paid-gift / .paid-raid / .paid-badge(金額の札) */
@@ -57,7 +57,6 @@
   .src-youtube .head .src { background: #e62117; }
   .src-twitch .head .src { background: #9146ff; }
   .src-niconico .head .src { background: #252525; }
-  .src-openrec .head .src { background: #ff6d00; }
   .src-bbs .head .src { background: #5a6270; }
   .board-jpnkn .head .src { background: #2f7d4f; }
   .board-shitaraba .head .src { background: #b5651d; }
@@ -298,7 +297,7 @@
         const label =
           res.source === 'bbs'
             ? boardsSeen.size > 1 ? { jpnkn: 'jpnkn', shitaraba: 'したらば' }[res.board] || '掲示板' : ''
-            : { youtube: 'YouTube', twitch: 'Twitch', niconico: 'ニコ生', openrec: 'OPENREC' }[res.source];
+            : { youtube: 'YouTube', twitch: 'Twitch', niconico: 'ニコ生' }[res.source];
         if (s.showSource && label) head.appendChild(span('src', label));
         if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
         else if (s.showResNumber && res.avatar) head.appendChild(avatarImg(res.avatar));
@@ -390,7 +389,7 @@
     }
 
     // ?source=youtube のように付けると、その取得元のレスだけを出す(複数は「,」区切り。
-    // bbs=掲示板の全部 jpnkn・shitaraba=その掲示板だけ youtube=YouTube twitch=Twitch niconico=ニコ生 openrec=OPENREC)。
+    // bbs=掲示板の全部 jpnkn・shitaraba=その掲示板だけ youtube=YouTube twitch=Twitch niconico=ニコ生)。
     // 付けなければ全部。ReaCastからのお知らせは常に出す
     const onlySources = (new URLSearchParams(location.search).get('source') || '')
       .split(',')

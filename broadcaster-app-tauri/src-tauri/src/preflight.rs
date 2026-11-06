@@ -1,5 +1,5 @@
 //! 配信前のチェック(コントロールパネルの「配信前チェック」)。掲示板・YouTube・
-//! Twitch・ニコ生・OPENREC・読み上げソフト・OBSのブラウザソース・ホットキーが使える状態かを
+//! Twitch・ニコ生・読み上げソフト・OBSのブラウザソース・ホットキーが使える状態かを
 //! まとめて確かめる。中継サーバーとの接続はコントロールパネル(JS)側で足す。
 //! 時間のかかる確認(Twitchは8秒)は同時に行う。
 
@@ -64,9 +64,6 @@ async fn check_site(label: &str, target: String, live: Option<comments::SourceSt
     } else if site == "niconico" {
         let (ok, message) = comments::niconico::check(&target).await;
         item(label, if ok { "ok" } else { "warn" }, message)
-    } else if site == "openrec" {
-        let (ok, message) = comments::openrec::check(&target).await;
-        item(label, if ok { "ok" } else { "warn" }, message)
     } else {
         let r = comments::youtube::check(&target).await;
         item(label, if r.ok { "ok" } else { "warn" }, r.message)
@@ -82,13 +79,12 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
 
     // 「使う」のチェックを外したものは、確かめずに「使わない設定」と出す
     let used = |on: bool, v: &String| if on { v.clone() } else { String::new() };
-    let (mut bbs, sub_bbs, mut youtube, mut twitch, mut niconico, mut openrec) = tokio::join!(
+    let (mut bbs, sub_bbs, mut youtube, mut twitch, mut niconico) = tokio::join!(
         check_bbs(used(s.use_bbs, &s.thread_url), false),
         check_bbs(used(s.use_bbs, &s.sub_thread_url), true),
         check_site("YouTube", used(s.use_youtube, &s.youtube_target), live("youtube"), "youtube"),
         check_site("Twitch", used(s.use_twitch, &s.twitch_channel), live("twitch"), "twitch"),
         check_site("ニコ生", used(s.use_niconico, &s.niconico_target), live("niconico"), "niconico"),
-        check_site("OPENREC", used(s.use_openrec, &s.openrec_target), live("openrec"), "openrec"),
     );
     const OFF: &str = "使わない設定です(「かんたん設定」のチェック)";
     if !s.use_bbs {
@@ -103,9 +99,6 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     if !s.use_niconico {
         niconico = item("ニコ生", "skip", OFF);
     }
-    if !s.use_openrec {
-        openrec = item("OPENREC", "skip", OFF);
-    }
 
     let mut out = vec![
         if status.running {
@@ -119,7 +112,7 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     if s.use_bbs && !s.sub_thread_url.trim().is_empty() {
         out.push(sub_bbs);
     }
-    out.extend([youtube, twitch, niconico, openrec]);
+    out.extend([youtube, twitch, niconico]);
 
     let speech = if !s.speech_enabled || s.command_path.trim().is_empty() {
         item("読み上げソフト", "skip", "読み上げはOFFです")
