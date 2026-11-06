@@ -74,6 +74,9 @@
   .url-row { display: flex; gap: 6px; }
   .url-row input { flex: 1; min-width: 0; }
   .url-row button { white-space: nowrap; }
+  /* 文字の大きさ(shared/theme.js)。どのタブでも見える一番上の段の右端に置く */
+  .ui-size { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--c-8d909c); white-space: nowrap; }
+  .ui-size select { padding: 2px 4px; font-size: 12px; }
   #status { margin-top: 6px; font-size: 12px; color: var(--c-a9acb8); min-height: 1.4em; }
   #status .ok { color: var(--c-7dff9a); }
   #status .ng { color: var(--c-ff8a8a); }
@@ -395,6 +398,7 @@
       <button id="skipBtn" class="secondary" title="今のレスを飛ばして次のレスへ進みます">スキップ</button>
       <button class="secondary" data-open-tab="thread" title="今読んでいるスレッドのレスを見たり、書き込んだりします">スレッドのレス</button>
       <button class="secondary" id="simpleModeOn" title="よく使う項目だけの画面にします">シンプル</button>
+      <label class="ui-size" title="ReaCastの画面(この窓・コントロールパネル・統計)の文字やボタンの大きさ。配信画面(OBS)は変わりません">文字<select data-ui-size><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label>
     </div>
     <div id="status">停止中</div>
     <div class="aud aud-now aud-header" data-audience-now="header"></div>
@@ -408,6 +412,7 @@
       <div class="simple-top">
         <button class="secondary" data-setup-open id="simpleSetupBtn">セットアップをやり直す</button>
         <button class="secondary" id="simpleModeOff">すべての設定を表示する</button>
+        <label class="ui-size" title="ReaCastの画面(この窓・コントロールパネル・統計)の文字やボタンの大きさ。配信画面(OBS)は変わりません">文字<select data-ui-size><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label>
       </div>
       <div class="simple-status" id="simpleStatus">停止中</div>
       <div class="simple-sources" id="simpleSources"></div>
