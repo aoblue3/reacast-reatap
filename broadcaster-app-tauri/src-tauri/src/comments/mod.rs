@@ -277,11 +277,8 @@ pub struct CommentSettings {
     pub reaction_link_max: usize,
     /// コメント字幕に出したレスを翻訳して下に添える(日本語→英語、それ以外→日本語。読み上げない)
     pub subtitle_translate: bool,
-    /// 日本語のレスの翻訳先(Google翻訳の言語コード。既定は英語)。日本語以外のレスは日本語に訳す
+    /// 日本語のレスの翻訳先(言語コード。既定は英語)。日本語以外のレスは日本語に訳す
     pub subtitle_translate_target: String,
-    /// 翻訳のしかた(コメント字幕のレス・自分の声の字幕の共通): "local"(PCの中で。Chrome/Edgeの
-    /// 翻訳の機能。使えない時はGoogle翻訳) / "google"(Google翻訳(非公式の方法)だけ)
-    pub translate_engine: String,
     // ---- 自分の声の字幕(voice.rs) ----
     /// 自分の声の字幕を使う(ONの間、Edgeで音声認識の窓を開いておく)
     pub voice_enabled: bool,
@@ -296,7 +293,7 @@ pub struct CommentSettings {
     pub voice_gain: f64,
     /// 声の大きさを自動でそろえる(ブラウザの自動音量調整)。Chromeの時だけ効く
     pub voice_agc: bool,
-    /// 話した言葉を翻訳する / 翻訳先の言語(Google翻訳の言語コード。例: "en")
+    /// 話した言葉を翻訳する / 翻訳先の言語(言語コード。例: "en")
     pub voice_translate: bool,
     pub voice_target_lang: String,
     /// 話した言葉(確定した1文)が「リアクション連動」のルールに当てはまったら、リアクションを飛ばす
@@ -596,7 +593,6 @@ impl Default for CommentSettings {
             reaction_link_max: 2,
             subtitle_translate: false,
             subtitle_translate_target: "en".into(),
-            translate_engine: "local".into(),
             voice_enabled: false,
             voice_lang: "ja-JP".into(),
             voice_browser: "auto".into(),
@@ -2395,7 +2391,7 @@ impl CommentEngine {
                 tauri::async_runtime::spawn(async move {
                     // 日本語なら設定の言語(既定は英語)に、それ以外なら日本語に
                     let target = if text::has_japanese(&body) { ja_target.as_str() } else { "ja" };
-                    match crate::voice::translate_detect(&source::http_client(), &body, None, target).await {
+                    match crate::voice::translate_detect(&body, None, target).await {
                         // 翻訳先と同じ言語だった・訳しても同じだった時は出さない
                         Ok((t, src)) if src != target && t.trim() != body.trim() => bridge.push_subtitle_translation(tid, &t),
                         Ok(_) => {}

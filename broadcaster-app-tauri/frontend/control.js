@@ -300,6 +300,11 @@ let noComboGrowthIds = [];
 let cooldownSec = 0.5;
 const lastShownAtByEmoji = new Map();
 
+// 視聴者からのリアクションを表示する数の上限(全部の種類の合計で1秒あたり)。中継サーバーにも
+// 部屋全体の上限があるが、大量に届いた時に配信者のPCが重くならないよう、こちらでも抑える
+const MAX_SHOWN_PER_SEC = 15;
+const shownTimes = [];
+
 // 表示率(既定100=間引きなし)。視聴者からのリアクションが多すぎて画面が
 // 賑やかすぎる、という要望への対応。実際に受信したリアクション1件ごとに
 // この確率で表示するかどうかを抽選する、単純な間引き(サンプリング)方式。
@@ -1048,6 +1053,9 @@ async function connectRelay(creds, relayAddress, passphrase) {
     const now = Date.now();
     const lastShownAt = lastShownAtByEmoji.get(m.emoji) || 0;
     if (now - lastShownAt < cooldownSec * 1000) return;
+    while (shownTimes.length && now - shownTimes[0] >= 1000) shownTimes.shift();
+    if (shownTimes.length >= MAX_SHOWN_PER_SEC) return;
+    shownTimes.push(now);
     lastShownAtByEmoji.set(m.emoji, now);
     invoke('emit_overlay_reaction', { emoji: m.emoji, viewerId: m.viewerId });
   });

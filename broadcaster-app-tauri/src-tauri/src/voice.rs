@@ -3,8 +3,8 @@
 //! ReaCastの画面(WebView2)ではブラウザの音声認識が使えないため、Chrome(無ければEdge)を
 //! 専用の小さな窓(--app)で開いて音声認識の画面(frontend/voice_input.html)を
 //! 動かす。聞き取った文字はobs_bridgeのWebSocketで届き、OBSの「自分の声の字幕」の
-//! 画面(frontend/voice.html)へ送る。話し終わった文はGoogle翻訳(非公式の
-//! 方法)で翻訳して、下に出す。
+//! 画面(frontend/voice.html)へ送る。話し終わった文はPCの中で翻訳して
+//! (local_translate.rs)、下に出す。
 //!
 //! Edgeは専用のプロフィール(--user-data-dir)で開くので、普段使いのEdgeとは
 //! 別のプロセスになり、ONOFFや終了の時にこちらから閉じられる。マイクの許可は
@@ -616,26 +616,19 @@ pub fn is_running(app: &AppHandle) -> bool {
     edge.as_ref().is_some_and(|(p, _)| p.is_running())
 }
 
-/// Google翻訳(非公式の方法)の応答から訳文を取り出す。
-/// 形: [[["訳文1","原文1",...],["訳文2","原文2",...]],...]
-fn parse_translation(v: &serde_json::Value) -> Option<String> {
-    let parts = v.get(0)?.as_array()?;
-    let text: String = parts.iter().filter_map(|p| p.get(0).and_then(|t| t.as_str())).collect();
-    (!text.trim().is_empty()).then_some(text)
+async fn translate(text: &str, source: Option<&str>, target: &str) -> Result<String, String> {
+    translate_detect(text, source, target).await.map(|(t, _)| t)
 }
 
-async fn translate(client: &reqwest::Client, text: &str, source: Option<&str>, target: &str) -> Result<String, String> {
-    translate_detect(client, text, source, target).await.map(|(t, _)| t)
-}
-
-/// 翻訳を休んでいる間に返すエラー(呼び出し側は、これはログに残さない)
-pub(crate) const TRANSLATE_PAUSED: &str = "翻訳を休んでいます";
+/// PCの中で翻訳できなかった(準備前・対応していない言語など。翻訳の窓の状態に理由が出る)時に
+/// 返すエラー(呼び出し側は、これはログに残さない)
+pub(crate) const TRANSLATE_UNAVAILABLE: &str = "PCの中で翻訳できませんでした";
 /// 訳さなかった(短すぎる文・「草」「w」だけ等)時に返すエラー(これもログに残さない)
 pub(crate) const TRANSLATE_SKIPPED: &str = "翻訳しませんでした";
 
 /// ログに残さなくていい翻訳のエラーか
 pub(crate) fn is_quiet_translate_error(e: &str) -> bool {
-    e == TRANSLATE_PAUSED || e == TRANSLATE_SKIPPED
+    e == TRANSLATE_UNAVAILABLE || e == TRANSLATE_SKIPPED
 }
 
 /// 訳さない文: 記号・空白・「w」「草」「笑」「乙」を除くと文字が無い(数字・絵文字だけも)か、
@@ -653,100 +646,15 @@ fn skip_translation(text: &str) -> bool {
     matches!(meaningful.as_str(), "おつ" | "おつかれ" | "うぽつ" | "ｵﾂ" | "オツ")
 }
 
-/// Google翻訳(非公式の方法)に断られない(HTTP 429)ための決まり(以下はGoogleに頼む時だけ):
-/// ・頼むのは1つずつ、前に頼んでから最低MIN_GAPあける(自分の声の字幕とコメント字幕の翻訳の合計)
-/// ・断られたら、しばらく(1分→2分→4分…最長15分)頼みに行かない。断られてもすぐ頼み
-///   直していたので、止められたまま戻らなくなっていた(2026-10-28、本人のPCで1日中429)
-/// ・同じ文の翻訳は覚えておいて、もう一度頼まない(「草」「おつ」など)
-struct TranslateGate {
-    last: Option<std::time::Instant>,
-    paused_until: Option<std::time::Instant>,
-    strikes: u32,
-    cache: std::collections::HashMap<(String, String), (String, String)>,
-}
-const TRANSLATE_MIN_GAP: std::time::Duration = std::time::Duration::from_millis(1000);
-const TRANSLATE_CACHE_MAX: usize = 300;
-
-fn translate_gate() -> &'static tokio::sync::Mutex<TranslateGate> {
-    static GATE: std::sync::OnceLock<tokio::sync::Mutex<TranslateGate>> = std::sync::OnceLock::new();
-    GATE.get_or_init(|| {
-        tokio::sync::Mutex::new(TranslateGate { last: None, paused_until: None, strikes: 0, cache: Default::default() })
-    })
-}
-
-/// 断られた回数から、休む時間を決める(1分→2分→4分→8分→15分)
-fn translate_pause(strikes: u32) -> std::time::Duration {
-    std::time::Duration::from_secs((60u64 << strikes.saturating_sub(1).min(4)).min(15 * 60))
-}
-
 /// 翻訳して、(訳文, 判定した元の言語)を返す。コメント字幕のレスの翻訳(comments)でも使う。
 /// `source`は分かっていれば元の言語(自分の声の字幕の聞き取る言葉など。Noneなら自動で判定)。
-/// 設定が「PCの中で翻訳」なら、まずChrome/Edgeの中で訳す(local_translate.rs。回数の
-/// 上限が無い)。使えない時(準備中・その言語に未対応など)だけGoogle翻訳(非公式の方法)。
-pub(crate) async fn translate_detect(
-    client: &reqwest::Client,
-    text: &str,
-    source: Option<&str>,
-    target: &str,
-) -> Result<(String, String), String> {
+/// 翻訳はPCの中だけ(Chrome/Edgeの翻訳の機能。local_translate.rs)。以前は使えない時に
+/// Google翻訳(非公式の方法)を使っていたが、規約上グレーなのでやめた(v1.8.8)
+pub(crate) async fn translate_detect(text: &str, source: Option<&str>, target: &str) -> Result<(String, String), String> {
     if skip_translation(text) {
         return Err(TRANSLATE_SKIPPED.into());
     }
-    if let Some(v) = crate::local_translate::translate(text, source, target).await {
-        return Ok(v);
-    }
-    let key = (target.to_string(), text.to_string());
-    // 1つずつ頼む(待っている間はこのロックを持ったまま)
-    let mut gate = translate_gate().lock().await;
-    if let Some(hit) = gate.cache.get(&key) {
-        return Ok(hit.clone());
-    }
-    let now = std::time::Instant::now();
-    if gate.paused_until.is_some_and(|t| t > now) {
-        return Err(TRANSLATE_PAUSED.into());
-    }
-    if let Some(last) = gate.last {
-        let next = last + TRANSLATE_MIN_GAP;
-        if next > now {
-            tokio::time::sleep(next - now).await;
-        }
-    }
-    gate.last = Some(std::time::Instant::now());
-    let result = request_translation(client, text, target).await;
-    match &result {
-        Ok(v) => {
-            gate.strikes = 0;
-            if gate.cache.len() >= TRANSLATE_CACHE_MAX {
-                gate.cache.clear();
-            }
-            gate.cache.insert(key, v.clone());
-        }
-        Err(e) if e.contains("429") => {
-            gate.strikes += 1;
-            let pause = translate_pause(gate.strikes);
-            gate.paused_until = Some(std::time::Instant::now() + pause);
-            log::warn!("Google翻訳に断られたので(HTTP 429)、翻訳を{}分休みます", pause.as_secs() / 60);
-        }
-        Err(_) => {}
-    }
-    result
-}
-
-async fn request_translation(client: &reqwest::Client, text: &str, target: &str) -> Result<(String, String), String> {
-    let resp = client
-        .get("https://translate.googleapis.com/translate_a/single")
-        .query(&[("client", "gtx"), ("sl", "auto"), ("tl", target), ("dt", "t"), ("q", text)])
-        .timeout(std::time::Duration::from_secs(8))
-        .send()
-        .await
-        .map_err(|e| format!("翻訳できませんでした: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("翻訳できませんでした(HTTP {})", resp.status()));
-    }
-    let v: serde_json::Value = resp.json().await.map_err(|e| format!("翻訳できませんでした: {e}"))?;
-    let text = parse_translation(&v).ok_or("翻訳の結果が空でした")?;
-    let source = v.get(2).and_then(|s| s.as_str()).unwrap_or_default().to_string();
-    Ok((text, source))
+    crate::local_translate::translate(text, source, target).await.ok_or_else(|| TRANSLATE_UNAVAILABLE.into())
 }
 
 /// 音声認識の画面から届くメッセージを受け取り続ける(起動時に1回だけ呼ぶ)。
@@ -758,7 +666,6 @@ pub fn start_listener(app: AppHandle) {
         // 話し始めるたびに番号を進める(途中の文字と、確定した文・翻訳を結び付ける)
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let mut current_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-        let client = reqwest::Client::new();
         while let Some(msg) = rx.recv().await {
             // PCの中で翻訳する窓(translate_worker.html)からの結果・状態
             if matches!(msg["type"].as_str(), Some("translateResult") | Some("translatorStatus")) {
@@ -840,12 +747,11 @@ pub fn start_listener(app: AppHandle) {
                 }
             }
             if settings.voice_translate && !settings.voice_target_lang.trim().is_empty() {
-                let client = client.clone();
                 let target = settings.voice_target_lang.clone();
                 // 聞き取る言葉("ja-JP")の前半が元の言語
                 let source = settings.voice_lang.split('-').next().unwrap_or_default().to_string();
                 tauri::async_runtime::spawn(async move {
-                    match translate(&client, &text, Some(&source).filter(|s| !s.is_empty()).map(|s| s.as_str()), &target).await {
+                    match translate(&text, Some(&source).filter(|s| !s.is_empty()).map(|s| s.as_str()), &target).await {
                         Ok(t) => bridge.push_voice(serde_json::json!({ "type": "voice", "id": id, "translation": t })),
                         Err(e) if is_quiet_translate_error(&e) => {}
                         Err(e) => log::warn!("自分の声の字幕: {e}"),
@@ -901,30 +807,6 @@ mod tests {
         for s in ["おはよう", "Hello", "このボス強すぎない？", "草生える", "hi", "gg", "ok", "你好", "谢", "안녕", "はい", "猫", "やば"] {
             assert!(!skip_translation(s), "{s}");
         }
-    }
-
-    #[test]
-    fn translate_pause_grows_and_caps() {
-        let m = |n| translate_pause(n).as_secs() / 60;
-        assert_eq!((m(1), m(2), m(3), m(4), m(5), m(9)), (1, 2, 4, 8, 15, 15));
-    }
-
-    #[test]
-    fn parses_google_translation_response() {
-        let v = serde_json::json!([[["Hello. ", "こんにちは。", null, null, 10], ["Thank you", "ありがとう", null, null, 10]], null, "ja"]);
-        assert_eq!(parse_translation(&v).as_deref(), Some("Hello. Thank you"));
-        assert_eq!(parse_translation(&serde_json::json!([[], null, "ja"])), None);
-    }
-
-    #[test]
-    #[ignore] // 実際にGoogle翻訳に繋ぐ(cargo test -- --ignored)
-    fn translates_with_google() {
-        // Google翻訳だけを試す(translate()はPCの中での翻訳=Tauriの窓まで繋がり、テストの
-        // exeに入らない部品(comctl32 v6)まで入ってテストが起動しなくなるため)
-        let (t, _) = tauri::async_runtime::block_on(request_translation(&reqwest::Client::new(), "こんにちは、今日もよろしくお願いします", "en"))
-            .unwrap();
-        eprintln!("{t}");
-        assert!(!t.is_empty());
     }
 }
 

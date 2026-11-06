@@ -1,15 +1,14 @@
-//! PCの中で翻訳する(Chrome/Edgeに入っている翻訳の機能。Translator API)。
+//! PCの中で翻訳する(Chrome/Edgeに入っている翻訳の機能。Translator API)。翻訳はこれだけ。
 //!
-//! Google翻訳(非公式の方法)は、使いすぎると断られる(HTTP 429)ことがあり、長時間の
-//! 配信では何度も止まった(2026-10-28)。Chrome/Edgeには、ネットに頼まずPCの中だけで
+//! 以前はGoogle翻訳(非公式の方法)を使っていたが、使いすぎると断られる(HTTP 429)うえ、
+//! 規約上グレーなのでやめた(v1.8.8)。Chrome/Edgeには、ネットに頼まずPCの中だけで
 //! 訳す機能(Translator API)が入っていて、回数の上限が無い。ReaCastの画面(WebView2)
 //! では使えるか分からないので、自分の声の字幕と同じように、Chrome(無ければEdge)の小さな窓
 //! (frontend/translate_worker.html)を最小化して開き、OBS連携のWebSocketで頼む。
 //!
 //! ・翻訳データのダウンロード(言語の組み合わせごとに最初の1回だけ)はブラウザの決まりで
 //!   ボタンを押す必要があるので、窓に「翻訳の準備をする」ボタンを出して、窓を前に出す
-//! ・準備中・その言語に未対応・返事が無い時は、None を返して呼び出し側(voice.rsの
-//!   translate_detect)がGoogle翻訳を使う
+//! ・準備中・その言語に未対応・返事が無い時は、None を返す(その文は訳さない)
 //! ・訳の質はChromeの方が良かった(Edgeは「強すぎない？」を逆の意味に訳した)ので、Chrome優先
 
 use crate::comments::CommentEngine;
@@ -21,7 +20,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
-/// 1件の翻訳の返事を待つ時間(過ぎたらGoogle翻訳を使う。普段は0.1秒もかからない)
+/// 1件の翻訳の返事を待つ時間(過ぎたらその文は訳さない。普段は0.1秒もかからない)
 const REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 /// 窓が閉じられていた時に開き直す間隔の最短
 const RELAUNCH_GAP: Duration = Duration::from_secs(60);
@@ -50,7 +49,7 @@ fn local() -> &'static Local {
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
-/// Google翻訳の言語コード → Chromeの翻訳の言語コード
+/// ReaCastの設定の言語コード → Chromeの翻訳の言語コード
 fn chrome_code(lang: &str) -> &str {
     match lang {
         "zh-CN" | "zh-Hans" => "zh",
@@ -59,7 +58,7 @@ fn chrome_code(lang: &str) -> &str {
     }
 }
 
-/// Chromeの言語コード → Google翻訳の言語コード(呼び出し側は翻訳先と比べる)
+/// Chromeの言語コード → ReaCastの設定の言語コード(呼び出し側は翻訳先と比べる)
 fn google_code(lang: &str) -> String {
     match lang {
         "zh" | "zh-Hans" => "zh-CN".into(),
@@ -73,7 +72,7 @@ fn has_kana(text: &str) -> bool {
     text.chars().any(|c| matches!(c as u32, 0x3040..=0x30FF | 0xFF66..=0xFF9F))
 }
 
-/// PCの中で翻訳する。(訳文, 元の言語)。使えない時はNone(Google翻訳を使ってもらう)
+/// PCの中で翻訳する。(訳文, 元の言語)。使えない時はNone(その文は訳さない)
 pub(crate) async fn translate(text: &str, source: Option<&str>, target: &str) -> Option<(String, String)> {
     let l = local();
     if !l.enabled.load(Ordering::SeqCst) {
@@ -103,8 +102,8 @@ pub(crate) async fn translate(text: &str, source: Option<&str>, target: &str) ->
         _ => {
             l.pending.lock().unwrap().remove(&id);
             if l.connected.swap(false, Ordering::SeqCst) {
-                log::warn!("PCの中での翻訳: 翻訳の窓から返事が無いので、しばらくGoogle翻訳を使います");
-                set_status(app, "wait", "翻訳の窓から返事がありません(その間はGoogle翻訳(ネット)を使います)");
+                log::warn!("PCの中での翻訳: 翻訳の窓から返事がありません");
+                set_status(app, "wait", "翻訳の窓から返事がありません(その間は翻訳しません)");
             }
             None
         }
@@ -184,7 +183,7 @@ pub fn sync(app: &AppHandle) {
     let _ = APP.set(app.clone());
     let s = app.state::<Arc<CommentEngine>>().settings();
     let pairs = prep_pairs(&s);
-    let want_local = s.translate_engine != "google" && !pairs.is_empty();
+    let want_local = !pairs.is_empty();
     let l = local();
     l.enabled.store(want_local, Ordering::SeqCst);
     let mut window = l.window.lock().unwrap();
@@ -203,8 +202,7 @@ pub fn sync(app: &AppHandle) {
     l.connected.store(false, Ordering::SeqCst);
     let Some(url) = want else {
         drop(window);
-        let msg = if s.translate_engine == "google" { "Google翻訳(ネット)を使っています" } else { "使っていません" };
-        set_status(app, "off", msg);
+        set_status(app, "off", "使っていません");
         return;
     };
     *l.last_launch.lock().unwrap() = Some(Instant::now());
@@ -220,7 +218,7 @@ pub fn sync(app: &AppHandle) {
         Err(e) => {
             drop(window);
             log::warn!("PCの中での翻訳: {e}");
-            set_status(app, "error", &format!("{e}(Google翻訳(ネット)を使います)"));
+            set_status(app, "error", &format!("{e}(翻訳できません)"));
         }
     }
 }

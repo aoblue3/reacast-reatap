@@ -28,7 +28,7 @@
   <h1>ReaCast 翻訳(PCの中で翻訳)</h1>
   <div>状態: <span id="state" class="wait">準備中…</span></div>
   <button id="prep">翻訳の準備をする</button>
-  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると、Google翻訳(ネット)で翻訳します)。</div>
+  <div class="hint">この窓は最小化しておいて大丈夫です(閉じると翻訳されません。必要な時はReaCastが開き直します)。</div>
   <script>
     'use strict';
     const WS_URL = 'ws://127.0.0.1:18771';
@@ -68,7 +68,7 @@
      *  レスが来た時に、いきなり窓が前に出てこないように) */
     function refreshState(popup) {
       if (needPrep.size) {
-        setState('needs-click', `最初の1回だけ準備が要ります。この窓の「翻訳の準備をする」を押してください(それまではGoogle翻訳(ネット)を使います)・${browser}`, popup);
+        setState('needs-click', `最初の1回だけ準備が要ります。この窓の「翻訳の準備をする」を押してください(それまでは翻訳されません)・${browser}`, popup);
       } else {
         setState('ready', `PCの中で翻訳しています・${browser}`);
       }
@@ -81,7 +81,7 @@
       const a = await Translator.availability({ sourceLanguage: src, targetLanguage: dst });
       if (a === 'unavailable') throw new Error('unsupported');
       // 設定の組み合わせ以外(中国語・韓国語などのレスがたまに来た時)は、準備を頼まずに
-      // Google翻訳に任せる(配信の途中に「準備が要ります」が何度も出ていた。2026-10-29)
+      // 訳さない(配信の途中に「準備が要ります」が何度も出ていた。2026-10-29)
       if (a !== 'available' && !prepPairs.some(([s, d]) => s === src && d === dst)) throw new Error('not-prepared');
       if (a !== 'available') {
         if (!needPrep.has(key)) {
@@ -121,8 +121,8 @@
       if (a === 'unavailable') throw new Error('unsupported');
       // 言語の判定は、Chromeを起動するたびに「ダウンロードが要る」に戻る(翻訳データと違って
       // 残らないらしい。2026-10-28に本人のPCで確認)ので、ボタンを押してもらう対象にはしない。
-      // 使えない間は、元の言語が分からない文(ひらがな・カタカナの無いレス)だけGoogle翻訳になる
-      // (ボタンを押した時はついでに用意する)
+      // 使えない間は、使われている文字から元の言語を決める(guessByScript。ボタンを押した時は
+      // ついでに用意する)
       if (a !== 'available') throw new Error('needs-click');
       return createDetector();
     }
@@ -140,14 +140,32 @@
       return lang;
     }
 
-    async function handle(req) {
-      let src = req.source;
-      if (!src) {
-        const d = await getDetector();
-        const top = (await d.detect(req.text))[0];
-        if (!top || top.detectedLanguage === 'und' || top.confidence < 0.5) throw new Error('undetected');
-        src = normalize(top.detectedLanguage);
+    /** 言語の判定が使えない時に、使われている文字から元の言語を決める(ハングル→韓国語、
+     *  漢字だけ→中国語、ラテン文字→英語)。分からなければnull */
+    function guessByScript(text) {
+      if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+      if (/[\uac00-\ud7af]/.test(text)) return 'ko';
+      if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
+      if (/[a-zA-Z]/.test(text)) return 'en';
+      return null;
+    }
+
+    async function detectSource(text) {
+      let d = null;
+      try {
+        d = await getDetector();
+      } catch (_) {
+        const g = guessByScript(text);
+        if (g) return g;
+        throw new Error('undetected');
       }
+      const top = (await d.detect(text))[0];
+      if (!top || top.detectedLanguage === 'und' || top.confidence < 0.5) throw new Error('undetected');
+      return normalize(top.detectedLanguage);
+    }
+
+    async function handle(req) {
+      const src = req.source || (await detectSource(req.text));
       // 翻訳先と同じ言語なら、そのまま返す(ReaCastは出さない)
       if (src === req.target) return { text: req.text, source: src };
       const tr = await getTranslator(src, req.target);
@@ -216,7 +234,7 @@
     async function init() {
       connect();
       if (!supported) {
-        setState('unsupported', `このブラウザはPCの中での翻訳に対応していません(Google翻訳(ネット)を使います)・${browser}`);
+        setState('unsupported', `このブラウザはPCの中での翻訳に対応していません(翻訳できません。Chromeを最新にしてください)・${browser}`);
         return;
       }
       // 設定で使う組み合わせを、準備できているか先に確かめる(できていれば読み込んでおく)
