@@ -66,7 +66,7 @@ pub struct AddonInfo {
 struct NameRule {
     /// 置き換える名前(空なら全部の名前)
     replace: Vec<String>,
-    /// 置き換える取得元("bbs" / "youtube" / "twitch" / "niconico")
+    /// 置き換える取得元("bbs" / "youtube" / "twitch" / "niconico" / "openrec")
     sources: Vec<String>,
     list: Vec<String>,
 }

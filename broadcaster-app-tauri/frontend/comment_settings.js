@@ -27,7 +27,7 @@ const TAB_USE = {
 };
 const NAV_USE_TABS = ['fetch', 'create', 'speech', 'chime', 'words', 'subtitle', 'list', 'aa', 'nico', 'audience', 'output', 'reactions', 'voice'];
 // 取得元の「使う」と、そのURLの欄
-const SOURCE_USE = { useBbs: ['threadUrl', 'subThreadUrl'], useYoutube: ['youtubeTarget'], useTwitch: ['twitchChannel'], useNiconico: ['niconicoTarget'] };
+const SOURCE_USE = { useBbs: ['threadUrl', 'subThreadUrl'], useYoutube: ['youtubeTarget'], useTwitch: ['twitchChannel'], useNiconico: ['niconicoTarget'], useOpenrec: ['openrecTarget'] };
 for (const tab of NAV_USE_TABS) {
   const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
   if (!btn) continue;
@@ -56,7 +56,7 @@ for (const [tab, [key]] of Object.entries(TAB_USE)) {
   if (row) row.classList.add('use-master');
 }
 
-const DEFAULT_ON_KEYS = new Set(['useBbs', 'useYoutube', 'useTwitch', 'useNiconico', 'ngEnabled', 'audienceEnabled', 'desktopUse', 'style.subtitle.enabled', 'style.list.enabled', 'style.nico.enabled']);
+const DEFAULT_ON_KEYS = new Set(['useBbs', 'useYoutube', 'useTwitch', 'useNiconico', 'useOpenrec', 'ngEnabled', 'audienceEnabled', 'desktopUse', 'style.subtitle.enabled', 'style.list.enabled', 'style.nico.enabled']);
 
 function isUsed(key) {
   return getPath(settings, key) !== false;
@@ -203,6 +203,7 @@ const AUDIENCE_SAMPLE = {
     { id: 'youtube', viewers: 128, comments: 342 },
     { id: 'twitch', viewers: 35, comments: 87 },
     { id: 'niconico', viewers: 64, comments: 120 },
+    { id: 'openrec', viewers: 21, comments: 40 },
     { id: 'peercast', viewers: 12, comments: 156 },
   ],
 };
@@ -696,6 +697,7 @@ for (const sel of document.querySelectorAll('select[data-engine-select]')) sel.a
   settings.ttsSpeakerYoutube = '';
   settings.ttsSpeakerTwitch = '';
   settings.ttsSpeakerNiconico = '';
+  settings.ttsSpeakerOpenrec = '';
   document.getElementById('ttsSpeakerMsg').textContent = '';
   document.getElementById('ttsTestMsg').textContent = '';
   document.getElementById('ttsExeMsg').textContent = '';
@@ -1803,8 +1805,8 @@ document.getElementById('presetImportOk').addEventListener('click', () => {
 // URL・名前・PCごとの場所(ソフト・音・アイコンのフォルダ、マイク、出力先)は入れない
 const SETTINGS_CODE_PREFIX = 'ReaCastSettings1:';
 const SHARE_EXCLUDE = new Set([
-  'threadUrl', 'subThreadUrl', 'youtubeTarget', 'twitchChannel', 'niconicoTarget', 'postName', 'postMail', 'createName', 'createMail',
-  'commandPath', 'chimePath', 'iconFolderBbs', 'iconFolderYoutube', 'iconFolderTwitch', 'iconFolderNiconico', 'ttsDevice', 'ttsExePath',
+  'threadUrl', 'subThreadUrl', 'youtubeTarget', 'twitchChannel', 'niconicoTarget', 'openrecTarget', 'postName', 'postMail', 'createName', 'createMail',
+  'commandPath', 'chimePath', 'iconFolderBbs', 'iconFolderYoutube', 'iconFolderTwitch', 'iconFolderNiconico', 'iconFolderOpenrec', 'ttsDevice', 'ttsExePath',
   'ttsExePaths', 'voiceMic', 'peercastPort', 'desktopMonitorId', 'desktopNicoMonitorId', 'desktopRect', 'desktopListRect',
 ]);
 const SHARE_SKIP_TABS = ['easy', 'thread', 'misc', 'addons'];
@@ -2199,6 +2201,20 @@ document.getElementById('checkNiconicoBtn').addEventListener('click', async (e) 
   showCheck(['ニコ生に接続しています…'], true);
   try {
     const r = await invoke('comments_check_niconico', { target });
+    showCheck([(r.ok ? '○ ' : '× ') + r.message], r.ok);
+  } catch (err) {
+    showCheck([String(err)], false);
+  } finally {
+    e.target.disabled = false;
+  }
+});
+document.getElementById('checkOpenrecBtn').addEventListener('click', async (e) => {
+  const target = (settings.openrecTarget || '').trim();
+  if (!target) return showCheck(['OPENRECのチャンネルか配信のURLを入力してください'], false);
+  e.target.disabled = true;
+  showCheck(['OPENRECに接続しています…'], true);
+  try {
+    const r = await invoke('comments_check_openrec', { target });
     showCheck([(r.ok ? '○ ' : '× ') + r.message], r.ok);
   } catch (err) {
     showCheck([String(err)], false);
@@ -3227,12 +3243,13 @@ function hasSource() {
     (isUsed('useBbs') && (settings.threadUrl || settings.subThreadUrl)) ||
     (isUsed('useYoutube') && settings.youtubeTarget) ||
     (isUsed('useTwitch') && settings.twitchChannel) ||
-    (isUsed('useNiconico') && settings.niconicoTarget)
+    (isUsed('useNiconico') && settings.niconicoTarget) ||
+    (isUsed('useOpenrec') && settings.openrecTarget)
   );
 }
 document.getElementById('simpleStart').addEventListener('click', () => {
   if (!hasSource()) {
-    showStatusError('コメントの取得元が入っていません。掲示板・YouTube・Twitch・ニコ生のどれかを入れてください');
+    showStatusError('コメントの取得元が入っていません。掲示板・YouTube・Twitch・ニコ生・OPENRECのどれかを入れてください');
     return;
   }
   startBtn.click();
@@ -3415,16 +3432,18 @@ function sourceSnapshot() {
     (settings.youtubeTarget || '').trim(),
     (settings.twitchChannel || '').trim(),
     (settings.niconicoTarget || '').trim(),
+    (settings.openrecTarget || '').trim(),
     isUsed('useBbs'),
     isUsed('useYoutube'),
     isUsed('useTwitch'),
     isUsed('useNiconico'),
+    isUsed('useOpenrec'),
   ]);
 }
 startBtn.addEventListener('click', () => {
   appliedSources = sourceSnapshot();
 });
-for (const el of document.querySelectorAll('[data-key="threadUrl"], [data-key="subThreadUrl"], [data-key="youtubeTarget"], [data-key="twitchChannel"], [data-key="niconicoTarget"]')) {
+for (const el of document.querySelectorAll('[data-key="threadUrl"], [data-key="subThreadUrl"], [data-key="youtubeTarget"], [data-key="twitchChannel"], [data-key="niconicoTarget"], [data-key="openrecTarget"]')) {
   el.addEventListener('input', () => lastStatus && renderSourceNotes(lastStatus));
 }
 

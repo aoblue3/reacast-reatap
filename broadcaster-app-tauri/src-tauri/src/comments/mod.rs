@@ -15,6 +15,7 @@ pub mod hotkeys;
 pub mod jpnkn_fast;
 pub mod source;
 pub mod niconico;
+pub mod openrec;
 pub mod twitch;
 pub mod youtube;
 pub mod text;
@@ -78,6 +79,7 @@ pub struct CommentSettings {
     pub use_youtube: bool,
     pub use_twitch: bool,
     pub use_niconico: bool,
+    pub use_openrec: bool,
     /// 「NGワード・荒らし対策」タブを使う(OFFならNGワード・読まない人・荒らし対策を全部使わない。読み方は使う)
     pub ng_enabled: bool,
     /// 「視聴者数・コメント数」タブを使う(OFFなら視聴者数を読みに行かない)
@@ -117,6 +119,7 @@ pub struct CommentSettings {
     pub icon_folder_youtube: String,
     pub icon_folder_twitch: String,
     pub icon_folder_niconico: String,
+    pub icon_folder_openrec: String,
     // ---- 配信サイトのコメント(空欄なら取得しない) ----
     /// YouTubeの配信URL・動画ID・チャンネルURL・@ハンドル
     pub youtube_target: String,
@@ -124,6 +127,8 @@ pub struct CommentSettings {
     pub twitch_channel: String,
     /// ニコ生の番組URL(lv…)・ユーザーページのURL・ユーザーID(niconico.rs)
     pub niconico_target: String,
+    /// OPENRECのチャンネルのURL・配信のURL・チャンネルID(openrec.rs)
+    pub openrec_target: String,
     /// 視聴者数を読む、このPCのPeerCastのポート(audience.rs)
     pub peercast_port: u16,
     // ---- 次スレの自動作成 ----
@@ -181,6 +186,7 @@ pub struct CommentSettings {
     pub tts_speaker_youtube: String,
     pub tts_speaker_twitch: String,
     pub tts_speaker_niconico: String,
+    pub tts_speaker_openrec: String,
     /// 読み上げソフトごとの調整(無いソフトは下のtts_speed等を使う)
     pub tts_engine_params: std::collections::BTreeMap<String, TtsParams>,
     /// 話速・音高・抑揚・音量・開始無音(秒)・終了無音(秒)・間の長さ(v1.5.13までの共通の調整)
@@ -247,7 +253,7 @@ pub struct CommentSettings {
     #[serde(default)]
     pub aa_presets_v2: bool,
     pub ng_words: String,
-    /// 読まない人(1行に1人)。掲示板は「ID:xxxx」、配信サイトは「youtube:名前」「twitch:名前」「niconico:名前」
+    /// 読まない人(1行に1人)。掲示板は「ID:xxxx」、配信サイトは「youtube:名前」「twitch:名前」「niconico:名前」「openrec:名前」
     /// (コメント一覧の窓の右クリック「この人のコメントを読まない」で足す)
     pub ng_people: String,
     // ---- レス着信音 ----
@@ -496,6 +502,7 @@ impl Default for CommentSettings {
             use_youtube: true,
             use_twitch: true,
             use_niconico: true,
+            use_openrec: true,
             ng_enabled: true,
             audience_enabled: true,
             desktop_use: true,
@@ -518,9 +525,11 @@ impl Default for CommentSettings {
             icon_folder_youtube: String::new(),
             icon_folder_twitch: String::new(),
             icon_folder_niconico: String::new(),
+            icon_folder_openrec: String::new(),
             youtube_target: String::new(),
             twitch_channel: String::new(),
             niconico_target: String::new(),
+            openrec_target: String::new(),
             peercast_port: 7144,
             auto_create_thread: false,
             create_thread_count: 975,
@@ -552,6 +561,7 @@ impl Default for CommentSettings {
             tts_speaker_youtube: String::new(),
             tts_speaker_twitch: String::new(),
             tts_speaker_niconico: String::new(),
+            tts_speaker_openrec: String::new(),
             tts_engine_params: Default::default(),
             tts_speed: 1.0,
             tts_pitch: 0.0,
@@ -674,7 +684,7 @@ pub struct CommentStatus {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceStatus {
-    /// "youtube" | "twitch" | "niconico"
+    /// "youtube" | "twitch" | "niconico" | "openrec"
     pub id: String,
     pub label: String,
     /// "ok"(取得中) | "wait"(配信待ち・再接続中) | "error"
@@ -712,7 +722,7 @@ struct Post {
     system: bool,
     /// コメント一覧に出すアイコン画像のURL(obs_bridgeが配信する)
     icon: Option<String>,
-    /// 取得元: "bbs" | "youtube" | "twitch" | "niconico" | "system"
+    /// 取得元: "bbs" | "youtube" | "twitch" | "niconico" | "openrec" | "system"
     source: &'static str,
     /// 掲示板の種類(コメント一覧で分ける用): "jpnkn" | "shitaraba" | "bbs"(そのほか)。掲示板以外は""
     board: &'static str,
@@ -1045,6 +1055,7 @@ impl CommentEngine {
             ("youtube", settings.icon_folder_youtube.clone()),
             ("twitch", settings.icon_folder_twitch.clone()),
             ("niconico", settings.icon_folder_niconico.clone()),
+            ("openrec", settings.icon_folder_openrec.clone()),
         ];
         // VOICEVOX等を使う設定なら、起動していなければ裏で起動しておく(ReaCastの起動時も通る)
         crate::tts::launch_in_background(&settings);
@@ -1160,8 +1171,13 @@ impl CommentEngine {
         } else {
             Some(niconico::parse_target(&settings.niconico_target)?)
         };
-        if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() && niconico.is_none() {
-            return Err("掲示板のURL、YouTube、Twitch、ニコ生のどれかを指定してください(「かんたん設定」で使うものにチェックが入っているかも確かめてください)".into());
+        let openrec = if !settings.use_openrec || settings.openrec_target.trim().is_empty() {
+            None
+        } else {
+            Some(openrec::parse_target(&settings.openrec_target)?)
+        };
+        if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() && niconico.is_none() && openrec.is_none() {
+            return Err("掲示板のURL、YouTube、Twitch、ニコ生、OPENRECのどれかを指定してください(「かんたん設定」で使うものにチェックが入っているかも確かめてください)".into());
         }
         let mut sources = Vec::new();
         if let Some((board, _)) = &sub_bbs {
@@ -1176,6 +1192,9 @@ impl CommentEngine {
         if niconico.is_some() {
             sources.push(SourceStatus { id: "niconico".into(), label: "ニコ生".into(), state: "wait".into(), message: "接続中…".into() });
         }
+        if openrec.is_some() {
+            sources.push(SourceStatus { id: "openrec".into(), label: "OPENREC".into(), state: "wait".into(), message: "接続中…".into() });
+        }
         let run_id = {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
@@ -1189,6 +1208,7 @@ impl CommentEngine {
                 (youtube.is_some(), "youtube"),
                 (twitch.is_some(), "twitch"),
                 (niconico.is_some(), "niconico"),
+                (openrec.is_some(), "openrec"),
                 (bbs.is_some() || sub_bbs.is_some(), "peercast"),
             ] {
                 if used {
@@ -1204,11 +1224,12 @@ impl CommentEngine {
             st.run_id
         };
         log::info!(
-            "コメント取得を開始: 掲示板={} YouTube={} Twitch={} ニコ生={}",
+            "コメント取得を開始: 掲示板={} YouTube={} Twitch={} ニコ生={} OPENREC={}",
             url.trim(),
             settings.youtube_target.trim(),
             settings.twitch_channel.trim(),
-            settings.niconico_target.trim()
+            settings.niconico_target.trim(),
+            settings.openrec_target.trim()
         );
         self.emit_status();
         self.emit_thread_reset();
@@ -1245,6 +1266,10 @@ impl CommentEngine {
         if let Some(watch_url) = niconico {
             let me = self.clone();
             tauri::async_runtime::spawn(async move { me.run_niconico(run_id, watch_url).await });
+        }
+        if let Some(target) = openrec {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_openrec(run_id, target).await });
         }
         Ok(())
     }
@@ -1680,6 +1705,159 @@ impl CommentEngine {
         }
     }
 
+    /// OPENRECの視聴者数(チャットの知らせと、番組の状態から)
+    fn set_openrec_viewers(&self, run_id: u64, viewers: Option<u64>) {
+        let changed = {
+            let mut st = self.state.lock().unwrap();
+            if st.run_id != run_id {
+                return;
+            }
+            match st.audience.get_mut("openrec") {
+                Some(s) if s.viewers != viewers => {
+                    s.viewers = viewers;
+                    true
+                }
+                _ => false,
+            }
+        };
+        if changed {
+            self.emit_audience();
+        }
+    }
+
+    /// OPENRECのコメントを読む(openrec.rs)。配信していない間は30秒ごとに確かめる。
+    /// チャットから「コメントが来た」と知らせが来た時と、念のため5秒ごとに、公開の情報から読む
+    async fn run_openrec(self: Arc<Self>, run_id: u64, target: openrec::Target) {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+        let client = openrec::client();
+        while self.is_current(run_id) {
+            let live = match openrec::find_live(&client, &target).await {
+                Ok(Some(l)) => l,
+                other => {
+                    self.set_openrec_viewers(run_id, None);
+                    match other {
+                        Err(e) => self.update_source(run_id, "openrec", "error", e),
+                        _ => self.update_source(run_id, "openrec", "wait", "配信が始まるのを待っています"),
+                    }
+                    if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            self.set_openrec_viewers(run_id, live.viewers);
+            // チャットに繋ぐ(繋がらなくても、5秒ごとに読むので取得はできる)
+            let mut ws = match openrec::chat_url(live.movie_id).into_client_request() {
+                Ok(mut req) => {
+                    req.headers_mut().insert("User-Agent", openrec::UA.parse().unwrap());
+                    req.headers_mut().insert("Origin", "https://www.openrec.tv".parse().unwrap());
+                    tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async(req))
+                        .await
+                        .ok()
+                        .and_then(|r| r.ok())
+                        .map(|(ws, _)| ws.split())
+                }
+                Err(_) => None,
+            };
+            self.update_source(run_id, "openrec", "ok", format!("取得中({})", live.id));
+            // 開始した時より後のコメントだけ出す
+            let mut from = openrec::now_iso();
+            let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+            let mut last_fetch = std::time::Instant::now() - Duration::from_secs(10);
+            let mut last_ping = std::time::Instant::now();
+            let mut last_check = std::time::Instant::now();
+            let mut want_fetch = false;
+            loop {
+                if !self.is_current(run_id) {
+                    if let Some((w, _)) = ws.as_mut() {
+                        let _ = w.close().await;
+                    }
+                    return;
+                }
+                // チャットの知らせを1秒まで待つ
+                if let Some((_, r)) = ws.as_mut() {
+                    match tokio::time::timeout(Duration::from_secs(1), r.next()).await {
+                        Err(_) => {}
+                        Ok(Some(Ok(Message::Text(t)))) => match openrec::parse_notice(&t) {
+                            openrec::Notice::Chat => want_fetch = true,
+                            openrec::Notice::Viewers(n) => self.set_openrec_viewers(run_id, Some(n)),
+                            openrec::Notice::Other => {}
+                        },
+                        Ok(Some(Ok(_))) => {}
+                        // 切れたら、5秒ごとに読むだけにする(次の配信の時に繋ぎ直す)
+                        Ok(None) | Ok(Some(Err(_))) => ws = None,
+                    }
+                } else {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                // socket.io(EIO=3)は、こちらから25秒ごとに"2"を送る
+                if last_ping.elapsed() >= Duration::from_secs(25) {
+                    last_ping = std::time::Instant::now();
+                    if let Some((w, _)) = ws.as_mut() {
+                        let _ = w.send(Message::Text("2".into())).await;
+                    }
+                }
+                if (want_fetch && last_fetch.elapsed() >= Duration::from_secs(1)) || last_fetch.elapsed() >= Duration::from_secs(5) {
+                    want_fetch = false;
+                    last_fetch = std::time::Instant::now();
+                    match openrec::fetch_chats(&client, &live.id, &from).await {
+                        Ok(chats) => {
+                            let mut posts = Vec::new();
+                            for c in chats {
+                                if !c.posted_at.is_empty() {
+                                    from = c.posted_at.clone();
+                                }
+                                if !seen.insert(c.id) {
+                                    continue;
+                                }
+                                let body = match (c.yell, c.message.is_empty(), c.stamp) {
+                                    (Some(n), true, _) => format!("エール {n}"),
+                                    (Some(n), false, _) => format!("エール {n} {}", c.message),
+                                    (None, true, true) => "(スタンプ)".to_string(),
+                                    _ => c.message.clone(),
+                                };
+                                if body.trim().is_empty() {
+                                    continue;
+                                }
+                                let mut post = Post::chat("openrec", c.name, body, self.pick_icon("openrec"), c.icon);
+                                if let Some(n) = c.yell {
+                                    post.paid = Some(Paid { kind: "yell", amount: format!("エール {n}"), color: "#ff8a00".into(), message: c.message });
+                                }
+                                posts.push(post);
+                            }
+                            if seen.len() > 5000 {
+                                seen.clear();
+                            }
+                            self.enqueue(run_id, posts);
+                        }
+                        Err(e) => log::warn!("OPENREC: {e}"),
+                    }
+                }
+                // 1分ごとに、配信が終わっていないか確かめる
+                if last_check.elapsed() >= Duration::from_secs(60) {
+                    last_check = std::time::Instant::now();
+                    if let Ok(Some(l)) = openrec::fetch_live(&client, &live.id).await {
+                        if l.onair_status != 1 {
+                            break;
+                        }
+                        if ws.is_none() {
+                            self.set_openrec_viewers(run_id, l.viewers);
+                        }
+                    }
+                }
+            }
+            if let Some((w, _)) = ws.as_mut() {
+                let _ = w.close().await;
+            }
+            self.set_openrec_viewers(run_id, None);
+            self.update_source(run_id, "openrec", "wait", "配信が終了しました。次の配信を待っています");
+            if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                return;
+            }
+        }
+    }
+
     fn load_progress(&self) -> Option<ReadProgress> {
         self.app
             .try_state::<ConfigStore>()?
@@ -1847,6 +2025,7 @@ impl CommentEngine {
             "youtube" => "youtube",
             "twitch" => "twitch",
             "niconico" => "niconico",
+            "openrec" => "openrec",
             "bbs" => "bbs",
             _ => return Err("このコメントは読み上げ直せません".into()),
         };
@@ -3219,6 +3398,13 @@ pub async fn comments_check_youtube(target: String) -> youtube::CheckResult {
 #[tauri::command]
 pub async fn comments_check_niconico(target: String) -> serde_json::Value {
     let (ok, message) = niconico::check(&target).await;
+    serde_json::json!({ "ok": ok, "message": message })
+}
+
+/// OPENRECが配信中か確かめる(取得は開始しない)
+#[tauri::command]
+pub async fn comments_check_openrec(target: String) -> serde_json::Value {
+    let (ok, message) = openrec::check(&target).await;
     serde_json::json!({ "ok": ok, "message": message })
 }
 
