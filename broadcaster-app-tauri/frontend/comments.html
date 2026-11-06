@@ -301,7 +301,7 @@
         if (s.showSource && label) head.appendChild(span('src', label));
         if (s.showResNumber && res.no > 0) head.appendChild(span('no', String(res.no), s.numberColor));
         else if (s.showResNumber && res.avatar) head.appendChild(avatarImg(res.avatar));
-        if (s.showName && res.name) head.appendChild(span('name', res.name, s.nameColor));
+        if (C.showsName(s, res)) head.appendChild(span('name', res.name, s.nameColor));
         if (s.showDate && res.date) head.appendChild(span('date', res.date, s.dateColor));
       }
       if (head.childNodes.length) content.appendChild(head);

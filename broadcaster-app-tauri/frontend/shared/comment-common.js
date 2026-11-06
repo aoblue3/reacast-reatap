@@ -35,6 +35,11 @@
       showResNumber: true,
       showName: false,
       showTime: false,
+      // 名前を出す取得元(showNameがONの時だけ効く。OFFにした取得元のコメントは名前を出さない)
+      nameBbs: true,
+      nameYoutube: true,
+      nameTwitch: true,
+      nameNiconico: true,
       offsetX: 0,
       offsetY: 0,
       // アンカー先のレスを先に表示する時の文字色(斜体で表示する)
@@ -101,6 +106,11 @@
       showResNumber: true,
       showName: true,
       showDate: false,
+      // 名前を出す取得元(showNameがONの時だけ効く。OFFにした取得元のコメントは名前を出さない)
+      nameBbs: true,
+      nameYoutube: true,
+      nameTwitch: true,
+      nameNiconico: true,
       wrap: true,
       separateLines: true,
       // 'none'=表示しない / 'chat'=レス一覧に画像のサムネイルを表示する
@@ -407,6 +417,13 @@
     return String(text || '').match(IMAGE_URL_RE) || [];
   }
 
+  /** このコメントの名前を出すか(「名前」がONで、その取得元の名前を出す設定の時。お知らせはいつも出す) */
+  function showsName(cfg, res) {
+    if (!cfg.showName || !res || !res.name) return false;
+    const key = { bbs: 'nameBbs', youtube: 'nameYoutube', twitch: 'nameTwitch', niconico: 'nameNiconico' }[res.source];
+    return !key || res.system || cfg[key] !== false;
+  }
+
   /** レスの見出し(番号・名前・時刻)を、表示設定に合わせて組み立てる。 */
   function resHeader(res, opts) {
     const parts = [];
@@ -581,6 +598,7 @@
     findImageUrls,
     IMAGE_URL_RE,
     resHeader,
+    showsName,
     rgba,
     applyCustomCss,
   };

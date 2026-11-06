@@ -257,6 +257,26 @@ fn realign_overlay_window(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
     }
 }
 
+/// OBSのリアクションの画面が、自分の画面(オーバーレイ)と同じ大きさの場所で動かして縮めて映すための
+/// 大きさを、窓の本当の大きさに合わせる。今までは画面(overlay.js)が読み込まれた時と大きさが変わった
+/// 時にだけ送っていたので、起動直後(アップデートの後など)に窓が本来の大きさになる前の値が残ると、
+/// OBSの絵文字の大きさが変わってしまうことがあった。2秒おきに確かめて、ずれていたら直す
+fn sync_stage_size(app: &tauri::AppHandle, win: &tauri::WebviewWindow) {
+    let (Ok(size), Ok(scale)) = (win.inner_size(), win.scale_factor()) else {
+        return;
+    };
+    if scale <= 0.0 || size.width < 100 || size.height < 100 {
+        return;
+    }
+    // 画面の中の大きさ(CSSのpx。overlay.jsのinnerWidth/innerHeightと同じ)
+    let (w, h) = ((size.width as f64 / scale).round(), (size.height as f64 / scale).round());
+    let bridge = app.state::<obs_bridge::ObsBridge>();
+    let (cw, ch) = bridge.stage_size();
+    if (cw - w).abs() > 1.0 || (ch - h).abs() > 1.0 {
+        bridge.set_stage_size(w, h);
+    }
+}
+
 /// デスクトップに出すレス一覧の窓のラベル(OBSの画面キャプチャで配信する人向け)
 pub(crate) const DESKTOP_LIST_LABEL: &str = "dlist";
 
@@ -777,6 +797,7 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
             Some(win) => {
                 if !bursting {
                     realign_overlay_window(&reassert_handle, &win);
+                    sync_stage_size(&reassert_handle, &win);
                 }
                 reassert_topmost(&win);
                 // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
