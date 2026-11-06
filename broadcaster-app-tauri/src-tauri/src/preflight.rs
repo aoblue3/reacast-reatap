@@ -1,5 +1,5 @@
 //! 配信前のチェック(コントロールパネルの「配信前チェック」)。掲示板・YouTube・
-//! Twitch・読み上げソフト・OBSのブラウザソース・ホットキーが使える状態かを
+//! Twitch・ニコ生・読み上げソフト・OBSのブラウザソース・ホットキーが使える状態かを
 //! まとめて確かめる。中継サーバーとの接続はコントロールパネル(JS)側で足す。
 //! 時間のかかる確認(Twitchは8秒)は同時に行う。
 
@@ -44,7 +44,7 @@ async fn check_bbs(url: String, sub: bool) -> CheckItem {
     }
 }
 
-async fn check_site(label: &str, target: String, live: Option<comments::SourceStatus>, twitch: bool) -> CheckItem {
+async fn check_site(label: &str, target: String, live: Option<comments::SourceStatus>, site: &str) -> CheckItem {
     if target.trim().is_empty() {
         return item(label, "skip", "使っていません");
     }
@@ -57,10 +57,13 @@ async fn check_site(label: &str, target: String, live: Option<comments::SourceSt
         };
         return item(label, state, s.message);
     }
-    if twitch {
+    if site == "twitch" {
         let r = comments::comments_check_twitch(target).await;
         let ok = r["ok"].as_bool().unwrap_or(false);
         item(label, if ok { "ok" } else { "ng" }, r["message"].as_str().unwrap_or_default())
+    } else if site == "niconico" {
+        let (ok, message) = comments::niconico::check(&target).await;
+        item(label, if ok { "ok" } else { "warn" }, message)
     } else {
         let r = comments::youtube::check(&target).await;
         item(label, if r.ok { "ok" } else { "warn" }, r.message)
@@ -76,11 +79,12 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
 
     // 「使う」のチェックを外したものは、確かめずに「使わない設定」と出す
     let used = |on: bool, v: &String| if on { v.clone() } else { String::new() };
-    let (mut bbs, sub_bbs, mut youtube, mut twitch) = tokio::join!(
+    let (mut bbs, sub_bbs, mut youtube, mut twitch, mut niconico) = tokio::join!(
         check_bbs(used(s.use_bbs, &s.thread_url), false),
         check_bbs(used(s.use_bbs, &s.sub_thread_url), true),
-        check_site("YouTube", used(s.use_youtube, &s.youtube_target), live("youtube"), false),
-        check_site("Twitch", used(s.use_twitch, &s.twitch_channel), live("twitch"), true),
+        check_site("YouTube", used(s.use_youtube, &s.youtube_target), live("youtube"), "youtube"),
+        check_site("Twitch", used(s.use_twitch, &s.twitch_channel), live("twitch"), "twitch"),
+        check_site("ニコ生", used(s.use_niconico, &s.niconico_target), live("niconico"), "niconico"),
     );
     const OFF: &str = "使わない設定です(「かんたん設定」のチェック)";
     if !s.use_bbs {
@@ -91,6 +95,9 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     }
     if !s.use_twitch {
         twitch = item("Twitch", "skip", OFF);
+    }
+    if !s.use_niconico {
+        niconico = item("ニコ生", "skip", OFF);
     }
 
     let mut out = vec![
@@ -105,7 +112,7 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
     if s.use_bbs && !s.sub_thread_url.trim().is_empty() {
         out.push(sub_bbs);
     }
-    out.extend([youtube, twitch]);
+    out.extend([youtube, twitch, niconico]);
 
     let speech = if !s.speech_enabled || s.command_path.trim().is_empty() {
         item("読み上げソフト", "skip", "読み上げはOFFです")

@@ -61,7 +61,7 @@ showSetupBox.addEventListener('change', () => {
 let alreadyConfigured = false;
 invoke('comments_get_settings')
   .then((s) => {
-    alreadyConfigured = !!(s && (s.threadUrl || s.subThreadUrl || s.youtubeTarget || s.twitchChannel));
+    alreadyConfigured = !!(s && (s.threadUrl || s.subThreadUrl || s.youtubeTarget || s.twitchChannel || s.niconicoTarget));
     renderSetupCard();
   })
   .catch(() => {});

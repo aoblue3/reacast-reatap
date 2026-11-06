@@ -1474,6 +1474,7 @@ pub fn run() {
             comments::comments_test_list,
             comments::comments_check_youtube,
             comments::comments_check_twitch,
+            comments::comments_check_niconico,
             comments::comments_list_threads,
             comments::comments_switch_thread,
             comments::comments_post,

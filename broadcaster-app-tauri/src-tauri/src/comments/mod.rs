@@ -14,6 +14,7 @@ pub mod audience;
 pub mod hotkeys;
 pub mod jpnkn_fast;
 pub mod source;
+pub mod niconico;
 pub mod twitch;
 pub mod youtube;
 pub mod text;
@@ -76,6 +77,7 @@ pub struct CommentSettings {
     pub use_bbs: bool,
     pub use_youtube: bool,
     pub use_twitch: bool,
+    pub use_niconico: bool,
     /// 「NGワード・荒らし対策」タブを使う(OFFならNGワード・読まない人・荒らし対策を全部使わない。読み方は使う)
     pub ng_enabled: bool,
     /// 「視聴者数・コメント数」タブを使う(OFFなら視聴者数を読みに行かない)
@@ -114,11 +116,14 @@ pub struct CommentSettings {
     pub icon_folder_bbs: String,
     pub icon_folder_youtube: String,
     pub icon_folder_twitch: String,
+    pub icon_folder_niconico: String,
     // ---- 配信サイトのコメント(空欄なら取得しない) ----
     /// YouTubeの配信URL・動画ID・チャンネルURL・@ハンドル
     pub youtube_target: String,
     /// Twitchのチャンネル名(またはURL)
     pub twitch_channel: String,
+    /// ニコ生の番組URL(lv…)・ユーザーページのURL・ユーザーID(niconico.rs)
+    pub niconico_target: String,
     /// 視聴者数を読む、このPCのPeerCastのポート(audience.rs)
     pub peercast_port: u16,
     // ---- 次スレの自動作成 ----
@@ -175,6 +180,7 @@ pub struct CommentSettings {
     pub tts_speaker: String,
     pub tts_speaker_youtube: String,
     pub tts_speaker_twitch: String,
+    pub tts_speaker_niconico: String,
     /// 読み上げソフトごとの調整(無いソフトは下のtts_speed等を使う)
     pub tts_engine_params: std::collections::BTreeMap<String, TtsParams>,
     /// 話速・音高・抑揚・音量・開始無音(秒)・終了無音(秒)・間の長さ(v1.5.13までの共通の調整)
@@ -241,7 +247,7 @@ pub struct CommentSettings {
     #[serde(default)]
     pub aa_presets_v2: bool,
     pub ng_words: String,
-    /// 読まない人(1行に1人)。掲示板は「ID:xxxx」、配信サイトは「youtube:名前」「twitch:名前」
+    /// 読まない人(1行に1人)。掲示板は「ID:xxxx」、配信サイトは「youtube:名前」「twitch:名前」「niconico:名前」
     /// (コメント一覧の窓の右クリック「この人のコメントを読まない」で足す)
     pub ng_people: String,
     // ---- レス着信音 ----
@@ -489,6 +495,7 @@ impl Default for CommentSettings {
             use_bbs: true,
             use_youtube: true,
             use_twitch: true,
+            use_niconico: true,
             ng_enabled: true,
             audience_enabled: true,
             desktop_use: true,
@@ -510,8 +517,10 @@ impl Default for CommentSettings {
             icon_folder_bbs: String::new(),
             icon_folder_youtube: String::new(),
             icon_folder_twitch: String::new(),
+            icon_folder_niconico: String::new(),
             youtube_target: String::new(),
             twitch_channel: String::new(),
+            niconico_target: String::new(),
             peercast_port: 7144,
             auto_create_thread: false,
             create_thread_count: 975,
@@ -542,6 +551,7 @@ impl Default for CommentSettings {
             tts_speaker: String::new(),
             tts_speaker_youtube: String::new(),
             tts_speaker_twitch: String::new(),
+            tts_speaker_niconico: String::new(),
             tts_engine_params: Default::default(),
             tts_speed: 1.0,
             tts_pitch: 0.0,
@@ -664,7 +674,7 @@ pub struct CommentStatus {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceStatus {
-    /// "youtube" | "twitch"
+    /// "youtube" | "twitch" | "niconico"
     pub id: String,
     pub label: String,
     /// "ok"(取得中) | "wait"(配信待ち・再接続中) | "error"
@@ -702,7 +712,7 @@ struct Post {
     system: bool,
     /// コメント一覧に出すアイコン画像のURL(obs_bridgeが配信する)
     icon: Option<String>,
-    /// 取得元: "bbs" | "youtube" | "twitch" | "system"
+    /// 取得元: "bbs" | "youtube" | "twitch" | "niconico" | "system"
     source: &'static str,
     /// 掲示板の種類(コメント一覧で分ける用): "jpnkn" | "shitaraba" | "bbs"(そのほか)。掲示板以外は""
     board: &'static str,
@@ -1034,6 +1044,7 @@ impl CommentEngine {
             ("bbs", settings.icon_folder_bbs.clone()),
             ("youtube", settings.icon_folder_youtube.clone()),
             ("twitch", settings.icon_folder_twitch.clone()),
+            ("niconico", settings.icon_folder_niconico.clone()),
         ];
         // VOICEVOX等を使う設定なら、起動していなければ裏で起動しておく(ReaCastの起動時も通る)
         crate::tts::launch_in_background(&settings);
@@ -1144,8 +1155,13 @@ impl CommentEngine {
         } else {
             Some(twitch::parse_channel(&settings.twitch_channel)?)
         };
-        if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() {
-            return Err("掲示板のURL、YouTube、Twitchのどれかを指定してください(「かんたん設定」で使うものにチェックが入っているかも確かめてください)".into());
+        let niconico = if !settings.use_niconico || settings.niconico_target.trim().is_empty() {
+            None
+        } else {
+            Some(niconico::parse_target(&settings.niconico_target)?)
+        };
+        if bbs.is_none() && sub_bbs.is_none() && youtube.is_none() && twitch.is_none() && niconico.is_none() {
+            return Err("掲示板のURL、YouTube、Twitch、ニコ生のどれかを指定してください(「かんたん設定」で使うものにチェックが入っているかも確かめてください)".into());
         }
         let mut sources = Vec::new();
         if let Some((board, _)) = &sub_bbs {
@@ -1157,6 +1173,9 @@ impl CommentEngine {
         if twitch.is_some() {
             sources.push(SourceStatus { id: "twitch".into(), label: "Twitch".into(), state: "wait".into(), message: "接続中…".into() });
         }
+        if niconico.is_some() {
+            sources.push(SourceStatus { id: "niconico".into(), label: "ニコ生".into(), state: "wait".into(), message: "接続中…".into() });
+        }
         let run_id = {
             let mut st = self.state.lock().unwrap();
             st.run_id += 1;
@@ -1166,7 +1185,12 @@ impl CommentEngine {
             st.settings.thread_url = url.trim().to_string();
             st.status = CommentStatus { running: true, sources, ..Default::default() };
             let mut counts = Vec::new();
-            for (used, id) in [(youtube.is_some(), "youtube"), (twitch.is_some(), "twitch"), (bbs.is_some() || sub_bbs.is_some(), "peercast")] {
+            for (used, id) in [
+                (youtube.is_some(), "youtube"),
+                (twitch.is_some(), "twitch"),
+                (niconico.is_some(), "niconico"),
+                (bbs.is_some() || sub_bbs.is_some(), "peercast"),
+            ] {
                 if used {
                     counts.push(audience::SourceCount { id, ..Default::default() });
                 }
@@ -1180,10 +1204,11 @@ impl CommentEngine {
             st.run_id
         };
         log::info!(
-            "コメント取得を開始: 掲示板={} YouTube={} Twitch={}",
+            "コメント取得を開始: 掲示板={} YouTube={} Twitch={} ニコ生={}",
             url.trim(),
             settings.youtube_target.trim(),
-            settings.twitch_channel.trim()
+            settings.twitch_channel.trim(),
+            settings.niconico_target.trim()
         );
         self.emit_status();
         self.emit_thread_reset();
@@ -1216,6 +1241,10 @@ impl CommentEngine {
         if let Some(channel) = twitch {
             let me = self.clone();
             tauri::async_runtime::spawn(async move { me.run_twitch(run_id, channel).await });
+        }
+        if let Some(watch_url) = niconico {
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.run_niconico(run_id, watch_url).await });
         }
         Ok(())
     }
@@ -1519,6 +1548,138 @@ impl CommentEngine {
         }
     }
 
+    /// ニコ生の視聴者数(コメントと一緒に届く)
+    fn set_niconico_viewers(&self, run_id: u64, viewers: Option<u64>) {
+        let changed = {
+            let mut st = self.state.lock().unwrap();
+            if st.run_id != run_id {
+                return;
+            }
+            match st.audience.get_mut("niconico") {
+                Some(s) if s.viewers != viewers => {
+                    s.viewers = viewers;
+                    true
+                }
+                _ => false,
+            }
+        };
+        if changed {
+            self.emit_audience();
+        }
+    }
+
+    /// ニコ生のコメントを読む(niconico.rs)。放送していない間は30秒ごとに確かめ、
+    /// 放送が終わったら次の放送を待つ(ユーザー・チャンネルを指定した時)
+    async fn run_niconico(self: Arc<Self>, run_id: u64, watch_url: String) {
+        use niconico::Message;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let client = niconico::client();
+        // ユーザーID→(名前, アイコン)。同じ人を何度も調べない
+        let mut users: std::collections::HashMap<u64, Option<(String, Option<String>)>> = std::collections::HashMap::new();
+        while self.is_current(run_id) {
+            let program = match niconico::fetch_program(&client, &watch_url).await {
+                Ok(p) if p.status == "ON_AIR" => p,
+                other => {
+                    self.set_niconico_viewers(run_id, None);
+                    match other {
+                        Err(e) if !e.contains("放送中の番組がありません") => self.update_source(run_id, "niconico", "error", e),
+                        _ => self.update_source(run_id, "niconico", "wait", "放送が始まるのを待っています"),
+                    }
+                    if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            let view = match niconico::fetch_view_uri(&program.web_socket_url).await {
+                Ok(v) => v,
+                Err(e) => {
+                    self.update_source(run_id, "niconico", "error", e);
+                    if !self.sleep_while_current(run_id, Duration::from_secs(10)).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            self.update_source(run_id, "niconico", "ok", format!("取得中({})", program.id));
+            // 届いたものを受け取る(Noneは入口が終わった=放送が終わった)
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Option<Message>>();
+            let alive = Arc::new(AtomicBool::new(true));
+            tauri::async_runtime::spawn(niconico::stream_messages(client.clone(), view, alive.clone(), tx));
+            // 開始より前に書かれたコメント(最初の区切りの前の方)は出さない
+            let start_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+                - 2;
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            loop {
+                if !self.is_current(run_id) {
+                    alive.store(false, Ordering::SeqCst);
+                    return;
+                }
+                let msg = match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+                    Err(_) => continue,
+                    Ok(None) | Ok(Some(None)) | Ok(Some(Some(Message::Ended))) => break,
+                    Ok(Some(Some(m))) => m,
+                };
+                if seen.len() > 5000 {
+                    seen.clear();
+                }
+                let post = match msg {
+                    Message::Chat(c) => {
+                        if c.at < start_at || !seen.insert(c.id.clone()) {
+                            continue;
+                        }
+                        let (name, avatar) = match c.user_id {
+                            Some(uid) => {
+                                if !users.contains_key(&uid) {
+                                    if users.len() > 2000 {
+                                        users.clear();
+                                    }
+                                    users.insert(uid, niconico::fetch_user(&client, uid).await);
+                                }
+                                match users.get(&uid).cloned().flatten() {
+                                    Some((n, icon)) => (c.name.clone().unwrap_or(n), icon),
+                                    None => (c.name.clone().unwrap_or_else(|| uid.to_string()), None),
+                                }
+                            }
+                            // 184(匿名)の人は、コテハンか「184」と見分けるための短い文字
+                            None => {
+                                let tag: String =
+                                    c.hashed_user_id.as_deref().unwrap_or("").trim_start_matches("a:").chars().take(4).collect();
+                                (c.name.clone().unwrap_or_else(|| format!("184({tag})")), None)
+                            }
+                        };
+                        Post::chat("niconico", name, c.content, self.pick_icon("niconico"), avatar)
+                    }
+                    Message::Gift { id, at, name, item, point, message } => {
+                        if at < start_at || !seen.insert(id) {
+                            continue;
+                        }
+                        let label = format!("ギフト {item} {point}pt");
+                        let body = if message.is_empty() { label.clone() } else { format!("{label} {message}") };
+                        let mut post = Post::chat("niconico", name, body, self.pick_icon("niconico"), None);
+                        post.paid = Some(Paid { kind: "gift", amount: label, color: "#ffb300".into(), message });
+                        post
+                    }
+                    Message::Statistics { viewers, .. } => {
+                        self.set_niconico_viewers(run_id, viewers);
+                        continue;
+                    }
+                    Message::Ended | Message::Other => continue,
+                };
+                self.enqueue(run_id, vec![post]);
+            }
+            alive.store(false, Ordering::SeqCst);
+            self.set_niconico_viewers(run_id, None);
+            self.update_source(run_id, "niconico", "wait", "放送が終了しました。次の放送を待っています");
+            if !self.sleep_while_current(run_id, Duration::from_secs(30)).await {
+                return;
+            }
+        }
+    }
+
     fn load_progress(&self) -> Option<ReadProgress> {
         self.app
             .try_state::<ConfigStore>()?
@@ -1685,6 +1846,7 @@ impl CommentEngine {
         let source = match s("source").as_str() {
             "youtube" => "youtube",
             "twitch" => "twitch",
+            "niconico" => "niconico",
             "bbs" => "bbs",
             _ => return Err("このコメントは読み上げ直せません".into()),
         };
@@ -3051,6 +3213,13 @@ pub fn comments_test_list(engine: Engine, text: String, name: String) {
 #[tauri::command]
 pub async fn comments_check_youtube(target: String) -> youtube::CheckResult {
     youtube::check(&target).await
+}
+
+/// ニコ生が放送中か確かめる(取得は開始しない)
+#[tauri::command]
+pub async fn comments_check_niconico(target: String) -> serde_json::Value {
+    let (ok, message) = niconico::check(&target).await;
+    serde_json::json!({ "ok": ok, "message": message })
 }
 
 /// Twitchのチャンネルに接続できるかを確かめる(数秒だけ繋いでコメントを受け取る)。

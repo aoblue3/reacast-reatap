@@ -266,6 +266,7 @@ fn pick_speaker(s: &CommentSettings, source: &str, person: &str) -> CommentSetti
     let per = match source {
         "youtube" => s.tts_speaker_youtube.trim(),
         "twitch" => s.tts_speaker_twitch.trim(),
+        "niconico" => s.tts_speaker_niconico.trim(),
         _ => "",
     };
     if !per.is_empty() {

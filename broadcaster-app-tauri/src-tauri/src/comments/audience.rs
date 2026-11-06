@@ -13,7 +13,7 @@ use serde::Serialize;
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceCount {
-    /// "youtube" | "twitch" | "peercast"
+    /// "youtube" | "twitch" | "niconico" | "peercast"
     pub id: &'static str,
     /// 視聴者数(まだ分からない・配信していない時はNone)
     pub viewers: Option<u64>,
@@ -24,7 +24,7 @@ pub struct SourceCount {
 #[serde(rename_all = "camelCase")]
 pub struct Audience {
     pub running: bool,
-    /// 使っている取得元だけ(YouTube・Twitch・PeerCastの順)
+    /// 使っている取得元だけ(YouTube・Twitch・ニコ生・PeerCastの順。ニコ生の数はコメントと一緒に届く)
     pub sources: Vec<SourceCount>,
 }
 

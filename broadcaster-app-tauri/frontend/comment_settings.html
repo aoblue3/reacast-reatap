@@ -436,6 +436,9 @@
           <label class="simple-label">Twitch</label>
           <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
           <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
+          <label class="simple-label">ニコ生</label>
+          <input type="text" data-key="niconicoTarget" placeholder="例: https://www.nicovideo.jp/user/ユーザーID" />
+          <div class="simple-hint">ユーザーページのURL(https://www.nicovideo.jp/user/… の形)を入れておけば、放送が始まると自動で読みます。番組のURL(https://live.nicovideo.jp/watch/lv…)やチャンネル(ch…)でも大丈夫です。</div>
         </div>
       </div>
 
@@ -581,6 +584,9 @@
         <label class="simple-label">Twitch</label>
         <input type="text" data-key="twitchChannel" placeholder="チャンネル名" />
         <div class="simple-hint">チャンネル名(https://www.twitch.tv/ の後ろの部分)。</div>
+        <label class="simple-label">ニコ生</label>
+        <input type="text" data-key="niconicoTarget" placeholder="例: https://www.nicovideo.jp/user/ユーザーID" />
+        <div class="simple-hint">ユーザーページのURL(https://www.nicovideo.jp/user/… の形)を入れておけば、放送が始まると自動で読みます。番組のURL(https://live.nicovideo.jp/watch/lv…)やチャンネル(ch…)でも大丈夫です。</div>
         <div class="wiz-warn" id="wizSourceWarn"></div>
       </div>
 
@@ -707,11 +713,12 @@
         </div>
       </div>
 
-      <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitchのコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにするか、頭のチェックを外してください(チェックを外すと、URLは残したまま使わなくなります)。YouTube・Twitchは非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
+      <h3>① コメントを取る所<span class="help" data-help="掲示板・YouTube・Twitch・ニコ生のコメントは、全部同じ順番待ちの列に並んで、1件ずつ字幕に表示・読み上げします(同時配信でも重なりません)。使わない所は空欄のままにするか、頭のチェックを外してください(チェックを外すと、URLは残したまま使わなくなります)。YouTube・Twitch・ニコ生は非公式の方法で取得しているので、各サイトの仕様変更で取得できなくなることがあります。"></span></h3>
       <div class="field"><label><input type="checkbox" class="use-check" data-key="useBbs" title="チェックを外すと、URLが入っていても掲示板は使いません" />掲示板<span class="help" data-help="一番上の欄に、スレッドのURLを入れます。jpnkn等の2ちゃんねる互換の掲示板と、したらば掲示板に対応しています。板のURL(例: https://bbs.jpnkn.com/板の名前/)を入れると、その板の一番新しいスレッドを読みます。開始した時に既に書き込まれていたレスは読み上げません。"></span></label><div class="unit" style="margin-left:0">一番上の欄にスレッド(または板)のURLを入れてください</div></div>
       <div class="field"><label>2つ目の掲示板<span class="help" data-help="jpnknとしたらばのように、掲示板を2つ同時に読みたい時に入れます(空欄なら使いません)。レスは1つ目の掲示板と同じ順番待ちに並びます。2つ目の掲示板は読むだけで、「スレッドのレス」・書き込み・次スレ建て・落ちた時に続きから読む、は1つ目の掲示板だけです。1000を超えたら次スレへ移るのは、2つ目も同じです。"></span></label><div><input type="text" class="wide" data-key="subThreadUrl" placeholder="空欄なら使いません 例: https://jbbs.shitaraba.net/bbs/read.cgi/カテゴリ/板の番号/スレッド番号/" /></div></div>
       <div class="field"><label><input type="checkbox" class="use-check" data-key="useYoutube" title="チェックを外すと、URLが入っていてもYouTubeは使いません" />YouTube Live<span class="help" data-help="おすすめは、自分のチャンネルのURL(https://www.youtube.com/@チャンネルのハンドル)です。YouTubeで右上の自分のアイコン →「チャンネルを表示」を開いた時の、アドレス欄のURLです。これなら配信のたびに貼り直さなくても、公開の配信が始まると自動で読み始めます。限定公開の配信は、配信のページのURL(https://www.youtube.com/watch?v=…)か、YouTube Studioの配信の画面のURLを貼ってください。@から始まるハンドルだけ(例: @チャンネルのハンドル)でも大丈夫です。"></span></label><div class="path-row"><input type="text" data-key="youtubeTarget" placeholder="おすすめ: 自分のチャンネルのURL(https://www.youtube.com/@…)" /><button class="secondary" id="checkYoutubeBtn">接続を確認</button></div></div>
       <div class="field"><label><input type="checkbox" class="use-check" data-key="useTwitch" title="チェックを外すと、チャンネルが入っていてもTwitchは使いません" />Twitch</label><div class="path-row"><input type="text" data-key="twitchChannel" placeholder="チャンネル名、またはhttps://www.twitch.tv/チャンネル名" /><button class="secondary" id="checkTwitchBtn">接続を確認</button></div></div>
+      <div class="field"><label><input type="checkbox" class="use-check" data-key="useNiconico" title="チェックを外すと、URLが入っていてもニコ生は使いません" />ニコ生<span class="help" data-help="ユーザーページのURL(https://www.nicovideo.jp/user/… の形)を入れておけば、放送が始まると自動で読みます。番組のURL(https://live.nicovideo.jp/watch/lv…)やチャンネル(ch…)でも大丈夫です。ログインせずに読むので、コメントした人の名前は、184(匿名)の人は「184(英数字4文字)」と出ます。ギフトは、スーパーチャットと同じように目立たせられます。"></span></label><div class="path-row"><input type="text" data-key="niconicoTarget" placeholder="おすすめ: ユーザーページのURL(https://www.nicovideo.jp/user/…)" /><button class="secondary" id="checkNiconicoBtn">接続を確認</button></div></div>
       <pre id="checkResult" class="hint" style="white-space: pre-wrap; background:var(--c-15161a); padding:8px; border-radius:6px; display:none"></pre>
 
       <h3>② 読み上げ</h3>
@@ -860,9 +867,10 @@
         <div class="field"><label>音量</label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsVolume" data-param="volume" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
         <div class="field"><label>音の出力先<span class="help" data-help="VB-CABLEなどの仮想オーディオデバイスを選ぶと、OBSで読み上げの音だけを別に取り込めます。"></span></label><div class="inline"><select data-key="ttsDevice" id="ttsDevice" data-keep-unknown class="speech-select"></select><button class="secondary" id="ttsFetchDevices">更新</button></div></div>
         <details class="adv">
-          <summary>詳しい設定(YouTube・Twitchの声、無音、間の長さ、接続先)</summary>
+          <summary>詳しい設定(YouTube・Twitch・ニコ生の声、無音、間の長さ、接続先)</summary>
           <div class="field"><label>声(YouTubeのコメント)</label><div><select data-key="ttsSpeakerYoutube" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
           <div class="field"><label>声(Twitchのコメント)</label><div><select data-key="ttsSpeakerTwitch" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
+          <div class="field"><label>声(ニコ生のコメント)</label><div><select data-key="ttsSpeakerNiconico" data-speaker-select data-keep-unknown data-allow-same class="speech-select"></select></div></div>
           <div class="field"><label>開始無音(秒)</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPreSilence" data-param="preSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
           <div class="field"><label>終了無音(秒)</label><div class="slider-row"><input type="range" min="0" max="1.5" step="0.01" data-key="ttsPostSilence" data-param="postSilence" data-default="0.1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
           <div class="field" data-engine="voicevox-only"><label>句読点などの間の長さ<span class="help" data-help="VOICEVOX・AivisSpeechなど、対応しているソフトだけ効きます。"></span></label><div class="slider-row"><input type="range" min="0" max="2" step="0.01" data-key="ttsPauseScale" data-param="pauseScale" data-default="1" /><output></output><button class="secondary" data-reset>戻す</button></div></div>
@@ -1231,19 +1239,20 @@
         <label><input type="checkbox" data-key="style.list.showName" /> 名前</label>
         <label><input type="checkbox" data-key="style.list.showDate" /> 時刻</label>
       </div></div>
-      <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitchのコメントの見出しに「YouTube」「Twitch」と表示します。掲示板を2つ使っている時は、掲示板のレスにも「jpnkn」「したらば」などと表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
+      <div class="field"><label>取得元の印を付ける<span class="help" data-help="YouTube・Twitch・ニコ生のコメントの見出しに「YouTube」「Twitch」「ニコ生」と表示します。掲示板を2つ使っている時は、掲示板のレスにも「jpnkn」「したらば」などと表示します。"></span></label><div><input type="checkbox" data-key="style.list.showSource" /></div></div>
       <div class="field"><label>名前と本文を改行で分ける</label><div><input type="checkbox" data-key="style.list.separateLines" /></div></div>
       <div class="field"><label>横幅超過時に自動改行する</label><div><input type="checkbox" data-key="style.list.wrap" /><span class="unit">OFFにすると1行に収まらない分は省略します</span></div></div>
       <div class="field"><label>表示する件数</label><div><input type="number" min="1" max="100" data-key="style.list.maxItems" /></div></div>
       <div class="field"><label>新しいレスを上に表示する</label><div><input type="checkbox" data-key="style.list.newestFirst" /><span class="unit">OFFにすると下に追加します</span></div></div>
-      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitchのコメント一覧を別々の場所に出せます。「掲示板」は掲示板の全部、「jpnkn」「したらば」はその掲示板だけです(掲示板を2つ使う時に)。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
+      <div class="field"><label>取得元ごとに分ける<span class="help" data-help="OBSに「ブラウザ」ソースを取得元の数だけ追加して、それぞれに下のURLを指定すると、掲示板・YouTube・Twitch・ニコ生のコメント一覧を別々の場所に出せます。「掲示板」は掲示板の全部、「jpnkn」「したらば」はその掲示板だけです(掲示板を2つ使う時に)。全部まとめて出す時は、いつものURL(かんたん設定タブ)のままで大丈夫です。見た目はどれも同じ設定を使います。"></span></label><div>
         <div class="copy-row"><span style="width:70px">掲示板</span><code id="urlCommentsBbs">http://127.0.0.1:18772/comments.html?source=bbs</code><button class="secondary" data-copy="urlCommentsBbs">コピー</button></div>
         <div class="copy-row"><span style="width:70px">jpnkn</span><code id="urlCommentsJpnkn">http://127.0.0.1:18772/comments.html?source=jpnkn</code><button class="secondary" data-copy="urlCommentsJpnkn">コピー</button></div>
         <div class="copy-row"><span style="width:70px">したらば</span><code id="urlCommentsShitaraba">http://127.0.0.1:18772/comments.html?source=shitaraba</code><button class="secondary" data-copy="urlCommentsShitaraba">コピー</button></div>
         <div class="copy-row"><span style="width:70px">YouTube</span><code id="urlCommentsYoutube">http://127.0.0.1:18772/comments.html?source=youtube</code><button class="secondary" data-copy="urlCommentsYoutube">コピー</button></div>
         <div class="copy-row"><span style="width:70px">Twitch</span><code id="urlCommentsTwitch">http://127.0.0.1:18772/comments.html?source=twitch</code><button class="secondary" data-copy="urlCommentsTwitch">コピー</button></div>
+        <div class="copy-row"><span style="width:70px">ニコ生</span><code id="urlCommentsNiconico">http://127.0.0.1:18772/comments.html?source=niconico</code><button class="secondary" data-copy="urlCommentsNiconico">コピー</button></div>
       </div></div>
-      <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイドを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
+      <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイド、ニコ生のギフトを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
       <details class="adv">
         <summary>詳しい設定(フォント・見出し・色・背景・間隔・サムネイル)</summary>
         <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
@@ -1269,6 +1278,7 @@
         <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" data-pick-folder="iconFolderBbs">参照...</button></div></div>
         <div class="field"><label>アイコンのフォルダ(YouTube)</label><div class="path-row"><input type="text" data-key="iconFolderYoutube" /><button class="secondary" data-pick-folder="iconFolderYoutube">参照...</button></div></div>
         <div class="field"><label>アイコンのフォルダ(Twitch)</label><div class="path-row"><input type="text" data-key="iconFolderTwitch" /><button class="secondary" data-pick-folder="iconFolderTwitch">参照...</button></div></div>
+        <div class="field"><label>アイコンのフォルダ(ニコ生)</label><div class="path-row"><input type="text" data-key="iconFolderNiconico" /><button class="secondary" data-pick-folder="iconFolderNiconico">参照...</button></div></div>
         <h3>カスタムCSS(上級者向け)<span class="help" data-help="unacastのように見た目を自由に変えられます。使えるクラス: .item(レス全体) .icon(アイコン) .head(見出し) .no(番号) .name(名前) .date(時刻) .body(本文) .thumbs(サムネイル) .item.aa(AA)"></span></h3>
         <textarea class="css" data-key="style.list.customCss" placeholder=".item { border-left: 4px solid #7dff7d; }&#10;.name { font-style: italic; }"></textarea>
       </details>
@@ -1299,7 +1309,7 @@
     <!-- ================= 視聴者数・コメント数 ================= -->
     <section data-tab="audience">
       <div class="field"><label>視聴者数・コメント数を使う<span class="help" data-help="OFFにすると、視聴者数を読みに行かず、OBSに貼ったままでも何も出しません(コメント一覧の上にも出しません)。次に「開始」した時から変わります。"></span></label><div><input type="checkbox" data-key="audienceEnabled" /></div></div>
-      <p class="lead">YouTube・Twitch・PeerCastの視聴者数と、この配信のコメント数を、取得元のアイコンの横に数字で出します。取得中だけ表示します。<span class="help" data-help="視聴者数は30秒ごとに読み直します。YouTube・Twitchは、サイトで誰でも見られる「視聴中」の人数です(配信していない時は「-」)。PeerCastは、このPCで動いているPeerCast(PeerCastStation・PeerCast YTなど)から、配信しているチャンネルのリスナー数を読みます。コメント数は、取得を始めてから届いた数です(PeerCastは掲示板のレス)。"></span></p>
+      <p class="lead">YouTube・Twitch・ニコ生・PeerCastの視聴者数と、この配信のコメント数を、取得元のアイコンの横に数字で出します。取得中だけ表示します。<span class="help" data-help="視聴者数は30秒ごとに読み直します。YouTube・Twitchは、サイトで誰でも見られる「視聴中」の人数です(配信していない時は「-」)。PeerCastは、このPCで動いているPeerCast(PeerCastStation・PeerCast YTなど)から、配信しているチャンネルのリスナー数を読みます。コメント数は、取得を始めてから届いた数です(PeerCastは掲示板のレス)。"></span></p>
       <div class="copy-row"><span style="width:110px">OBSに貼るURL</span><code id="urlAudience">http://127.0.0.1:18772/audience.html</code><button class="secondary" data-copy="urlAudience">コピー</button></div>
       <div class="aud-now-box"><div class="aud-now-title" id="audienceNowTitle">今の数字</div><div class="aud aud-now" data-audience-now="tab"></div></div>
       <iframe id="audiencePreview" class="preview-frame" style="height:120px" src="audience.html?preview"></iframe>
@@ -1320,6 +1330,7 @@
         <option value="row">横に並べる</option>
         <option value="column">縦に並べる</option>
       </select></div></div>
+      <div class="field"><label>出す取得元<span class="help" data-help="チェックを外した取得元は、視聴者数・コメント数を出さず、合計にも入れません(同時配信で、一部のサイトの数だけ出したい時に)。使っていない取得元は、チェックが入っていても出ません。"></span></label><div class="inline"><label><input type="checkbox" data-key="style.audience.showYoutube" /> YouTube</label><label><input type="checkbox" data-key="style.audience.showTwitch" /> Twitch</label><label><input type="checkbox" data-key="style.audience.showNiconico" /> ニコ生</label><label><input type="checkbox" data-key="style.audience.showPeercast" /> PeerCast</label></div></div>
       <div class="field"><label>コメント一覧の上にも出す<span class="help" data-help="コメント一覧(OBSのコメント一覧・デスクトップに表示したコメント一覧)の一番上に、同じ数字を出します。文字はコメント一覧の文字に合わせます。"></span></label><div><input type="checkbox" data-key="style.audience.showInList" /></div></div>
       <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="200" data-key="style.audience.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.audience.bold" /> 太字</label></div></div>
       <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.audience.color" /><input type="color" data-key="style.audience.outlineColor" /></div></div>
