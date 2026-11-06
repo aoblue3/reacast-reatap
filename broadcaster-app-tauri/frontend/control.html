@@ -61,18 +61,37 @@
     --c-ff8a8a: #8f1414;
     --c-ffd7d7: #8f1414;
   }
+  html, body { height: 100%; }
   body {
     font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
     background: var(--c-17181c);
     color: var(--c-eeeeee);
     margin: 0;
-    padding: 20px;
     box-sizing: border-box;
-    /* 項目が増えてウィンドウの高さを超えても、下の項目(テスト送信ボタン等)が
-       見切れて操作不能にならないよう、必要な時だけスクロールできるようにする。 */
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
-  h1 { font-size: 16px; margin: 0 0 16px; }
+  /* 一番上の段(名前・つながっているか・⚙) */
+  header.top { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--c-2a2b30); }
+  h1 { font-size: 16px; margin: 0; }
+  header.top .status { margin-left: 0; }
+  button.gear { margin: 0 0 0 auto; padding: 2px 10px; font-size: 18px; line-height: 1.4; background: var(--c-333333); }
+  :root[data-theme="light"] button.gear { color: #222; }
+  button.gear:hover { background: var(--c-444444); }
+  /* 左のタブ(comment_settings.htmlと同じ形)。窓の縦が小さくても縮めず、はみ出したらスクロール */
+  .app { flex: 1; display: flex; min-height: 0; }
+  nav { flex: none; width: 120px; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; overflow-y: auto; background: var(--c-1e1f25); border-right: 1px solid var(--c-2a2b30); }
+  nav > * { flex-shrink: 0; }
+  nav button { margin: 0; background: none; color: var(--c-cccccc); text-align: left; padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav button:hover { background: var(--c-2a2b30); }
+  nav button.active { background: var(--c-24252b); color: var(--c-eeeeee); box-shadow: inset 3px 0 0 var(--c-3a6df0); }
+  main { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 16px 20px; }
+  main > section { display: none; }
+  main > section.active { display: block; }
+  /* はじめにやること(セットアップがまだの時だけ手順を出す) */
+  .steps { margin: 0 0 8px; padding-left: 1.4em; font-size: 13px; line-height: 1.7; }
+  .setup-card:not(.todo) .steps { display: none; }
   .row { margin-bottom: 16px; }
   .status {
     display: inline-block;
@@ -276,42 +295,74 @@
 <script src="shared/theme.js"></script>
 </head>
 <body>
-  <h1>ReaCast(配信者アプリ) <span id="appVersion" class="muted" style="font-weight: normal;"></span> <span id="connStatus" class="status ng reaction-only">未接続</span></h1>
+  <header class="top">
+    <h1>ReaCast <span id="appVersion" class="muted" style="font-weight: normal;"></span></h1>
+    <span id="connStatus" class="status ng reaction-only">未接続</span>
+    <button id="gearBtn" class="gear" title="画面の色・文字の大きさ・設定のバックアップ(その他)">⚙</button>
+  </header>
 
+  <div class="app">
+  <nav id="tabs">
+    <button data-tab="home" class="active">ホーム</button>
+    <button data-tab="reaction">リアクション</button>
+    <button data-tab="display" class="reaction-only">表示と見え方</button>
+    <button data-tab="poll" class="reaction-only">アンケート</button>
+    <button data-tab="stats">統計</button>
+    <button data-tab="other">その他</button>
+  </nav>
+  <main>
+
+  <!-- ================= ホーム(配信のたびに使うものだけ) ================= -->
+  <section data-tab="home" class="active">
   <div id="setupSlot"></div>
   <div class="card setup-card" id="setupCard">
-    <h2>かんたんセットアップ</h2>
-    <div class="muted lead" id="setupLead">はじめての方は、ここから始めてください。コメントの取得・配信への出し方・読み上げを、順番に設定します。忘れた時や間違えた時も、何度でもやり直せます。</div>
+    <h2>はじめにやること</h2>
+    <ol class="steps" id="setupSteps">
+      <li><b>かんたんセットアップ</b>で、コメントを取る所・配信画面への出し方・読み上げを決めます(下のボタン)。</li>
+      <li class="reaction-only"><b>合言葉</b>を視聴者に伝えます(下の「合言葉」)。視聴者はReaTapかReaTap Webに入れると、リアクションを送れます。</li>
+      <li class="reaction-only">リアクションを配信画面に出す時は、<b>OBS</b>に「リアクション」タブのURLを貼ります。</li>
+      <li>配信の前に<b>配信前チェック</b>で、全部つながっているか確かめます。</li>
+    </ol>
+    <div class="muted lead" id="setupLead">はじめての方は、ここから始めてください。忘れた時や間違えた時も、何度でもやり直せます。</div>
     <button id="openSetupBtn">セットアップを始める</button>
+  </div>
+
+  <div class="card reaction-only">
+    <h2>合言葉<span class="help" data-help="視聴者にこの文字を伝えてください。英数字で始まる3〜32文字(ハイフン・アンダースコア可)。大文字小文字は区別しません。いつでも好きな文字に変えられます。"></span></h2>
+    <input type="text" id="passphraseInput" maxlength="32" spellcheck="false" />
+    <button id="copyBtn">コピー</button>
+    <button id="savePassphraseBtn" class="secondary">この合言葉にする</button>
+    <div id="passphraseMsg"></div>
+    <div>
+      <span class="muted">視聴者数: <span id="viewerCount">0</span></span>
+      <span class="muted" style="margin-left: 14px;">中継サーバー: <span id="relayAddr">-</span></span>
+    </div>
   </div>
 
   <div class="card">
     <h2>コメント読み上げ・字幕</h2>
     <div class="muted lead">掲示板・YouTube・Twitch・ニコ生・OPENRECのコメントを、字幕に表示して読み上げます。</div>
     <button id="openCommentSettingsBtn">コメント読み上げ・字幕の設定を開く</button>
-    <button id="preflightBtn" class="secondary" title="中継サーバー・掲示板・YouTube・Twitch・ニコ生・OPENREC・読み上げソフト・OBSがつながっているかをまとめて確かめます">配信前チェック</button><span class="help" data-help="中継サーバー・掲示板・YouTube・Twitch・ニコ生・OPENREC・読み上げソフト・OBSが使える状態かを、配信を始める前にまとめて確かめます。"></span>
     <div style="margin-top: 8px;">
       <label class="muted"><input type="checkbox" id="openSettingsOnLaunchCheckbox" /> ReaCastの起動時に、この設定の窓も開く</label>
     </div>
   </div>
 
   <div class="card">
+    <h2>配信前チェック</h2>
+    <div class="muted lead">中継サーバー・掲示板・YouTube・Twitch・ニコ生・OPENREC・読み上げソフト・OBSがつながっているかを、配信を始める前にまとめて確かめます。</div>
+    <button id="preflightBtn" class="secondary">配信前チェック</button>
+  </div>
+  </section>
+
+  <!-- ================= リアクション ================= -->
+  <section data-tab="reaction">
+  <div class="card">
     <h2>視聴者からのリアクション</h2>
     <label><input type="checkbox" id="reactionsEnabledCheckbox" checked /> リアクション機能を使う</label><span class="help" data-help="視聴者からのリアクション(絵文字)を使わない場合はOFFにしてください。中継サーバーへの接続とリアクション表示用の画面を止めるので、そのぶんPCの負担が減ります(コメント読み上げ・字幕はそのまま使えます)。"></span>
 
     <div id="reactionSection" class="reaction-only">
-      <div class="row" style="margin-top: 12px;">
-        <div class="muted" style="margin-bottom: 4px;">合言葉(視聴者にこの文字を伝えてください)<span class="help" data-help="英数字で始まる3〜32文字(ハイフン・アンダースコア可)。大文字小文字は区別しません。いつでも好きな文字に変えられます。"></span></div>
-        <input type="text" id="passphraseInput" maxlength="32" spellcheck="false" />
-        <button id="copyBtn">コピー</button>
-        <button id="savePassphraseBtn" class="secondary">この合言葉にする</button>
-        <div id="passphraseMsg"></div>
-      </div>
-      <div class="row">
-        <span class="muted">視聴者数: <span id="viewerCount">0</span></span>
-        <span class="muted" style="margin-left: 14px;">中継サーバー: <span id="relayAddr">-</span></span>
-      </div>
-      <div class="row" style="margin-bottom: 0;">
+      <div class="row" style="margin: 12px 0 0;">
         <div class="muted" style="margin-bottom: 4px;">OBSに出す時の「ブラウザ」ソースのURL<span class="help" data-help="OBSで「ブラウザ」ソースを追加して、このURLを貼ります(「ローカルファイル」のチェックは入れません)。OBSの画面は、自分の画面のリアクションをそのまま縮めて映すので、位置や⭐の当たり方も自分の画面と同じになります。幅・高さは下に出るおすすめの大きさにして、OBSでそのソースを右クリック→変換→画面に合わせる、で配信画面いっぱいにしてください。デスクトップを映していない時でも、リアクションだけを配信画面に重ねられます。"></span></div>
         <code id="obsReactionUrl" class="url">http://127.0.0.1:18772/</code><button class="secondary" data-copy="obsReactionUrl">コピー</button>
         <div id="obsSizeHint" class="muted" style="margin-top: 4px;"></div>
@@ -319,6 +370,19 @@
     </div>
   </div>
 
+  <div class="card reaction-only">
+    <h2>受け付けるリアクション<span class="help" data-help="OFFにしたものは、視聴者が送っても配信画面には表示されません(視聴者側のボタンは灰色になって押せなくなります)。コメント・話した言葉との連動でも飛ばなくなります。"></span></h2>
+    <div id="reactionToggleList"></div>
+    <details class="adv">
+      <summary>テスト送信(見た目を確かめる)</summary>
+      <div class="muted" style="margin-bottom: 4px;">OFFにしたものも含めて、視聴者から送られたのと同じ見た目で表示します。</div>
+      <div class="test-buttons" id="testButtons"></div>
+    </details>
+  </div>
+  </section>
+
+  <!-- ================= 表示と見え方 ================= -->
+  <section data-tab="display">
   <div class="card reaction-only">
     <h2>表示する場所</h2>
     <div class="muted" style="margin-bottom: 4px;">アニメーションを表示するモニター</div>
@@ -351,7 +415,7 @@
       <button id="regionResetBtn" class="secondary">全画面に戻す</button><span class="help" data-help="選んだモニターの左上を基準にした割合です(左端0%・上端0%・幅100%・高さ100%で全画面)。"></span>
     </div>
     <div style="margin-top: 10px;">
-      <label class="muted"><input type="checkbox" id="hideLocalOverlayCheckbox" /> 自分の画面には表示しない</label><span class="help" data-help="OBS経由の配信画面にだけ表示します。上の「OBSに出す時のURL」を使っている時だけ意味があります。"></span>
+      <label class="muted"><input type="checkbox" id="hideLocalOverlayCheckbox" /> 自分の画面には表示しない</label><span class="help" data-help="OBS経由の配信画面にだけ表示します。「リアクション」タブの「OBSに出す時のURL」を使っている時だけ意味があります。"></span>
     </div>
   </div>
 
@@ -370,17 +434,10 @@
       <div id="noComboGrowthList"></div>
     </details>
   </div>
+  </section>
 
-  <div class="card reaction-only">
-    <h2>受け付けるリアクション<span class="help" data-help="OFFにしたものは、視聴者が送っても配信画面には表示されません(視聴者側のボタンは灰色になって押せなくなります)。コメント・話した言葉との連動でも飛ばなくなります。"></span></h2>
-    <div id="reactionToggleList"></div>
-    <details class="adv">
-      <summary>テスト送信(見た目を確かめる)</summary>
-      <div class="muted" style="margin-bottom: 4px;">OFFにしたものも含めて、視聴者から送られたのと同じ見た目で表示します。</div>
-      <div class="test-buttons" id="testButtons"></div>
-    </details>
-  </div>
-
+  <!-- ================= アンケート ================= -->
+  <section data-tab="poll">
   <div class="card reaction-only">
     <h2>視聴者アンケート<span class="help" data-help="質問と選択肢(2〜4個)を決めて始めると、ReaTap・ReaTap Webのリアクションバーに選ぶボタンが出ます。結果はOBSの「ブラウザ」ソース(下のURL)に棒グラフで出ます。票は1つのネットワーク(IPアドレス)につき1票で、選び直しもできます。中継サーバーが覚えているのは今のアンケートの票だけで、終わったら消えます。"></span></h2>
     <div id="pollEdit">
@@ -406,15 +463,21 @@
       <code id="obsPollUrl" class="url">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="obsPollUrl">コピー</button>
     </div>
   </div>
+  </section>
 
+  <!-- ================= 統計 ================= -->
+  <section data-tab="stats">
   <div class="card">
     <h2>統計・盛り上がりマーカー<span class="help" data-help="ONの間、届いたリアクションと字幕に出したコメントの数を1分ごとに数えて、短い時間にたくさん届いた瞬間を「盛り上がりマーカー」として記録します(切り抜き・見返し用)。記録は1回の配信で数KBで、新しいものから30回分だけ残します。コメントの本文や、誰が送ったかは記録しません。"></span></h2>
     <label class="muted"><input type="checkbox" id="statsEnabledCheckbox" /> 統計・盛り上がりマーカーを記録する</label>
     <div><button id="openStatsBtn" class="secondary">記録を見る</button></div>
   </div>
+  </section>
 
+  <!-- ================= その他(右上の⚙もここを開く) ================= -->
+  <section data-tab="other">
   <div class="card" id="miscCard">
-    <h2>その他</h2>
+    <h2>画面</h2>
     <div class="row">
       <span class="muted">画面の色:</span>
       <select data-ui-theme>
@@ -431,19 +494,27 @@
         <option value="large">大</option>
       </select><span class="help" data-help="ReaCastの画面(この画面・コメント設定・統計)の文字やボタンの大きさです。配信画面(OBS)に出るものは変わりません。"></span>
     </div>
-    <div class="row">
-      <button id="exportSettingsBtn" class="secondary">設定を書き出す</button>
-      <button id="importSettingsBtn" class="secondary">設定を読み込む</button><span class="help" data-help="合言葉・コメント設定などを1つのファイルにまとめて、PCの買い替え・入れ直しの時に引き継げます。部屋の鍵も入るので、他の人には渡さないでください。"></span>
-      <div id="backupMsg" class="muted"></div>
-    </div>
-    <div class="row">
-      <label class="muted"><input type="checkbox" id="showSetupCheckbox" checked /> 「かんたんセットアップ」を表示する</label><span class="help" data-help="セットアップを終えた後は、「かんたんセットアップ」はこの画面の一番下に移ります。間違えて押してしまう時はOFFにしてください(コメント読み上げ・字幕の設定のシンプルモードからも消えます)。もう一度使う時は、ここをONにしてください。"></span>
-    </div>
     <div class="row" style="margin-bottom: 0;">
-      <button id="supportThreadBtn" class="secondary">要望・質問スレを開く</button><span class="help" data-help="分からないこと・欲しい機能・不具合は、作者の掲示板の「Reacast･ReaTap要望質問スレッド」で気軽に聞いてください。スレッドが新しいPartになっても、一番新しいスレッドを開きます。"></span>
-      <button id="openLogDirBtn" class="secondary" style="margin-left: 10px">ログフォルダを開く</button><span class="help" data-help="不具合が起きた時は、ログフォルダの中のファイル(ReaCast.log など)を送ってもらえると原因を調べやすくなります。"></span>
-      <label class="muted" style="margin-left: 10px">ログを残す <select id="logLevelSelect"><option value="all">全部(おすすめ)</option><option value="problems">エラーと警告だけ</option><option value="off">残さない</option></select></label><span class="help" data-help="ログは1つのファイルが1MBを超えると新しいファイルになり、古いものは5つまでしか残さないので、全部で約6MBより大きくはなりません。書く量を減らしたい時は「エラーと警告だけ」、書かせたくない時は「残さない」にしてください(「残さない」の間は、不具合が起きても原因を調べられません)。"></span>
+      <label class="muted"><input type="checkbox" id="showSetupCheckbox" checked /> 「かんたんセットアップ」を表示する</label><span class="help" data-help="セットアップを終えた後は、「かんたんセットアップ」はこの「その他」タブの下に移ります。間違えて押してしまう時はOFFにしてください(コメント読み上げ・字幕の設定のシンプルモードからも消えます)。もう一度使う時は、ここをONにしてください。"></span>
     </div>
+  </div>
+  <div class="card">
+    <h2>設定のバックアップ</h2>
+    <button id="exportSettingsBtn" class="secondary">設定を書き出す</button>
+    <button id="importSettingsBtn" class="secondary">設定を読み込む</button><span class="help" data-help="合言葉・コメント設定などを1つのファイルにまとめて、PCの買い替え・入れ直しの時に引き継げます。部屋の鍵も入るので、他の人には渡さないでください。"></span>
+    <div id="backupMsg" class="muted"></div>
+  </div>
+  <div class="card">
+    <h2>困った時</h2>
+    <button id="supportThreadBtn" class="secondary">要望・質問スレを開く</button><span class="help" data-help="分からないこと・欲しい機能・不具合は、作者の掲示板の「Reacast･ReaTap要望質問スレッド」で気軽に聞いてください。スレッドが新しいPartになっても、一番新しいスレッドを開きます。"></span>
+    <button id="openLogDirBtn" class="secondary" style="margin-left: 10px">ログフォルダを開く</button><span class="help" data-help="不具合が起きた時は、ログフォルダの中のファイル(ReaCast.log など)を送ってもらえると原因を調べやすくなります。"></span>
+    <div style="margin-top: 8px;">
+      <label class="muted">ログを残す <select id="logLevelSelect"><option value="all">全部(おすすめ)</option><option value="problems">エラーと警告だけ</option><option value="off">残さない</option></select></label><span class="help" data-help="ログは1つのファイルが1MBを超えると新しいファイルになり、古いものは5つまでしか残さないので、全部で約6MBより大きくはなりません。書く量を減らしたい時は「エラーと警告だけ」、書かせたくない時は「残さない」にしてください(「残さない」の間は、不具合が起きても原因を調べられません)。"></span>
+    </div>
+  </div>
+  </section>
+
+  </main>
   </div>
 
   <!-- 更新確認等に使う自前のダイアログ。window.confirm()はWebView2/WebKitGTKの
@@ -487,5 +558,31 @@
   <script src="shared/hotkey-forward.js"></script>
   <script src="shared/help.js"></script>
   <script src="control.js"></script>
+  <script>
+    'use strict';
+    // 左のタブの切り替え。最後に開いていたタブを覚えておく(セットアップがまだの時はホームから)
+    (function () {
+      const KEY = 'reacast.controlTab';
+      const show = (tab) => {
+        const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+        // リアクション機能をOFFにして隠れたタブは、ホームに戻す
+        if (!btn || getComputedStyle(btn).display === 'none') tab = 'home';
+        for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
+        for (const sec of document.querySelectorAll('main > section')) sec.classList.toggle('active', sec.dataset.tab === tab);
+        document.querySelector('main').scrollTop = 0;
+        try { localStorage.setItem(KEY, tab); } catch (_) {}
+      };
+      for (const b of document.querySelectorAll('#tabs button')) b.addEventListener('click', () => show(b.dataset.tab));
+      document.getElementById('gearBtn').addEventListener('click', () => show('other'));
+      let saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (_) {}
+      if (saved) show(saved);
+      // リアクション機能のON/OFFで、今のタブが隠れたらホームへ
+      new MutationObserver(() => {
+        const cur = document.querySelector('#tabs button.active');
+        if (cur && getComputedStyle(cur).display === 'none') show('home');
+      }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    })();
+  </script>
 </body>
 </html>

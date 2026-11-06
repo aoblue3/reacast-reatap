@@ -49,7 +49,7 @@ if (openOnLaunchBox.checked && !launchOpened) {
 document.getElementById('openSetupBtn').addEventListener('click', () => {
   invoke('open_comment_settings', { setup: true }).catch(() => {});
 });
-// セットアップを終えた後は一番下へ移す(上にあると、間違えて押してしまうため)。
+// セットアップを終えた後は「その他」タブへ移す(ホームにあると、間違えて押してしまうため)。
 // 「その他」の「かんたんセットアップを表示する」をOFFにすると出さない
 const SHOW_SETUP_KEY = 'reacast.showSetup';
 const showSetupBox = document.getElementById('showSetupCheckbox');
@@ -75,6 +75,8 @@ function renderSetupCard() {
   if (done) document.getElementById('miscCard').after(card);
   else document.getElementById('setupSlot').after(card);
   document.getElementById('openSetupBtn').textContent = done ? 'セットアップをやり直す' : 'セットアップを始める';
+  // まだの時はホームの一番上で「はじめにやること」(手順つき)、終わったら「その他」タブの中へ
+  card.querySelector('h2').textContent = done ? 'かんたんセットアップ' : 'はじめにやること';
 }
 renderSetupCard();
 // セットアップを終えた時(コメント設定の窓で保存される)に表示を変える

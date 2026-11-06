@@ -844,10 +844,9 @@ fn create_control_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     let win = WebviewWindowBuilder::new(app, "control", WebviewUrl::App("control.html".into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コントロールパネル")
-        // リアクションが増えるにつれてテスト送信ボタンの行数も増えていくため、
-        // 画面に収まりやすい高さ(700px)にしつつ、それでも収まらない場合は
-        // bodyのoverflow-y:auto(control.html側)でスクロールできるようにしてある。
-        .inner_size(560.0, 700.0)
+        // 左にタブがあるので、中身が今までと同じ幅(560px)で見えるように横を広げてある。
+        // 縦に収まらない時は、タブの中身(control.htmlのmain)だけがスクロールする
+        .inner_size(720.0, 700.0)
         .build()?;
 
     // コントロールパネルを×で閉じても、裏で常時起動している透明な全画面の
