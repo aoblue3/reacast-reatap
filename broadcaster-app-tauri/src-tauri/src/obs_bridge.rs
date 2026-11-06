@@ -58,6 +58,7 @@ const TRANSLATE_WORKER_HTML: &str = include_str!("../../frontend/translate_worke
 // 視聴者アンケートの結果(配信画面に出す)
 const POLL_HTML: &str = include_str!("../../frontend/poll.html");
 const AUDIENCE_HTML: &str = include_str!("../../frontend/audience.html");
+const CLOCK_HTML: &str = include_str!("../../frontend/clock.html");
 
 /// コメント一覧用に覚えておく直近のレス数(OBS側でブラウザソースを開き直した時に送り直す)
 const COMMENT_HISTORY_MAX: usize = 500;
@@ -552,6 +553,7 @@ Connection: close
         "/translate_worker.html" => ("text/html; charset=utf-8", TRANSLATE_WORKER_HTML),
         "/poll.html" => ("text/html; charset=utf-8", POLL_HTML),
         "/audience.html" => ("text/html; charset=utf-8", AUDIENCE_HTML),
+        "/clock.html" => ("text/html; charset=utf-8", CLOCK_HTML),
         _ => ("text/plain; charset=utf-8", "not found"),
     };
     let status = if body == "not found" {

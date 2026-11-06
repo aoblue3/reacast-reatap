@@ -161,6 +161,7 @@ const SUBTITLE_SAMPLE = { no: 69, name: '名無し＠BBSさん', date: '2026/10/
 function renderPreview(animate) {
   renderListPreview();
   if (typeof renderAudienceNow === 'function') renderAudienceNow();
+  if (typeof renderClockPreview === 'function') renderClockPreview();
   if (!settings || !subtitlePreview || !subtitlePreview.contentWindow) return;
   const w = subtitlePreview.contentWindow;
   w.postMessage({ type: 'commentStyle', style: settings.style }, '*');
@@ -227,6 +228,17 @@ function renderAudienceNow() {
   }
 }
 audiencePreview.addEventListener('load', renderAudienceNow);
+
+// ---- 時計(clock.html?previewを埋め込んで同じ描画をさせる) ----
+const clockPreview = document.getElementById('clockPreview');
+function renderClockPreview() {
+  if (!settings) return;
+  document.getElementById('clockCustomField').style.display = (settings.style.clock || {}).format === 'custom' ? '' : 'none';
+  if (clockPreview && clockPreview.contentWindow) {
+    clockPreview.contentWindow.postMessage({ type: 'commentStyle', style: settings.style }, '*');
+  }
+}
+clockPreview.addEventListener('load', renderClockPreview);
 listen('comments:audience', (e) => {
   audienceState = e.payload;
   renderAudienceNow();
@@ -1392,11 +1404,124 @@ const SUBTITLE_PRESETS = {
   },
 };
 
-// ---- プリセットの切り替え・手直しの記憶・初期値に戻す(コメント一覧・コメント字幕) ----
+// ---- 時計のプリセット(コメント字幕のプリセットと同じ名前・同じ雰囲気。時計はずっと出ているので動きは付けない) ----
+/** コメント字幕のプリセットの枠(#box の行)を、時計(#clock)に使う */
+function clockFrameFrom(id) {
+  return String(SUBTITLE_PRESETS[id].customCss || '')
+    .split('\n')
+    .filter((l) => /^#box( |::before)/.test(l) && !/animation/.test(l))
+    .map((l) => l.replace(/#box/g, '#clock'))
+    .join('\n');
+}
+const CLOCK_PRESETS = {
+  // デフォルト: 白い太字に黒いふち、背景なし(シンプル)
+  default: {},
+  bbs: {
+    fontFamily: 'ＭＳ Ｐゴシック', bold: false, color: '#000000', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#efefef', bgOpacity: 100, padding: 6, radius: 0,
+    customCss: [
+      '#clock { border: 1px solid #a8a8a8; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3); }',
+      '.clock-w { color: #228b22; font-weight: bold; }',
+    ].join('\n'),
+  },
+  yellowLine: {
+    fontFamily: 'M PLUS 1p', bold: true, color: '#ffffff', outlineWidth: 2, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 55, padding: 6, radius: 6,
+    customCss: '#clock { border-left: 7px solid #ffd23f; }',
+  },
+  bubble: {
+    fontFamily: 'Zen Maru Gothic', bold: true, color: '#333333', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffffff', bgOpacity: 96, padding: 7, radius: 18,
+    customCss: ['#clock { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); }', '.clock-w { color: #e05a00; }'].join('\n'),
+  },
+  neon: {
+    fontFamily: 'RocknRoll One', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#120a24', bgOpacity: 55, padding: 6, radius: 6,
+    customCss: [
+      '#clock { text-shadow: 0 0 6px #3cf2ff, 0 0 14px #3cf2ff !important; border: 1px solid rgba(60, 242, 255, 0.5); }',
+      '.clock-w { color: #ff4fd8; text-shadow: 0 0 6px #ff4fd8; }',
+    ].join('\n'),
+  },
+  p5: {
+    fontFamily: 'Zen Kaku Gothic New', bold: true, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#0b0b0b', bgOpacity: 92, padding: 6, radius: 0,
+    customCss: [
+      "@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');",
+      '#clock { border-left: 8px solid #e60012; box-shadow: 6px 6px 0 #e60012; }',
+      ".clock-w { display: inline-block; background: #e60012; padding: 0 0.3em; font-family: 'Dela Gothic One', sans-serif; font-weight: normal; transform: skewX(-10deg); }",
+    ].join('\n'),
+  },
+  ff: {
+    fontFamily: 'DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#1a2a8c', bgOpacity: 100, padding: 8, radius: 8,
+    customCss: [clockFrameFrom('ff'), '.clock-w { color: #ffe27a; }'].join('\n'),
+  },
+  retro: {
+    fontFamily: 'Press Start 2P, DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 100, padding: 8, radius: 4,
+    customCss: [clockFrameFrom('retro'), '.clock-w { color: #f8d800; }'].join('\n'),
+  },
+  quill: {
+    fontFamily: 'Dancing Script, Zen Kurenaido', bold: false, color: '#3b2a1a', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#f6eedb', bgOpacity: 97, padding: 7, radius: 3,
+    customCss: [
+      '#clock { border: 1px solid #d8c7a0; box-shadow: 2px 3px 0 rgba(90, 60, 20, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3); }',
+      '.clock-w { color: #8a4b1c; }',
+      "#clock::after { content: ' ✒'; }",
+    ].join('\n'),
+  },
+  dq: {
+    fontFamily: 'DotGothic16', bold: false, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#000000', bgOpacity: 95, padding: 8, radius: 10,
+    customCss: [clockFrameFrom('dq'), "#clock::before { content: '＊ '; }"].join('\n'),
+  },
+  oc: {
+    fontFamily: 'Noto Sans JP', bold: true, color: '#ffffff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#111111', bgOpacity: 100, padding: 6, radius: 0,
+    customCss: [
+      '#clock { box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.22); }',
+      '.clock-w { display: inline-block; background: #ffffff; color: #111111; padding: 0 0.3em; }',
+    ].join('\n'),
+  },
+  aurora: {
+    fontFamily: 'M PLUS Rounded 1c', bold: true, color: '#f2f5ff', outlineWidth: 0, outlineColor: '#000000',
+    bgColor: '#0d1230', bgOpacity: 78, padding: 8, radius: 18,
+    customCss: [
+      '#clock { border: 2px solid transparent; background: linear-gradient(rgba(13, 18, 48, 0.8), rgba(13, 18, 48, 0.8)) padding-box, linear-gradient(90deg, #7ce7ff, #a68cff, #ff8fd8, #7ce7ff) border-box !important; box-shadow: 0 6px 24px rgba(80, 120, 255, 0.3); text-shadow: 0 1px 6px rgba(150, 190, 255, 0.5) !important; }',
+      '.clock-w { color: #9ad8ff; }',
+    ].join('\n'),
+  },
+  yami: {
+    fontFamily: 'Hachi Maru Pop', bold: false, color: '#3a1f3d', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffdbe9', bgOpacity: 97, padding: 8, radius: 18,
+    customCss: [
+      '#clock { margin: 0 8px 8px 0; border: 3px solid #3a1f3d; box-shadow: 5px 5px 0 #3a1f3d; outline: 2px dashed #ff9cc2; outline-offset: -8px; }',
+      '.clock-w { color: #e0457b; }',
+      "#clock::before { content: '✚ '; color: #ff8fb8; }",
+    ].join('\n'),
+  },
+  kamitora: {
+    fontFamily: 'DotGothic16', bold: false, color: '#f8f8f8', outlineWidth: 3, outlineColor: '#000040',
+    bgColor: '#000020', bgOpacity: 0, padding: 14, radius: 0,
+    customCss: [clockFrameFrom('kamitora'), '.clock-w { color: #f8e088; }'].join('\n'),
+  },
+  cute: {
+    fontFamily: 'Zen Maru Gothic', bold: true, color: '#7a3b69', outlineWidth: 0, outlineColor: '#ffffff',
+    bgColor: '#ffe9f4', bgOpacity: 96, padding: 7, radius: 22,
+    customCss: [
+      '#clock { margin: 6px; border: 3px solid #ffb6d9; box-shadow: 0 4px 0 #ffc9e3, 0 6px 14px rgba(255, 105, 180, 0.35); }',
+      '.clock-w { color: #ff6fb1; }',
+      "#clock::after { content: ' ♡'; color: #ff8cc6; }",
+    ].join('\n'),
+  },
+};
+
+// ---- プリセットの切り替え・手直しの記憶・初期値に戻す(コメント一覧・コメント字幕・時計) ----
 // 手直しした内容は settings.style.presets.<list|subtitle>.custom.<プリセット> に覚えておく
 const PRESET_GROUPS = {
   list: { presets: LIST_PRESETS, keys: C.LIST_PRESET_KEYS, part: 'list', select: 'listPreset' },
   subtitle: { presets: SUBTITLE_PRESETS, keys: C.SUBTITLE_PRESET_KEYS, part: 'subtitle', select: 'subtitlePreset' },
+  clock: { presets: CLOCK_PRESETS, keys: C.CLOCK_PRESET_KEYS, part: 'clock', select: 'clockPreset' },
 };
 
 function presetState(group) {

@@ -185,6 +185,27 @@
       fadeOut: true,
       customCss: '',
     },
+    // 時計(clock.html)
+    clock: {
+      enabled: true,
+      // 書式(clockPartsの記号)。'custom'ならcustomFormat
+      format: 'YYYY/MM/DD(ddd) HH:mm:ss',
+      customFormat: 'YYYY/MM/DD(ddd) HH:mm:ss',
+      // 日付と時刻を2行にする(書式の最初の空白で改行する)
+      twoLines: false,
+      align: 'left',
+      fontFamily: 'BIZ UDゴシック',
+      fontSize: 36,
+      bold: true,
+      color: '#ffffff',
+      outlineWidth: 2.5,
+      outlineColor: '#000000',
+      bgColor: '#000000',
+      bgOpacity: 0,
+      padding: 6,
+      radius: 6,
+      customCss: '',
+    },
   };
 
   function mergeStyle(style) {
@@ -315,7 +336,7 @@
   // ---- アドオンの見た目(src-tauri/src/addons.rs。作り方はリポジトリの「アドオンの作り方.md」) ----
   // 画面のファイル名から、どの画面かを決める(subtitle.html → subtitle)
   const ADDON_PAGE = (/([a-z_]+)\.html$/.exec(location.pathname) || [])[1];
-  const ADDON_PAGES = ['subtitle', 'comments', 'nico', 'voice', 'audience', 'poll'];
+  const ADDON_PAGES = ['subtitle', 'comments', 'nico', 'voice', 'audience', 'poll', 'clock'];
   function applyAddonCss(version) {
     if (!ADDON_PAGES.includes(ADDON_PAGE)) return;
     let el = document.getElementById('reacast-addon-css');
@@ -400,10 +421,61 @@
     'fontFamily', 'headFontSize', 'headBold', 'numberColor', 'nameColor', 'dateColor', 'bodyColor', 'bodyBold',
     'outlineWidth', 'outlineColor', 'itemBgColor', 'itemBgOpacity', 'itemPadding', 'itemRadius', 'customCss',
   ];
+  const CLOCK_PRESET_KEYS = [
+    'fontFamily', 'bold', 'color', 'outlineWidth', 'outlineColor', 'bgColor', 'bgOpacity', 'padding', 'radius', 'customCss',
+  ];
   const SUBTITLE_PRESET_KEYS = [
     'fontFamily', 'bold', 'italic', 'color', 'outlineWidth', 'outlineColor', 'bgColor', 'bgOpacity', 'padding', 'radius',
     'appear', 'translationColor', 'customCss',
   ];
+
+  // ---- 時計 ----
+  // 書式の記号: YYYY(年) MM・M(月) DD・D(日) ddd(曜日) HH・H(時) mm(分) ss(秒)。ほかの文字はそのまま出す
+  const CLOCK_TOKENS = { YYYY: 'y', MM: 'mo', M: 'mo', DD: 'd', D: 'd', ddd: 'w', HH: 'h', H: 'h', mm: 'mi', ss: 's' };
+  const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+  /** 書式を、記号と文字の並びに分ける [{token, cls} | {text}] */
+  function clockParts(format) {
+    const out = [];
+    const re = /YYYY|ddd|MM|DD|HH|mm|ss|M|D|H/g;
+    let last = 0;
+    for (const m of String(format).matchAll(re)) {
+      if (m.index > last) out.push({ text: format.slice(last, m.index) });
+      out.push({ token: m[0], cls: CLOCK_TOKENS[m[0]] });
+      last = m.index + m[0].length;
+    }
+    if (last < format.length) out.push({ text: format.slice(last) });
+    return out;
+  }
+
+  function clockValue(d, token) {
+    const pad = (n) => String(n).padStart(2, '0');
+    switch (token) {
+      case 'YYYY': return String(d.getFullYear());
+      case 'MM': return pad(d.getMonth() + 1);
+      case 'M': return String(d.getMonth() + 1);
+      case 'DD': return pad(d.getDate());
+      case 'D': return String(d.getDate());
+      case 'ddd': return WEEKDAYS[d.getDay()];
+      case 'HH': return pad(d.getHours());
+      case 'H': return String(d.getHours());
+      case 'mm': return pad(d.getMinutes());
+      case 'ss': return pad(d.getSeconds());
+      default: return '';
+    }
+  }
+
+  /** 設定から、使う書式を決める(2行にする時は最初の空白で改行) */
+  function clockFormatOf(cfg) {
+    let f = cfg.format === 'custom' ? String(cfg.customFormat || '') : String(cfg.format || '');
+    if (!f.trim()) f = DEFAULT_STYLE.clock.format;
+    return cfg.twoLines ? f.replace(/ +/, '\n') : f;
+  }
+
+  /** 書式どおりの文字(設定画面の見本など) */
+  function formatClock(d, cfg) {
+    return clockParts(clockFormatOf(cfg)).map((p) => (p.token ? clockValue(d, p.token) : p.text)).join('');
+  }
 
   // ---- 視聴者数・コメント数 ----
   // 取得元の印(サービスを指す小さな印。YouTube・Twitchは各社の色、ニコ生はテレビ、PeerCastはメガホン)
@@ -496,6 +568,11 @@
     DEFAULT_STYLE,
     LIST_PRESET_KEYS,
     SUBTITLE_PRESET_KEYS,
+    CLOCK_PRESET_KEYS,
+    clockParts,
+    clockValue,
+    clockFormatOf,
+    formatClock,
     mergeStyle,
     outlineShadow,
     cssFontFamily,

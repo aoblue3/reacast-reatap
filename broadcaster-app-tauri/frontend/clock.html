@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<!-- favicon.icoの読み込みエラーがログに出ないように -->
+<link rel="icon" href="data:," />
+<title>ReaCast 時計</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { display: flex; }
+  body.align-center { justify-content: center; }
+  body.align-right { justify-content: flex-end; }
+  /* カスタムCSSで使えるクラス: #clock(全体) .clock-y(年) .clock-mo(月) .clock-d(日) .clock-w(曜日)
+     .clock-h(時) .clock-mi(分) .clock-s(秒) */
+  #clock { position: relative; display: inline-block; white-space: pre; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  #clock.hidden { display: none; }
+</style>
+</head>
+<body>
+  <div id="clock"></div>
+  <script src="shared/error-log.js"></script>
+  <script src="shared/comment-common.js"></script>
+  <script>
+    'use strict';
+    // 時計(「コメント読み上げ・字幕」の設定の「時計」タブ)。OBSのブラウザソースに貼って使う。
+    // 1秒に1回、文字が変わった所だけ書き換える(アニメーションは無い)
+    const C = window.CommentCommon;
+    const el = document.getElementById('clock');
+    let style = C.mergeStyle(null);
+    let lastFormat = null;
+    let parts = [];
+    const PREVIEW = new URLSearchParams(location.search).has('preview');
+
+    function applyStyle() {
+      const s = style.clock;
+      el.classList.toggle('hidden', !s.enabled && !PREVIEW);
+      el.style.fontFamily = C.cssFontFamily(s.fontFamily);
+      el.style.fontSize = `${Number(s.fontSize) || 36}px`;
+      el.style.fontWeight = s.bold ? 'bold' : 'normal';
+      el.style.color = s.color;
+      el.style.textShadow = C.outlineShadow(s.outlineWidth, s.outlineColor);
+      el.style.background = Number(s.bgOpacity) > 0 ? C.rgba(s.bgColor, s.bgOpacity) : 'transparent';
+      const pad = Number(s.padding) || 0;
+      el.style.padding = `${pad}px ${Math.round(pad * 1.6)}px`;
+      el.style.borderRadius = `${Number(s.radius) || 0}px`;
+      document.body.classList.toggle('align-center', s.align === 'center');
+      document.body.classList.toggle('align-right', s.align === 'right');
+      C.applyCustomCss(s.customCss);
+      lastFormat = null;
+      tick();
+    }
+
+    /** 書式が変わった時だけ、部品(span)を作り直す。あとは文字だけ書き換える */
+    function build(format) {
+      el.textContent = '';
+      parts = C.clockParts(format).map((p) => {
+        if (!p.token) return { node: el.appendChild(document.createTextNode(p.text)) };
+        const span = document.createElement('span');
+        span.className = `clock-${p.cls}`;
+        el.appendChild(span);
+        return { node: span, token: p.token, value: null };
+      });
+    }
+
+    function tick() {
+      const format = C.clockFormatOf(style.clock);
+      if (format !== lastFormat) {
+        build(format);
+        lastFormat = format;
+      }
+      const now = new Date();
+      for (const p of parts) {
+        if (!p.token) continue;
+        const v = C.clockValue(now, p.token);
+        if (v !== p.value) {
+          p.node.textContent = v;
+          p.value = v;
+        }
+      }
+    }
+
+    // 秒が変わるちょうどの時に書き換える(ずれていかないように毎回合わせ直す)
+    function loop() {
+      tick();
+      setTimeout(loop, 1000 - (Date.now() % 1000) + 5);
+    }
+
+    function handle(msg) {
+      if (msg.type === 'commentStyle') {
+        style = C.mergeStyle(msg.style);
+        applyStyle();
+      }
+    }
+
+    // ?preview: 設定画面に埋め込むプレビュー用(設定画面から見た目が届く)
+    if (PREVIEW) {
+      document.documentElement.style.colorScheme = 'dark';
+      window.addEventListener('message', (e) => {
+        if (e.source !== window.parent || !e.data || typeof e.data.type !== 'string') return;
+        handle(e.data);
+      });
+    } else {
+      C.connectBridge(handle);
+    }
+    applyStyle();
+    loop();
+  </script>
+</body>
+</html>

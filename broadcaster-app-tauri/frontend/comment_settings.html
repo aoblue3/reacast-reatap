@@ -689,6 +689,7 @@
     <button data-tab="list">コメント一覧</button>
     <button data-tab="nico">流れるコメント</button>
     <button data-tab="audience">視聴者数・コメント数</button>
+    <button data-tab="clock">時計</button>
     <button data-tab="aa">AA</button>
     <button data-tab="output">デスクトップに表示</button>
     <div class="nav-group">連動</div>
@@ -746,6 +747,7 @@
       <div class="copy-row"><span style="width:110px">コメント一覧</span><code id="urlComments">http://127.0.0.1:18772/comments.html</code><button class="secondary" data-copy="urlComments">コピー</button></div>
       <div class="copy-row"><span style="width:110px">流れるコメント</span><code id="urlNico">http://127.0.0.1:18772/nico.html</code><button class="secondary" data-copy="urlNico">コピー</button></div>
       <div class="copy-row"><span style="width:110px">視聴者数</span><code id="urlAudience2">http://127.0.0.1:18772/audience.html</code><button class="secondary" data-copy="urlAudience2">コピー</button></div>
+      <div class="copy-row"><span style="width:110px">時計</span><code id="urlClock2">http://127.0.0.1:18772/clock.html</code><button class="secondary" data-copy="urlClock2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">自分の声の字幕</span><code id="urlVoice2">http://127.0.0.1:18772/voice.html</code><button class="secondary" data-copy="urlVoice2">コピー</button></div>
       <div class="copy-row"><span style="width:110px">リアクション</span><code id="urlReaction">http://127.0.0.1:18772/</code><button class="secondary" data-copy="urlReaction">コピー</button></div>
       <div class="copy-row"><span style="width:110px">アンケート</span><code id="urlPoll">http://127.0.0.1:18772/poll.html</code><button class="secondary" data-copy="urlPoll">コピー</button></div>
@@ -1342,6 +1344,63 @@
         <div class="field"><label>PeerCastのポート<span class="help" data-help="このPCのPeerCastの番号です。ふつうは7144のままで大丈夫です。この番号のPeerCastで配信が見つからない時は、このPCで動いているほかのPeerCast(PeerCastを2つ動かしている時など)も自動で探します。"></span></label><div><input type="number" min="1" max="65535" data-key="peercastPort" /></div></div>
         <h3>カスタムCSS(上級者向け)</h3>
         <textarea class="css" data-key="style.audience.customCss" placeholder=".aud-item { gap: 0.5em; }"></textarea>
+      </details>
+    </section>
+
+    <!-- ================= 時計 ================= -->
+    <section data-tab="clock">
+      <div class="field"><label>時計を使う<span class="help" data-help="OFFにすると、OBSに貼ったままでも時計を出しません。"></span></label><div><input type="checkbox" data-key="style.clock.enabled" /></div></div>
+      <p class="lead">今の日付と時刻を、配信画面に出します。OBSで「ブラウザ」ソースを追加して、下のURLを貼ってください。置く場所と大きさは、OBSの中で決められます。</p>
+      <div class="copy-row"><span style="width:110px">OBSに貼るURL</span><code id="urlClock">http://127.0.0.1:18772/clock.html</code><button class="secondary" data-copy="urlClock">コピー</button></div>
+      <iframe id="clockPreview" class="preview-frame" style="height:120px" src="clock.html?preview"></iframe>
+      <div class="field"><label>デザインのプリセット<span class="help" data-help="選ぶと、フォント・色・背景・カスタムCSSがそのデザインに変わります(書式・文字の大きさはそのまま)。コメント字幕のプリセットと同じ名前のものは、同じ雰囲気の見た目です。下で手直しした内容はプリセットごとに覚えておきます。"></span></label><div class="inline">
+        <select id="clockPreset" data-preset-group="clock">
+          <option value="default">シンプル(白い文字に黒いふち)</option>
+          <option value="yellowLine">黄色ライン</option>
+          <option value="bubble">吹き出し</option>
+          <option value="neon">ネオン</option>
+          <option value="p5">P5風</option>
+          <option value="retro">レトロ</option>
+          <option value="ff">FF風</option>
+          <option value="cute">ゆめかわ</option>
+          <option value="yami">病みかわ</option>
+          <option value="kamitora">神トラ風</option>
+          <option value="quill">羽ペン</option>
+          <option value="dq">DQ風</option>
+          <option value="oc">OC風</option>
+          <option value="aurora">オーロラ</option>
+          <option value="bbs">掲示板風</option>
+        </select>
+        <button class="secondary" data-preset-reset="clock">このプリセットの初期値に戻す</button>
+      </div></div>
+      <div class="field"><label>この見た目を共有</label><div class="inline"><button class="secondary" data-preset-share="clock">共有コードをコピー</button><button class="secondary" data-preset-export="clock">ファイルに書き出す</button><button class="secondary" data-preset-import="clock">読み込む</button><span class="unit" data-preset-msg="clock"></span></div></div>
+      <div class="field"><label>書式</label><div><select data-key="style.clock.format" id="clockFormat">
+        <option value="YYYY/MM/DD(ddd) HH:mm:ss">2026/11/06(金) 23:01:05</option>
+        <option value="YYYY/MM/DD(ddd) HH:mm">2026/11/06(金) 23:01</option>
+        <option value="MM/DD(ddd) HH:mm">11/06(金) 23:01</option>
+        <option value="M月D日(ddd) HH:mm">11月6日(金) 23:01</option>
+        <option value="YYYY年M月D日(ddd) H時mm分ss秒">2026年11月6日(金) 23時01分05秒</option>
+        <option value="HH:mm:ss">23:01:05</option>
+        <option value="HH:mm">23:01</option>
+        <option value="custom">自分で決める</option>
+      </select></div></div>
+      <div class="field" id="clockCustomField"><label>自分で決める書式<span class="help" data-help="YYYY=年、MM=月(2けた)、M=月、DD=日(2けた)、D=日、ddd=曜日(金)、HH=時(2けた)、H=時、mm=分、ss=秒。ほかの文字はそのまま出ます。例: 「YYYY.MM.DD ddd曜日 HH:mm」"></span></label><div><input type="text" class="wide" data-key="style.clock.customFormat" /></div></div>
+      <div class="field"><label>日付と時刻を2行にする<span class="help" data-help="書式の最初の空白のところで改行します。"></span></label><div><input type="checkbox" data-key="style.clock.twoLines" /></div></div>
+      <div class="field"><label>寄せる方向<span class="help" data-help="OBSのソースの幅の中で、左・真ん中・右のどこに寄せるかです。"></span></label><div><select data-key="style.clock.align">
+        <option value="left">左</option>
+        <option value="center">真ん中</option>
+        <option value="right">右</option>
+      </select></div></div>
+      <div class="field"><label>サイズ / 太字</label><div class="inline"><input type="number" min="8" max="300" data-key="style.clock.fontSize" /><span class="unit">px</span><label><input type="checkbox" data-key="style.clock.bold" /> 太字</label></div></div>
+      <div class="field"><label>文字色 / 縁の色</label><div class="inline"><input type="color" data-key="style.clock.color" /><input type="color" data-key="style.clock.outlineColor" /></div></div>
+      <details class="adv">
+        <summary>詳しい設定(フォント・縁・背景・カスタムCSS)</summary>
+        <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.clock.fontFamily" /></div></div>
+        <div class="field"><label>縁のサイズ</label><div><input type="number" min="0" max="20" step="0.5" data-key="style.clock.outlineWidth" /><span class="unit">px</span></div></div>
+        <div class="field"><label>背景の色 / 不透明度</label><div class="inline"><input type="color" data-key="style.clock.bgColor" /><input type="number" min="0" max="100" data-key="style.clock.bgOpacity" /><span class="unit">%(0で背景なし)</span></div></div>
+        <div class="field"><label>内側の余白 / 角の丸み</label><div class="inline"><input type="number" min="0" max="80" data-key="style.clock.padding" /><span class="unit">px</span><input type="number" min="0" max="60" data-key="style.clock.radius" /><span class="unit">px</span></div></div>
+        <h3>カスタムCSS(上級者向け)<span class="help" data-help="使えるクラス: #clock(全体) .clock-y(年) .clock-mo(月) .clock-d(日) .clock-w(曜日) .clock-h(時) .clock-mi(分) .clock-s(秒)"></span></h3>
+        <textarea class="css" data-key="style.clock.customCss" placeholder=".clock-w { color: #ffd23f; }"></textarea>
       </details>
     </section>
 
