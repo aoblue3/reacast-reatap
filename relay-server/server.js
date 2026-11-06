@@ -68,6 +68,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const net = require('net');
 
 // ---- 設定値 ----
 const RATE_LIMIT_WINDOW_MS = 10_000; // 直近何ミリ秒を見るか
@@ -103,6 +104,16 @@ const MAX_CONNECTIONS_PER_IP = 5;
 // 配信者も視聴者も繋がっていない状態でこの時間が経った部屋は削除する
 // (部屋が消えても、配信者アプリが同じroomId/トークンで再登録すれば
 // 新しく作り直されるだけなので実害は無い)。
+// 1つの部屋で、配信者に送るリアクションの1秒あたりの上限(部屋全体)。IPをたくさん持つ人が
+// 連打の制限(IPごと)をすり抜けて、配信者のPCに大量のリアクションを流せないようにする。
+// 超えた分は黙って捨てる(普段の配信でここまで届くことは無い)
+const ROOM_REACTION_MAX_PER_SEC = 40;
+// 1つの接続(視聴者・まだ参加していない接続)が送れるメッセージの数。超えたら切る。
+// 正規のアプリはリアクション(10秒に20回まで)と投票(1秒に1回まで)くらいしか送らない
+const CONN_MESSAGE_WINDOW_MS = 10_000;
+const CONN_MESSAGE_MAX = 60;
+// 配信者に視聴者数を知らせる間隔の最短(参加・退出を繰り返されても配信者のPCに通知が殺到しないように)
+const VIEWER_COUNT_INTERVAL_MS = 1000;
 const ROOM_IDLE_TTL_MS = 24 * 60 * 60_000;
 const ROOM_CLEANUP_INTERVAL_MS = 10 * 60_000;
 
@@ -123,6 +134,17 @@ const MIN_APP_VERSION = process.env.RELAY_MIN_APP_VERSION || '';
 function parseAppVersion(v) {
   const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '').trim());
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** IPv6は1人で/64(アドレスの前半)をまるごと持てるので、前半が同じなら同じ人として数える
+ * (そうしないと、アドレスを変えるだけで連打・接続数の制限をすり抜けられる)。IPv4はそのまま */
+function ipGroup(ip) {
+  if (!net.isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const parts = ip.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return `${parts.slice(0, 4).map((x) => x.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 /** appVersionがmin以上か(ReaTap Webの"web"はいつも最新なので通す) */
@@ -174,6 +196,8 @@ class RelayServer {
     roomIdleTtlMs = ROOM_IDLE_TTL_MS,
     maxConnectionsPerIp = MAX_CONNECTIONS_PER_IP,
     minAppVersion = MIN_APP_VERSION,
+    roomReactionMaxPerSec = ROOM_REACTION_MAX_PER_SEC,
+    viewerCountIntervalMs = VIEWER_COUNT_INTERVAL_MS,
   } = {}) {
     this.port = port;
     this.logger = logger;
@@ -196,6 +220,8 @@ class RelayServer {
     this.connsByIp = new Map(); // ip -> Set<ws>
     this.maxConnectionsPerIp = maxConnectionsPerIp;
     this.minAppVersion = minAppVersion;
+    this.roomReactionMaxPerSec = roomReactionMaxPerSec;
+    this.viewerCountIntervalMs = viewerCountIntervalMs;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.roomIdleTtlMs = roomIdleTtlMs;
     this.httpServer = null;
@@ -379,7 +405,7 @@ class RelayServer {
   _extractIp(req) {
     let ip = (req && req.socket && req.socket.remoteAddress) || 'unknown';
     if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-    return ip;
+    return ipGroup(ip);
   }
 
   _cleanupRateState() {
@@ -465,6 +491,21 @@ class RelayServer {
   }
 
   _handleMessage(ws, raw) {
+    // 配信者(合言葉で守られた部屋の持ち主)以外は、送れるメッセージの数に上限がある
+    if (ws._role !== 'broadcaster') {
+      const now = Date.now();
+      ws._msgTimes = (ws._msgTimes || []).filter((t) => now - t < CONN_MESSAGE_WINDOW_MS);
+      ws._msgTimes.push(now);
+      if (ws._msgTimes.length > CONN_MESSAGE_MAX) {
+        if (!ws._closingForFlood) {
+          ws._closingForFlood = true;
+          this._send(ws, { type: 'error', code: 'too_many_messages', message: '送る回数が多すぎるため切断しました' });
+          this.logger.log('[relay] closed a connection: too many messages');
+          try { ws.close(); } catch { /* noop */ }
+        }
+        return;
+      }
+    }
     if (Buffer.byteLength(raw) > MAX_MESSAGE_BYTES) {
       return this._send(ws, { type: 'error', code: 'too_large', message: 'メッセージが大きすぎます' });
     }
@@ -523,6 +564,9 @@ class RelayServer {
   }
 
   _handleRegister(ws, msg) {
+    if (ws._role === 'viewer') {
+      return this._send(ws, { type: 'error', code: 'already_joined', message: 'この接続は既に参加しています' });
+    }
     const { roomId, broadcasterToken } = msg;
     if (!ROOM_ID_RE.test(roomId) || !BROADCASTER_TOKEN_RE.test(broadcasterToken)) {
       return this._send(ws, { type: 'error', code: 'invalid_params', message: 'roomId/broadcasterTokenが不正です' });
@@ -625,6 +669,10 @@ class RelayServer {
   }
 
   _handleJoin(ws, msg) {
+    // 1つの接続で参加し直すことはできない(繰り返して配信者に通知を送り続けられないように)
+    if (ws._role) {
+      return this._send(ws, { type: 'error', code: 'already_joined', message: 'この接続は既に参加しています' });
+    }
     const { passphrase } = msg;
     if (typeof passphrase !== 'string' || !PASSPHRASE_RE.test(passphrase)) {
       return this._send(ws, { type: 'error', code: 'invalid_params', message: '合言葉の形式が不正です' });
@@ -653,9 +701,7 @@ class RelayServer {
       this._send(ws, { type: 'poll', poll: this._pollPublic(room.poll), myVote: myVote === undefined ? null : myVote });
       this._send(ws, { type: 'pollResult', pollId: room.poll.id, counts: room.poll.counts });
     }
-    if (room.broadcasterConn) {
-      this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
-    }
+    this._notifyViewerCount(room);
     this.logger.log(`[relay] room ${roomId}: viewer joined (${room.viewerConns.size} total, ${ws._appVersion || 'no version'})`);
   }
 
@@ -677,6 +723,20 @@ class RelayServer {
     for (const viewer of room.viewerConns) {
       this._send(viewer, { type: 'disabledReactions', ids: room.disabledReactions });
     }
+  }
+
+  /** 配信者に視聴者数を知らせる。続けて変わった時は、間隔を空けて最新の数だけを送る */
+  _notifyViewerCount(room) {
+    if (!room.broadcasterConn || room.viewerCountTimer) return;
+    const wait = (room.viewerCountSentAt || 0) + this.viewerCountIntervalMs - Date.now();
+    const sendNow = () => {
+      room.viewerCountTimer = null;
+      room.viewerCountSentAt = Date.now();
+      if (room.broadcasterConn) this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
+    };
+    if (wait <= 0) return sendNow();
+    room.viewerCountTimer = setTimeout(sendNow, wait);
+    if (typeof room.viewerCountTimer.unref === 'function') room.viewerCountTimer.unref();
   }
 
   _pollPublic(poll) {
@@ -807,6 +867,14 @@ class RelayServer {
     if (!room) return; // 部屋が消えている(異常系)
     room.lastActiveAt = now;
 
+    // 部屋全体の上限(1秒ごとに数え直す)。超えた分は黙って捨てる
+    if (now - (room.reactionSecStart || 0) >= 1000) {
+      room.reactionSecStart = now;
+      room.reactionSecCount = 0;
+    }
+    room.reactionSecCount += 1;
+    if (room.reactionSecCount > this.roomReactionMaxPerSec) return;
+
     if (room.broadcasterConn) {
       this._send(room.broadcasterConn, {
         type: 'reaction',
@@ -831,14 +899,12 @@ class RelayServer {
       this.logger.log(`[relay] room ${roomId}: broadcaster disconnected`);
     } else if (ws._role === 'viewer') {
       room.viewerConns.delete(ws);
-      if (room.broadcasterConn) {
-        this._send(room.broadcasterConn, { type: 'viewerCount', count: room.viewerConns.size });
-      }
+      this._notifyViewerCount(room);
     }
   }
 }
 
-module.exports = { RelayServer, isAppVersionAllowed };
+module.exports = { RelayServer, isAppVersionAllowed, ipGroup };
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 39200;

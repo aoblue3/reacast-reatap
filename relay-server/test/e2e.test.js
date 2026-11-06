@@ -3,7 +3,7 @@ const assert = require('assert');
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const http = require('http');
-const { RelayServer, isAppVersionAllowed } = require('../server');
+const { RelayServer, isAppVersionAllowed, ipGroup } = require('../server');
 
 const PORT = 39299;
 const PROTOCOL_VERSION = 2; // relay-client.js側のPROTOCOL_VERSIONと同じ値にしておくこと
@@ -75,7 +75,7 @@ async function run() {
   }, 10_000);
 
   // テストは全部同じIP(127.0.0.1)から繋ぐので、接続数の上限はここでは大きくしておく(上限のテストは別のサーバーで)
-  const server = new RelayServer({ port: PORT, maxConnectionsPerIp: 1000, logger: { log: (...a) => console.log(...a) } }).start();
+  const server = new RelayServer({ port: PORT, maxConnectionsPerIp: 1000, viewerCountIntervalMs: 0, logger: { log: (...a) => console.log(...a) } }).start();
   await new Promise((r) => setTimeout(r, 100));
 
   const roomId = crypto.randomBytes(5).toString('hex');
@@ -491,6 +491,83 @@ async function run() {
       console.log('OK: minAppVersionを設定すると古いアプリ(バージョン無しを含む)を断り、新しいアプリは通す');
     } finally {
       await strict.stop();
+    }
+
+    // --- 19. IPv6は前半(/64)が同じなら同じ人として数える ---
+    assert.strictEqual(ipGroup('1.2.3.4'), '1.2.3.4');
+    assert.strictEqual(ipGroup('2001:db8:1:2:aaaa::1'), '2001:db8:1:2::/64');
+    assert.strictEqual(ipGroup('2001:0DB8:0001:0002:ffff:1:2:3'), '2001:db8:1:2::/64');
+    assert.strictEqual(ipGroup('2001:db8::5'), '2001:db8:0:0::/64');
+    assert.strictEqual(ipGroup('::1'), '0:0:0:0::/64');
+    console.log('OK: IPv6は/64ごとにまとめて数える');
+
+    // --- 20. 部屋全体の上限・視聴者数の通知の間隔・参加のし直し・接続ごとのメッセージ数 ---
+    const CAP_PORT = PORT + 3;
+    const capped = new RelayServer({
+      port: CAP_PORT,
+      maxConnectionsPerIp: 1000,
+      roomReactionMaxPerSec: 3,
+      viewerCountIntervalMs: 300,
+      logger: { log: () => {} },
+    }).start();
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const capRoom = crypto.randomBytes(5).toString('hex');
+      const capPass = `cap-${crypto.randomBytes(3).toString('hex')}`;
+      const b = await connect({ origin: 'http://tauri.localhost' }, CAP_PORT);
+      send(b, { type: 'register', roomId: capRoom, broadcasterToken: crypto.randomBytes(24).toString('hex'), passphrase: capPass, protocolVersion: PROTOCOL_VERSION });
+      await nextMessage(b); // registered
+      await nextMessage(b); // viewerCount:0
+      await nextMessage(b); // passphrase_ok
+      const vs = [];
+      for (let i = 0; i < 3; i++) {
+        const v = await connect({ origin: 'http://tauri.localhost' }, CAP_PORT);
+        send(v, { type: 'join', passphrase: capPass, protocolVersion: PROTOCOL_VERSION });
+        assert.strictEqual((await nextMessage(v)).type, 'joined');
+        vs.push(v);
+      }
+      // 視聴者数の通知は、続けて参加しても間隔を空けて最新の数だけ届く
+      const counts = [];
+      const deadline = Date.now() + 800;
+      while (Date.now() < deadline) {
+        const m = await Promise.race([nextMessage(b), new Promise((r) => setTimeout(() => r(null), deadline - Date.now()))]);
+        if (m) counts.push(m);
+      }
+      b._waiters.length = 0;
+      assert.ok(counts.every((m) => m.type === 'viewerCount'), JSON.stringify(counts));
+      assert.ok(counts.length <= 2, `視聴者数の通知が多すぎる: ${counts.length}`);
+      assert.strictEqual(counts[counts.length - 1].count, 3);
+      console.log('OK: 視聴者数の通知は、続けて参加しても間隔を空けてまとめて届く');
+
+      // 部屋全体の上限: 別々の接続から計6回送っても、1秒の間に届くのは3回まで
+      // (テストは全部同じIPなので、連打の制限(IPごとに19回)には引っかからない回数にしてある)
+      for (const v of vs) {
+        send(v, { type: 'reaction', emoji: 'wwww' });
+        send(v, { type: 'reaction', emoji: 'wwww' });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      let got = 0;
+      while (b._queue.length) if (b._queue.shift().type === 'reaction') got += 1;
+      assert.strictEqual(got, 3, `部屋全体の上限を超えて届いた: ${got}`);
+      console.log('OK: 部屋全体のリアクションには1秒あたりの上限がある');
+
+      // 同じ接続で参加し直すことはできない
+      send(vs[0], { type: 'join', passphrase: capPass, protocolVersion: PROTOCOL_VERSION });
+      assert.strictEqual((await nextMessage(vs[0])).code, 'already_joined');
+      console.log('OK: 1つの接続で参加し直すことはできない');
+
+      // 1つの接続から大量に送ると切られる(配信者は対象外)
+      const flood = await connect({ origin: 'http://tauri.localhost' }, CAP_PORT);
+      const closed = new Promise((r) => flood.once('close', r));
+      for (let i = 0; i < 80; i++) send(flood, { type: 'nonsense' });
+      await closed;
+      assert.ok(flood._queue.some((m) => m.code === 'too_many_messages'));
+      assert.strictEqual(b.readyState, WebSocket.OPEN);
+      console.log('OK: 1つの接続から大量にメッセージを送ると切断される(配信者は対象外)');
+      for (const v of vs) v.close();
+      b.close();
+    } finally {
+      await capped.stop();
     }
 
     console.log('\nすべての中継サーバーE2Eテストに成功しました。');
