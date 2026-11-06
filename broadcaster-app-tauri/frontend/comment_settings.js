@@ -23,9 +23,10 @@ const TAB_USE = {
   fetch: ['useBbs'], create: ['autoCreateThread', 'useBbs'], speech: ['speechEnabled'], chime: ['chimeEnabled'],
   words: ['ngEnabled'], subtitle: ['style.subtitle.enabled'], list: ['style.list.enabled'], aa: ['aaEnabled'],
   nico: ['style.nico.enabled'], audience: ['audienceEnabled'], output: ['desktopUse'], reactions: ['reactionLink'],
-  voice: ['voiceEnabled'],
+  voice: ['voiceEnabled'], clock: ['style.clock.enabled'],
 };
-const NAV_USE_TABS = ['fetch', 'create', 'speech', 'chime', 'words', 'subtitle', 'list', 'aa', 'nico', 'audience', 'output', 'reactions', 'voice'];
+// 左のタブの横に「使う」のスイッチを付けるタブ(機能のタブを足した時は、ここにも足す)
+const NAV_USE_TABS = ['fetch', 'create', 'speech', 'chime', 'words', 'subtitle', 'list', 'aa', 'nico', 'audience', 'clock', 'output', 'reactions', 'voice'];
 // 取得元の「使う」と、そのURLの欄
 const SOURCE_USE = { useBbs: ['threadUrl', 'subThreadUrl'], useYoutube: ['youtubeTarget'], useTwitch: ['twitchChannel'], useNiconico: ['niconicoTarget'], useOpenrec: ['openrecTarget'] };
 for (const tab of NAV_USE_TABS) {
@@ -56,7 +57,7 @@ for (const [tab, [key]] of Object.entries(TAB_USE)) {
   if (row) row.classList.add('use-master');
 }
 
-const DEFAULT_ON_KEYS = new Set(['useBbs', 'useYoutube', 'useTwitch', 'useNiconico', 'useOpenrec', 'ngEnabled', 'audienceEnabled', 'desktopUse', 'style.subtitle.enabled', 'style.list.enabled', 'style.nico.enabled']);
+const DEFAULT_ON_KEYS = new Set(['useBbs', 'useYoutube', 'useTwitch', 'useNiconico', 'useOpenrec', 'ngEnabled', 'audienceEnabled', 'desktopUse', 'style.subtitle.enabled', 'style.list.enabled', 'style.nico.enabled', 'style.clock.enabled']);
 
 function isUsed(key) {
   return getPath(settings, key) !== false;

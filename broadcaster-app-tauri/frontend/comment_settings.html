@@ -111,6 +111,8 @@
   .nav-group { font-size: 11px; color: var(--c-8d909c); padding: 10px 10px 3px; letter-spacing: 0.04em; }
   .nav-group:first-child { padding-top: 2px; }
   nav button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 窓の縦を小さくしても、タブを縮めて文字を重ねず、はみ出した分はスクロールで見る */
+  nav > * { flex-shrink: 0; }
   /* タブの幅をドラッグで変える(comment_settings.js) */
   #navResizer { flex: none; width: 6px; margin-left: -3px; margin-right: -3px; cursor: col-resize; position: relative; z-index: 5; }
   #navResizer:hover, #navResizer.dragging { background: var(--c-3b6df0); opacity: 0.5; }
