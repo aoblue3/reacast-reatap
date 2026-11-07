@@ -59,6 +59,12 @@ pub fn get_app_version() -> String {
     current_version().to_string()
 }
 
+/// 更新履歴(CHANGELOG.md)。アップデートの後に「新しくなったこと」を出すのに使う(shared/whats-new.js)
+#[tauri::command]
+pub fn get_changelog() -> &'static str {
+    include_str!("../../../CHANGELOG.md")
+}
+
 /// このアプリのGitHubのリリースに置いたexe(ASSET_NAME)のURLか。
 /// 例: https://github.com/owner/repo/releases/download/v1.7.0/ReaTap.exe
 fn is_release_asset_url(url: &str, repo: &str) -> bool {

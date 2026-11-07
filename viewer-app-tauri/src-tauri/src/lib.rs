@@ -853,6 +853,7 @@ pub fn run() {
             cancel_manual_pick,
             updater::check_for_update,
             updater::get_app_version,
+            updater::get_changelog,
             applog::log_from_frontend,
             applog::open_log_dir,
             support_thread::open_support_thread,

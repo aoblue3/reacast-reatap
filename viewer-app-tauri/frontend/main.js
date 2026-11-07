@@ -1481,6 +1481,7 @@ async function init() {
   // アプリ本体の起動処理を待たせたくないので、awaitせず裏で確認する
   // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
   showAppVersion();
+  showWhatsNew();
   document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
     const msg = document.getElementById('backupMsg');
     try {
@@ -1525,6 +1526,16 @@ async function showAppVersion() {
  * ビルド時にAPP_VERSION/UPDATE_CHECK_REPO(.github/workflows/build-release.yml
  * 参照)が設定されていない開発ビルドでは、Rust側(updater.rs)が常に
  * 「更新なし」を返すため、この関数は何もしない。 */
+/** アップデートの後の最初の起動で「新しくなったこと」を出す(shared/whats-new.js)。配信者をまだ登録していない人には出さない */
+async function showWhatsNew() {
+  try {
+    const [version, changelog] = await Promise.all([invoke('get_app_version'), invoke('get_changelog')]);
+    window.WhatsNew.maybeShow('ReaTap', version, changelog, profiles.length === 0);
+  } catch (err) {
+    console.error('新しくなったことの表示に失敗しました', err);
+  }
+}
+
 async function checkForUpdateOnStartup() {
   let info;
   try {

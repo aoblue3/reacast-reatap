@@ -231,6 +231,21 @@ async function showAppVersion() {
 // 単体exeのままの自動アップデート確認(updater.rs参照)。ビルド時に
 // APP_VERSION/UPDATE_CHECK_REPOが埋め込まれていない場合(ローカルビルド等)は
 // check_for_updateが常にnullを返すので、この関数は実質何もしない。
+/** アップデートの後の最初の起動で「新しくなったこと」を出す(shared/whats-new.js)。セットアップがまだの人には出さない */
+async function showWhatsNew() {
+  try {
+    const [version, changelog, s] = await Promise.all([
+      invoke('get_app_version'),
+      invoke('get_changelog'),
+      invoke('comments_get_settings').catch(() => null),
+    ]);
+    const used = storeGet('reacast.setupDone') === '1' || !!(s && (s.threadUrl || s.subThreadUrl || s.youtubeTarget || s.twitchChannel || s.niconicoTarget));
+    window.WhatsNew.maybeShow('ReaCast', version, changelog, !used);
+  } catch (err) {
+    console.error('新しくなったことの表示に失敗しました', err);
+  }
+}
+
 async function checkForUpdateOnStartup() {
   let info;
   try {
@@ -1128,6 +1143,7 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await loadHideLocalOverlay();
   await initReactionsToggle(relayAddress);
   showAppVersion();
+  showWhatsNew();
   document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
     const msg = document.getElementById('backupMsg');
     try {

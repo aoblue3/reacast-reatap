@@ -1471,6 +1471,7 @@ pub fn run() {
             open_region_picker,
             updater::check_for_update,
             updater::get_app_version,
+            updater::get_changelog,
             applog::log_from_frontend,
             applog::get_log_level,
             applog::set_log_level,
