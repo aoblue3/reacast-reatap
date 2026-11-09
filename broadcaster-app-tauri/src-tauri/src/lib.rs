@@ -13,6 +13,7 @@ mod stats;
 mod support_thread;
 mod tts;
 mod voice;
+mod window_size;
 pub mod updater;
 
 use config_store::ConfigStore;
@@ -504,13 +505,15 @@ fn open_stats_window(app: tauri::AppHandle) -> Result<(), String> {
         let _ = win.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "stats", WebviewUrl::App("stats.html".into()))
+    let (w, h) = window_size::saved(&app, "stats", (640.0, 720.0), (420.0, 360.0));
+    let win = WebviewWindowBuilder::new(&app, "stats", WebviewUrl::App("stats.html".into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - 統計・盛り上がりマーカー")
-        .inner_size(640.0, 720.0)
+        .inner_size(w, h)
         .min_inner_size(420.0, 360.0)
         .build()
         .map_err(|e| e.to_string())?;
+    window_size::track(&win);
     Ok(())
 }
 
@@ -522,14 +525,16 @@ fn open_comment_settings_window(app: &tauri::AppHandle, setup: bool) -> tauri::R
         return Ok(());
     }
     let page = if setup { "comment_settings.html?setup=1" } else { "comment_settings.html" };
-    WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App(page.into()))
+    let (w, h) = window_size::saved(app, "commentSettings", (760.0, 820.0), (520.0, 400.0));
+    let win = WebviewWindowBuilder::new(app, "commentSettings", WebviewUrl::App(page.into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コメント読み上げ・字幕")
         // コントロールパネル(ReaCastのアイコン)と見分けられるよう、この窓だけ別のアイコン
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/comment-settings.png"))?)?
-        .inner_size(760.0, 820.0)
+        .inner_size(w, h)
         .min_inner_size(520.0, 400.0)
         .build()?;
+    window_size::track(&win);
     Ok(())
 }
 
@@ -841,13 +846,16 @@ fn create_control_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     if app.get_webview_window("control").is_some() {
         return Ok(());
     }
+    let (w, h) = window_size::saved(app, "control", (720.0, 700.0), (300.0, 200.0));
     let win = WebviewWindowBuilder::new(app, "control", WebviewUrl::App("control.html".into()))
         .additional_browser_args(WEBVIEW_ARGS)
         .title("ReaCast - コントロールパネル")
         // 左にタブがあるので、中身が今までと同じ幅(560px)で見えるように横を広げてある。
         // 縦に収まらない時は、タブの中身(control.htmlのmain)だけがスクロールする
-        .inner_size(720.0, 700.0)
+        // 大きさを変えた人は、次もその大きさで開く(window_size.rs)
+        .inner_size(w, h)
         .build()?;
+    window_size::track(&win);
 
     // コントロールパネルを×で閉じても、裏で常時起動している透明な全画面の
     // オーバーレイウィンドウが残ったままだと、Tauriは「全ウィンドウが閉じたら終了」

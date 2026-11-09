@@ -6,6 +6,7 @@ mod hotkeys;
 mod pcwmp;
 mod support_thread;
 pub mod updater;
+mod window_size;
 
 use config_store::ConfigStore;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -97,9 +98,11 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // (レイヤードウィンドウ等)で最初から作っておく必要がある。実際の見た目の
     // 透明/不透明はset_overlay_mode側でset_background_colorを使って動的に
     // 切り替える(詳しくはそちらのコメント参照)。
+    // 大きさを変えた人は、次もその大きさで開く(window_size.rs)
+    let (w, h) = window_size::saved(app, MAIN_WINDOW_LABEL, (440.0, 620.0), (320.0, 200.0));
     let win = WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("main.html".into()))
         .title("ReaTap")
-        .inner_size(440.0, 620.0)
+        .inner_size(w, h)
         .min_inner_size(320.0, 200.0)
         .decorations(true)
         .transparent(true)
@@ -154,6 +157,7 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // 取る。hide()されたウィンドウはis_minimized()が意味を持たない状態になり、
     // タスクバーからも消える(タスクトレイのアイコン左クリック/「配信者一覧を
     // 開く」メニューで復元する。tray_builder参照)。
+    window_size::track(&win);
     let win_for_minimize = win.clone();
     win.on_window_event(move |event| match event {
         tauri::WindowEvent::CloseRequested { .. } => {
