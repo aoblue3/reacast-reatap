@@ -111,8 +111,10 @@
     cursor: pointer;
   }
   nav button:hover { background: var(--c-2b2d35); }
-  .nav-group { font-size: 11px; color: var(--c-8d909c); padding: 10px 10px 3px; letter-spacing: 0.04em; }
-  .nav-group:first-child { padding-top: 2px; }
+  /* グループの名前は、上に線を引いて太字にし、その下のタブを少し右にずらす(どれが見出しで、どれが押せるタブか分かるように) */
+  .nav-group { font-size: 11px; font-weight: bold; color: var(--c-8d909c); padding: 12px 10px 3px; margin-top: 8px; border-top: 1px solid var(--c-33353d); letter-spacing: 0.04em; }
+  .nav-group:first-child { padding-top: 2px; margin-top: 0; border-top: none; }
+  nav button[data-tab]:not([data-tab="easy"]) { padding-left: 20px; }
   nav button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 窓の縦を小さくしても、タブを縮めて文字を重ねず、はみ出した分はスクロールで見る */
   nav > * { flex-shrink: 0; }
