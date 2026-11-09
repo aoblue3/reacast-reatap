@@ -858,6 +858,7 @@ pub fn run() {
             updater::check_for_update,
             updater::get_app_version,
             updater::get_changelog,
+            window_size::window_layout_reset,
             applog::log_from_frontend,
             applog::open_log_dir,
             support_thread::open_support_thread,

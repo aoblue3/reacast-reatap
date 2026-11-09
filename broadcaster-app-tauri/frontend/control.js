@@ -1144,6 +1144,7 @@ async function connectRelay(creds, relayAddress, passphrase) {
   await initReactionsToggle(relayAddress);
   showAppVersion();
   showWhatsNew();
+  document.getElementById('windowResetBtn').addEventListener('click', () => invoke('window_layout_reset').catch(() => {}));
   document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
     const msg = document.getElementById('backupMsg');
     try {

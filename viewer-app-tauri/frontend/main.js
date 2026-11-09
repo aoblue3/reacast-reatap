@@ -1482,6 +1482,7 @@ async function init() {
   // (ネットワークが無い・GitHubに繋がらない環境でも起動自体は妨げない)。
   showAppVersion();
   showWhatsNew();
+  document.getElementById('windowResetBtn').addEventListener('click', () => invoke('window_layout_reset').catch(() => {}));
   document.getElementById('exportSettingsBtn').addEventListener('click', async () => {
     const msg = document.getElementById('backupMsg');
     try {
