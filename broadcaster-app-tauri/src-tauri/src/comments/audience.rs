@@ -17,6 +17,9 @@ pub struct SourceCount {
     pub id: &'static str,
     /// 視聴者数(まだ分からない・配信していない時はNone)
     pub viewers: Option<u64>,
+    /// リレー数(PeerCastだけ。「リスナー数/リレー数」と出す)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relays: Option<u64>,
     pub comments: u64,
 }
 
@@ -85,37 +88,47 @@ pub async fn fetch_twitch_viewers(client: &reqwest::Client, login: &str) -> Opti
     v.pointer("/data/user/stream/viewersCount").and_then(|x| x.as_u64())
 }
 
-/// PeerCastStationのgetChannelsの結果から、自分が配信しているチャンネルのリスナー数(合計)
-pub fn parse_peercast_station(v: &serde_json::Value) -> Option<u64> {
+/// PeerCastのリスナー数とリレー数
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PeerCastCount {
+    pub listeners: u64,
+    pub relays: u64,
+}
+
+/// PeerCastStationのgetChannelsの結果から、自分が配信しているチャンネルのリスナー数・リレー数(合計)
+pub fn parse_peercast_station(v: &serde_json::Value) -> Option<PeerCastCount> {
     let channels = v.get("result")?.as_array()?;
     let mine: Vec<&serde_json::Value> =
         channels.iter().filter(|c| c.pointer("/status/isBroadcasting").and_then(|x| x.as_bool()) == Some(true)).collect();
     if mine.is_empty() {
         return None;
     }
-    Some(mine.iter().map(|c| c.pointer("/status/totalDirects").and_then(|x| x.as_u64()).unwrap_or(0)).sum())
+    let sum = |key: &str| mine.iter().map(|c| c.pointer(&format!("/status/{key}")).and_then(|x| x.as_u64()).unwrap_or(0)).sum();
+    Some(PeerCastCount { listeners: sum("totalDirects"), relays: sum("totalRelays") })
 }
 
-/// PeerCast YTなどの /admin?cmd=viewxml から、中継しているチャンネルのリスナー数(合計)。
+/// PeerCast YTなどの /admin?cmd=viewxml から、中継しているチャンネルのリスナー数・リレー数(合計)。
 /// チャンネルが1つも無ければNone
-pub fn parse_peercast_viewxml(xml: &str) -> Option<u64> {
+pub fn parse_peercast_viewxml(xml: &str) -> Option<PeerCastCount> {
     let relayed = xml.split("<channels_relayed").nth(1)?.split("</channels_relayed>").next()?;
-    let mut total = None;
+    let mut total: Option<PeerCastCount> = None;
     for ch in relayed.split("<channel ").skip(1) {
         // 全体の人数(hits)があればそれ、無ければこのPCの人数(relay)
-        let pick = |tag: &str| -> Option<u64> {
-            let t = ch.split(&format!("<{tag} ")).nth(1)?;
-            let a = t.split("listeners=\"").nth(1)?;
-            a.split('"').next()?.parse().ok()
+        let pick = |tag: &str| -> Option<PeerCastCount> {
+            let t = format!(" {}", ch.split(&format!("<{tag} ")).nth(1)?.split('>').next()?);
+            let attr = |name: &str| -> Option<u64> { t.split(&format!(" {name}=\"")).nth(1)?.split('"').next()?.parse().ok() };
+            Some(PeerCastCount { listeners: attr("listeners")?, relays: attr("relays").unwrap_or(0) })
         };
         if let Some(n) = pick("hits").or_else(|| pick("relay")) {
-            total = Some(total.unwrap_or(0) + n);
+            let t = total.get_or_insert(PeerCastCount { listeners: 0, relays: 0 });
+            t.listeners += n.listeners;
+            t.relays += n.relays;
         }
     }
     total
 }
 
-pub async fn fetch_peercast_listeners(client: &reqwest::Client, port: u16) -> Option<u64> {
+pub async fn fetch_peercast_listeners(client: &reqwest::Client, port: u16) -> Option<PeerCastCount> {
     let base = format!("http://127.0.0.1:{port}");
     let rpc = client
         .post(format!("{base}/api/1"))
@@ -263,10 +276,12 @@ mod tests {
         let v = serde_json::json!({ "result": [
             { "status": { "isBroadcasting": true, "totalDirects": 12, "totalRelays": 3 } },
             { "status": { "isBroadcasting": false, "totalDirects": 99 } } ] });
-        assert_eq!(parse_peercast_station(&v), Some(12));
+        assert_eq!(parse_peercast_station(&v), Some(PeerCastCount { listeners: 12, relays: 3 }));
         assert_eq!(parse_peercast_station(&serde_json::json!({ "result": [] })), None);
         let xml = r#"<peercast><channels_relayed total="1"><channel name="a" id="x"><relay listeners="2" relays="1" hosts="3" status="BROADCAST" /><hits hosts="5" listeners="7" relays="2" /></channel></channels_relayed><channels_found total="0" /></peercast>"#;
-        assert_eq!(parse_peercast_viewxml(xml), Some(7));
+        assert_eq!(parse_peercast_viewxml(xml), Some(PeerCastCount { listeners: 7, relays: 2 }));
+        let xml = r#"<peercast><channels_relayed total="1"><channel name="a"><relay listeners="2" relays="1" /></channel></channels_relayed></peercast>"#;
+        assert_eq!(parse_peercast_viewxml(xml), Some(PeerCastCount { listeners: 2, relays: 1 }));
         assert_eq!(parse_peercast_viewxml(r#"<peercast><channels_relayed total="0" /></peercast>"#), None);
     }
 }

@@ -204,7 +204,7 @@ const AUDIENCE_SAMPLE = {
     { id: 'youtube', viewers: 128, comments: 342 },
     { id: 'twitch', viewers: 35, comments: 87 },
     { id: 'niconico', viewers: 64, comments: 120 },
-    { id: 'peercast', viewers: 12, comments: 156 },
+    { id: 'peercast', viewers: 12, relays: 3, comments: 156 },
   ],
 };
 {

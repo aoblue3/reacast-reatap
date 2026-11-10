@@ -1304,7 +1304,8 @@ impl CommentEngine {
                     st.audience.sources.push(audience::SourceCount { id: "peercast", ..Default::default() });
                 }
                 if let Some(s) = st.audience.get_mut("peercast") {
-                    s.viewers = pc;
+                    s.viewers = pc.map(|c| c.listeners);
+                    s.relays = pc.map(|c| c.relays);
                 }
             }
             self.emit_audience();

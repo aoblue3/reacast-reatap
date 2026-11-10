@@ -522,7 +522,8 @@
   const COMMENT_ICON =
     '<svg viewBox="0 0 24 24" aria-label="コメント"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="currentColor"/></svg>';
 
-  /** 視聴者数・コメント数を描く。state = { running, sources: [{ id, viewers, comments }] } */
+  /** 視聴者数・コメント数を描く。state = { running, sources: [{ id, viewers, relays?, comments }] }
+   *  PeerCastはリレー数も分かれば「リスナー数/リレー数」と出す */
   function renderAudience(el, state, cfg) {
     el.textContent = '';
     // 「出す取得元」でOFFにしたものは出さない(showYoutubeなど。無ければ出す)
@@ -551,14 +552,14 @@
       icon.className = 'aud-icon';
       icon.innerHTML = r.id === 'total' ? TOTAL_ICONS[cfg.totalIcon] ?? TOTAL_ICONS.sigma : AUDIENCE_ICONS[r.id];
       item.appendChild(icon);
-      const part = (cls, svg, n) => {
+      const part = (cls, svg, n, relays) => {
         const p = document.createElement('span');
         p.className = cls;
         p.innerHTML = svg;
-        p.appendChild(document.createTextNode(fmt(n)));
+        p.appendChild(document.createTextNode(relays == null ? fmt(n) : `${fmt(n)}/${fmt(relays)}`));
         item.appendChild(p);
       };
-      if (cfg.showViewers) part('aud-viewers', VIEWER_ICON, r.viewers);
+      if (cfg.showViewers) part('aud-viewers', VIEWER_ICON, r.viewers, r.viewers == null ? null : r.relays);
       if (cfg.showComments) part('aud-comments', COMMENT_ICON, r.comments);
       el.appendChild(item);
     }
