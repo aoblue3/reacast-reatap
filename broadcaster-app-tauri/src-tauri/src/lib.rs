@@ -231,6 +231,17 @@ pub(crate) fn reassert_topmost(win: &tauri::WebviewWindow) {
     let _ = win.set_always_on_top(true);
 }
 
+/// タスクバーのボタンを消し直す(オーバーレイ・デスクトップの字幕・レス一覧・流れるコメント)。
+///
+/// 経緯: tauri(tao)の`.skip_taskbar(true)`は、窓を「タスクバーに出す窓」(WS_EX_APPWINDOW)のまま
+/// タスクバーに「このボタンを消して」と頼むだけ。最前面・クリック透過などを変えるたびに、taoは
+/// 窓の種類を書き直す(APPWINDOWも付け直す)ので、押しても何も出ない「ReaCast」のボタンが
+/// 3つ並ぶことがあった。窓の種類はtaoが毎回書き直してしまうので、自分では変えられない。
+/// そこで、窓の設定を変えた後と、2秒おきの見直しの中の30秒ごとに、消すように頼み直す。
+pub(crate) fn keep_off_taskbar(win: &tauri::WebviewWindow) {
+    let _ = win.set_skip_taskbar(true);
+}
+
 /// オーバーレイウィンドウが本来の位置・サイズからずれていたら戻す。
 ///
 /// 経緯: マルチモニター環境でPCがスリープすると、その間にモニターの電源が
@@ -350,6 +361,7 @@ fn sync_nico_window(app: &tauri::AppHandle) {
             let (pos, size) = nico_target_geometry(app);
             let _ = win.set_position(tauri::Position::Physical(pos));
             let _ = win.set_size(tauri::Size::Physical(size));
+            keep_off_taskbar(&win);
         }
         (true, None) => {
             let (pos, size) = nico_target_geometry(app);
@@ -370,6 +382,7 @@ fn sync_nico_window(app: &tauri::AppHandle) {
                     let _ = win.set_position(tauri::Position::Physical(pos));
                     let _ = win.set_size(tauri::Size::Physical(size));
                     let _ = win.set_ignore_cursor_events(true);
+                    keep_off_taskbar(&win);
                 }
                 Err(e) => log::warn!("デスクトップの流れるコメントの窓の作成に失敗しました: {e}"),
             }
@@ -400,6 +413,7 @@ fn sync_desktop_window(app: &tauri::AppHandle, list: bool) {
                 let _ = win.emit("dlist:interactive", interactive);
             }
             let _ = win.set_always_on_top(engine.settings().desktop_topmost || adjusting);
+            keep_off_taskbar(&win);
             if !adjusting && !(list && list_moving_now()) {
                 let (pos, size) = subtitle_target_geometry(app, list);
                 let _ = win.set_position(tauri::Position::Physical(pos));
@@ -441,6 +455,7 @@ fn create_subtitle_window(app: &tauri::AppHandle, list: bool) -> tauri::Result<(
     let adjusting = app.state::<Arc<comments::CommentEngine>>().adjusting(list);
     let interactive = list && app.state::<Arc<comments::CommentEngine>>().settings().desktop_list_interactive;
     let _ = win.set_ignore_cursor_events(!adjusting && !interactive);
+    keep_off_taskbar(&win);
     Ok(())
 }
 
@@ -763,6 +778,7 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // ゲーム画面の操作を邪魔しないよう、オーバーレイ自体はクリックを透過させる
     // (仕様書 v0.4 未確定事項: フルスクリーン排他モードのゲームとの相性はWindows実機での検証が必要)
     let _ = win.set_ignore_cursor_events(true);
+    keep_off_taskbar(&win);
 
     // 「リアクションが他のウィンドウの裏に回って見えなくなる」という報告への対応。
     // .always_on_top(true)はウィンドウ作成時に一度「最前面グループ」に入れるだけで、
@@ -785,6 +801,8 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     static OVERLAY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let my_gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let reassert_handle = app.clone();
+    // タスクバーのボタンを消し直す時刻(keep_off_taskbar参照。30秒ごと)
+    let mut taskbar_at = std::time::Instant::now();
     std::thread::spawn(move || loop {
         if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != my_gen {
             break;
@@ -805,6 +823,15 @@ fn create_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                     sync_stage_size(&reassert_handle, &win);
                 }
                 reassert_topmost(&win);
+                if !bursting && taskbar_at.elapsed() >= Duration::from_secs(30) {
+                    taskbar_at = std::time::Instant::now();
+                    keep_off_taskbar(&win);
+                    for label in [DESKTOP_NICO_LABEL, desktop_label(false), desktop_label(true)] {
+                        if let Some(w) = reassert_handle.get_webview_window(label) {
+                            keep_off_taskbar(&w);
+                        }
+                    }
+                }
                 // デスクトップ字幕ウィンドウも同じ理由(スリープ明けのずれ・他の
                 // 最前面ウィンドウに隠される)で、2秒おきに位置と最前面を直す
                 if !bursting {
