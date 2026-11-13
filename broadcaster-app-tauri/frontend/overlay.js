@@ -3952,6 +3952,105 @@ function spawnMoney(opts) {
  * ReaCastから届いたリアクションを表示する。自分の画面とOBSは届くのが少しずれることがある
  * ので、ReaCastが決めた時刻(at。少し先)に合わせて同時に出す。乱数も同じ種から作る
  */
+/**
+ * 🤝 握手: 左右の画面の外から✋が片手ずつ同じ高さで出てきて、真ん中あたりで合わさると🤝になり、
+ * 3回上下に振る。手はWindows 10にもある✋を回したもの(🫱🫲はWindows 10の絵文字に無く、□になる)。
+ * 動かすのは外側の要素のtransformとopacityだけで、影(drop-shadow)は止まっている中の要素(.gin)に付ける。
+ */
+let handsStyleAdded = false;
+function addHandsStyle() {
+  if (handsStyleAdded) return;
+  handsStyleAdded = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .hands-part { position: absolute; left: 0; top: 0; line-height: 1; will-change: transform, opacity; }
+    .hands-part .gin { display: inline-block; }
+  `;
+  document.head.appendChild(st);
+}
+
+function spawnHandshake(opts) {
+  addHandsStyle();
+  const rnd = seededRandom(opts && opts.seed);
+  enforceMaxConcurrent();
+  const vw = stageW();
+  const vh = stageH();
+  const size = settings.baseSizePx * 1.5;
+
+  const box = document.createElement('div');
+  box.className = 'reaction-item hands-scene' + (opts && opts.mark ? ' self-mark' : '');
+  box.dataset.noChase = '1';
+  box.style.left = '0';
+  box.style.top = '0';
+  box.style.width = `${vw}px`;
+  box.style.height = `${vh}px`;
+  box.style.opacity = String(settings.glyphOpacity);
+  stage.appendChild(box);
+  activeItems.push(box);
+
+  // 手が出る高さ(左右で同じ)と、合わさる場所(真ん中あたり)
+  const y = vh * (0.15 + rnd() * 0.6);
+  const mx = vw * (0.4 + rnd() * 0.2);
+  const place = (x, yy, extra = '') => `translate(${x}px, ${yy}px) ${extra}`;
+  const glyphPart = (char, cx, inner) => {
+    const p = document.createElement('span');
+    p.className = 'hands-part';
+    p.style.fontSize = `${size}px`;
+    p.style.transform = place(cx - size / 2, y - size / 2);
+    const g = document.createElement('span');
+    g.className = 'reaction-glyph';
+    setGlyph(g, char);
+    if (inner) g.firstChild.style.transform = inner;
+    p.appendChild(g);
+    box.appendChild(p);
+    return p;
+  };
+  const IN_MS = 750;
+  const slideIn = (el, x0, x1) =>
+    el.animate([{ transform: place(x0, y - size / 2) }, { transform: place(x1, y - size / 2) }], {
+      duration: IN_MS,
+      easing: 'cubic-bezier(.25, .8, .35, 1)',
+      fill: 'forwards',
+    });
+
+  // 指先を相手に向けた✋が左右から来る
+  const gap = size * 0.42;
+  const left = glyphPart('✋', -size, 'rotate(90deg)');
+  const right = glyphPart('✋', vw + size, 'scaleX(-1) rotate(90deg)');
+  slideIn(left, -size * 1.5, mx - gap - size / 2);
+  slideIn(right, vw + size, mx + gap - size / 2);
+  // 合わさったら、手を消して🤝にして、3回上下に振る
+  const shake = glyphPart('🤝', mx);
+  shake.style.opacity = '0';
+  setTimeout(() => {
+    for (const h of [left, right]) h.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' });
+    const k = size * 0.16;
+    const at = (dy, sc) => place(mx - size / 2, y - size / 2 + dy, `scale(${sc})`);
+    shake.animate(
+      [
+        { opacity: 0, transform: at(0, 0.6) },
+        { opacity: 1, transform: at(0, 1.3), offset: 0.08 },
+        { opacity: 1, transform: at(0, 1.15), offset: 0.14 },
+        { opacity: 1, transform: at(-k, 1.15), offset: 0.24 },
+        { opacity: 1, transform: at(k, 1.15), offset: 0.34 },
+        { opacity: 1, transform: at(-k, 1.15), offset: 0.44 },
+        { opacity: 1, transform: at(k, 1.15), offset: 0.54 },
+        { opacity: 1, transform: at(-k * 0.5, 1.15), offset: 0.62 },
+        { opacity: 1, transform: at(0, 1.15), offset: 0.7 },
+        { opacity: 0, transform: at(0, 1.05) },
+      ],
+      { duration: 2000, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    spawnRadialLines(mx, y, size * 0.6, { count: 10, life: 380, thickness: 3 });
+  }, IN_MS - 40);
+
+  setTimeout(() => {
+    box.remove();
+    const idx = activeItems.indexOf(box);
+    if (idx !== -1) activeItems.splice(idx, 1);
+  }, IN_MS + 2300);
+}
+
 function playReaction(p) {
   const run = () => {
     const prev = rand;
@@ -4004,6 +4103,10 @@ function spawnReaction(emojiId, opts) {
   }
   if (emojiId === 'chicken') {
     spawnChicken(opts);
+    return;
+  }
+  if (emojiId === 'handshake') {
+    spawnHandshake(opts);
     return;
   }
 

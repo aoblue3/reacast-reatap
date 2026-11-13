@@ -73,6 +73,7 @@ const EMOJI_SET = [
   { id: 'thunder', char: '⚡', label: '雷', anim: 'thunder' },
   { id: 'money', char: '💴', label: 'お金', anim: 'money' },
   { id: 'chicken', char: '🐓', label: 'にわとり', anim: 'chicken' },
+  { id: 'handshake', char: '🤝', label: '握手', anim: 'handshake' },
 
   // ==================== 食べ物系 ====================
   { id: 'banana', char: '🍌', label: 'バナナ', anim: 'banana' },
