@@ -1276,8 +1276,16 @@
         <div class="copy-row"><span style="width:70px">ニコ生</span><code id="urlCommentsNiconico">http://127.0.0.1:18772/comments.html?source=niconico</code><button class="secondary" data-copy="urlCommentsNiconico">コピー</button></div>
       </div></div>
       <div class="field"><label>スーパーチャット・ビッツを目立たせる<span class="help" data-help="YouTubeのスーパーチャット・スーパーステッカー・メンバーシップ、Twitchのビッツ・サブスク・ギフト・レイド、ニコ生のギフトを、色付きの札と金額で目立たせます。"></span></label><div><input type="checkbox" data-key="style.list.showPaid" /></div></div>
+      <h3>画像URL</h3>
+      <div class="field"><label>画像URLのサムネイル表示<span class="help" data-help="画像は、配信者が確認するまで黒い四角(暗幕)で出ます(OBSにもデスクトップのコメント一覧にも)。画像が届くと、画面の右下に小さな確認の窓が出ます。この窓はOBSの画面キャプチャや画面共有に映りません。大丈夫な画像なら「見せる」ボタンか、「ホットキー」タブの「画像を見せる」のキーで暗幕が外れます。「見せない」ボタン・キーなら暗幕のまま次の画像へ進みます。何もしなければ、下の「確認の待ち時間」で次の画像に進み、暗幕のままです。画像はReaCastがダウンロードします(このPCの中や家のネットワークのアドレス・大きすぎる画像は取りに行きません)。画像を置いているサイトには、あなたのIPアドレスが伝わります(画像を見るのと同じです)。"></span></label><div class="inline">
+        <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">コメント一覧に表示(確認してから)</option></select>
+        <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
+      </div></div>
+      <div class="field"><label>確認の待ち時間<span class="help" data-help="画像の確認の窓で、「見せる」も「見せない」も押さなかった時に、暗幕のまま次の画像へ進むまでの時間です。「無制限」なら、押すまでずっと待ちます。"></span></label><div class="inline"><select data-key="style.list.imageCheckSeconds" data-int>
+        <option value="0">無制限</option><option value="5">5秒</option><option value="8">8秒</option><option value="10">10秒</option><option value="15">15秒</option><option value="30">30秒</option>
+      </select></div></div>
       <details class="adv">
-        <summary>詳しい設定(フォント・見出し・色・背景・間隔・サムネイル)</summary>
+        <summary>詳しい設定(フォント・見出し・色・背景・間隔)</summary>
         <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>
         <div class="field"><label>サイズ</label><div><input type="number" min="6" max="200" data-key="style.list.fontSize" /><span class="unit">px</span></div></div>
         <div class="field"><label>本文の色 / 太字</label><div class="inline"><input type="color" data-key="style.list.bodyColor" /><label><input type="checkbox" data-key="style.list.bodyBold" /> 太字</label></div></div>
@@ -1292,10 +1300,6 @@
         <div class="field"><label>縁の色 / 縁のサイズ</label><div class="inline"><input type="color" data-key="style.list.outlineColor" /><input type="number" min="0" max="20" step="0.5" data-key="style.list.outlineWidth" /><span class="unit">px</span></div></div>
         <div class="field"><label>行間</label><div><input type="number" min="0.8" max="3" step="0.05" data-key="style.list.lineHeight" /><span class="unit">倍(既定1.3)</span></div></div>
         <div class="field"><label>レスとレスの間の空き</label><div><input type="number" min="0" max="100" data-key="style.list.itemGap" /><span class="unit">px</span></div></div>
-        <div class="field"><label>画像URLのサムネイル表示</label><div class="inline">
-          <select data-key="style.list.thumbnails"><option value="none">非表示</option><option value="chat">コメント一覧に表示</option></select>
-          <label><input type="checkbox" data-key="style.list.hideImageUrl" /> 画像URLを本文から消す(サムネイル表示時のみ)</label>
-        </div></div>
         <h3>アイコン</h3>
         <div class="field"><label>アイコンを表示する</label><div class="inline"><input type="checkbox" data-key="style.list.showIcon" /><span class="unit">大きさ</span><input type="number" min="12" max="200" data-key="style.list.iconSize" /><span class="unit">px</span></div></div>
         <div class="field"><label>アイコンのフォルダ(掲示板)</label><div class="path-row"><input type="text" data-key="iconFolderBbs" placeholder="フォルダ内の画像からランダムに使います" /><button class="secondary" data-pick-folder="iconFolderBbs">参照...</button></div></div>
@@ -1516,6 +1520,9 @@
       <h3>自分の声の字幕</h3>
       <div class="field"><label>マイクを止める<span class="help" data-help="押し間違えても、止めるキーは止めるだけ、再開のキーは再開するだけです。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceMute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceMute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceMute">解除</button></div></div>
       <div class="field"><label>マイクを再開</label><div class="inline"><input type="text" readonly data-hotkey="hotkeyVoiceUnmute" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyVoiceUnmute">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyVoiceUnmute">解除</button></div></div>
+      <h3>コメント一覧の画像</h3>
+      <div class="field"><label>画像を見せる<span class="help" data-help="画像の確認の窓に出ている画像の暗幕を外して、コメント一覧(OBSとデスクトップ)に画像を出します。押さなければ暗幕のままです。「コメント一覧」タブの「画像URLのサムネイル表示」を「コメント一覧に表示」にしている時に使えます。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeyShowImage" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyShowImage">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyShowImage">解除</button></div></div>
+      <div class="field"><label>画像を見せない<span class="help" data-help="画像の確認の窓に出ている画像を、暗幕のままにして次の画像へ進みます。"></span></label><div class="inline"><input type="text" readonly data-hotkey="hotkeyHideImage" style="width: 160px" placeholder="なし" /><button class="secondary" data-hotkey-set="hotkeyHideImage">キーを割り当てる</button><button class="secondary" data-hotkey-clear="hotkeyHideImage">解除</button></div></div>
       <div class="hint hotkey-msg" id="hotkeyMsg"></div>
     </section>
 

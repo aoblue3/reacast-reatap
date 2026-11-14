@@ -204,6 +204,9 @@ pub struct CommentSettings {
     /// 自分の声の字幕のマイクを止める / 再開するホットキー(別々のキー。voice.rs)
     pub hotkey_voice_mute: String,
     pub hotkey_voice_unmute: String,
+    /// コメント一覧の画像の確認の窓に出している画像の暗幕を外す / 暗幕のまま次へ進むホットキー(image_check.rs)
+    pub hotkey_show_image: String,
+    pub hotkey_hide_image: String,
     pub reading_rules: String,
     /// v1.5.6で増やした既定の読み方を足し終えたか。保存済みの設定に無い時は
     /// false(=これから足す)、新しく作った設定ではtrue(load_settings参照)
@@ -573,6 +576,8 @@ impl Default for CommentSettings {
             hotkey_pause: String::new(),
             hotkey_voice_mute: String::new(),
             hotkey_voice_unmute: String::new(),
+            hotkey_show_image: String::new(),
+            hotkey_hide_image: String::new(),
             reading_rules: DEFAULT_READING_RULES.join("\n"),
             reading_presets_v2: true,
             reaction_presets_v2: true,

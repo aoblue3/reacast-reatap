@@ -68,6 +68,12 @@
   .item.aa .body { white-space: pre; font-size: 0.6em; line-height: 1.1; font-family: var(--aa-font, 'MS PGothic', 'ReaCast Emoji', sans-serif); }
   .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
   .thumbs img { max-width: 100%; max-height: 6em; border-radius: 4px; }
+  /* 配信者が「見せる」を押すまでの暗幕(image_check.rs)。番号は確認の窓の番号と同じ */
+  .thumbs .veil {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 8em; height: 4.5em; border-radius: 4px; background: #000; color: #8a8a8a;
+    font-size: 0.75em; text-shadow: none;
+  }
   @keyframes item-in {
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: none; }
@@ -321,17 +327,39 @@
         const thumbs = document.createElement('div');
         thumbs.className = 'thumbs';
         for (const url of images.slice(0, 4)) {
-          const img = document.createElement('img');
-          img.src = url;
-          img.referrerPolicy = 'no-referrer';
-          img.onerror = () => img.remove();
-          thumbs.appendChild(img);
+          const t = document.createElement('span');
+          t.className = 'thumb';
+          t.dataset.url = url;
+          thumbs.appendChild(t);
+          paintThumb(t);
         }
         content.appendChild(thumbs);
       }
       el.appendChild(content);
       el._res = res;
       return el;
+    }
+
+    // 画像の暗幕の状態({ url: { id, status } }。image_check.rs)。配信者が「見せる」を押した画像
+    // (shown)だけ、ReaCastがダウンロードしたものを出す。それ以外は暗幕(知らない画像も暗幕)
+    let imageState = {};
+    function paintThumb(t) {
+      const st = imageState[t.dataset.url];
+      if (st && st.status === 'failed') {
+        t.remove();
+        return;
+      }
+      if (st && st.status === 'shown') {
+        if (t.querySelector('img')) return;
+        const img = document.createElement('img');
+        img.src = st.src;
+        img.onerror = () => t.remove();
+        t.className = 'thumb';
+        t.replaceChildren(img);
+        return;
+      }
+      t.className = 'thumb veil';
+      t.textContent = st ? `🖼 ${st.id}` : '🖼';
     }
 
     function maxItems() {
@@ -410,6 +438,9 @@
         offset = 0;
         items.forEach(noteBoard);
         render();
+      } else if (msg.type === 'imageState') {
+        imageState = msg.items || {};
+        for (const t of listEl.querySelectorAll('.thumb')) paintThumb(t);
       } else if (msg.type === 'commentClear') {
         items = [];
         offset = 0;

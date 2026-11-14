@@ -6,6 +6,7 @@ mod config_store;
 mod connect_code;
 mod emoji_font;
 mod fonts;
+mod image_check;
 mod local_translate;
 mod obs_bridge;
 mod preflight;
@@ -1130,7 +1131,7 @@ fn set_overlay_no_combo_growth_ids(
 /// 前半はTauriが既定で渡しているもの。ThrottleMainFrameTo60Hzは、リフレッシュレートの高い
 /// モニター(180Hzなど)でも描き直しを60Hzくらい(180Hzなら90回/秒)までにする。リアクションの
 /// 表示中、2560x1440の画面全体を毎秒180回描いていて、ゲーム中などに重かった(2026-10-30)
-const WEBVIEW_ARGS: &str =
+pub(crate) const WEBVIEW_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=ThrottleMainFrameTo60Hz";
 
 /// オーバーレイ(overlay.js)が、自分の窓の大きさを伝えてくる。OBSのブラウザソースは
@@ -1343,6 +1344,7 @@ pub fn run() {
                 initial_combo_growth_enabled,
                 initial_no_combo_growth_ids,
             ));
+            image_check::init(app.handle());
             // create_overlay_window内で立ち上げる最前面取り直しスレッドが参照する
             // ため、ウィンドウを作る前に必ず管理下に置いておく。
             app.manage(TopmostReasserter::new());
@@ -1487,6 +1489,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            image_check::image_check_state,
+            image_check::image_check_decide,
             get_credentials,
             get_relay_address,
             get_overlay_settings,

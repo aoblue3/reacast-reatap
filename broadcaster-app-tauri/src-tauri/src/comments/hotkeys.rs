@@ -20,6 +20,8 @@ enum Action {
     Pause,
     VoiceMute,
     VoiceUnmute,
+    ShowImage,
+    HideImage,
 }
 
 /// 修飾キー(Ctrl/Alt/Shift/Win)の組み合わせとキーのコード
@@ -85,6 +87,8 @@ fn label(action: Action) -> &'static str {
         Action::Pause => "一時停止/再開",
         Action::VoiceMute => "マイクを止める",
         Action::VoiceUnmute => "マイクを再開",
+        Action::ShowImage => "画像を見せる",
+        Action::HideImage => "画像を見せない",
     }
 }
 
@@ -123,6 +127,8 @@ fn run_action(app: &AppHandle, action: Action) {
         Action::VoiceUnmute => {
             crate::voice::set_muted(app, false);
         }
+        Action::ShowImage => crate::image_check::decide_current(true),
+        Action::HideImage => crate::image_check::decide_current(false),
     }
 }
 
@@ -136,6 +142,8 @@ pub fn apply(app: &AppHandle, s: &CommentSettings) -> Result<(), String> {
         ("一時停止/再開", &s.hotkey_pause, Action::Pause),
         ("マイクを止める", &s.hotkey_voice_mute, Action::VoiceMute),
         ("マイクを再開", &s.hotkey_voice_unmute, Action::VoiceUnmute),
+        ("画像を見せる", &s.hotkey_show_image, Action::ShowImage),
+        ("画像を見せない", &s.hotkey_hide_image, Action::HideImage),
     ] {
         if key.trim().is_empty() {
             continue;

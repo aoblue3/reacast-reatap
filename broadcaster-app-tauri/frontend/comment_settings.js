@@ -2785,6 +2785,8 @@ const HOTKEY_LABELS = {
   hotkeyPause: '一時停止/再開',
   hotkeyVoiceMute: 'マイクを止める',
   hotkeyVoiceUnmute: 'マイクを再開',
+  hotkeyShowImage: '画像を見せる',
+  hotkeyHideImage: '画像を見せない',
 };
 const HOTKEY_KEYS = Object.keys(HOTKEY_LABELS);
 let hotkeyCaptureTimer = null;

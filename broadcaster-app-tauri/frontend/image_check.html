@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" href="data:," />
+<title>ReaCast 画像の確認</title>
+<!--
+  コメント一覧の画像を、配信者にだけ見せる小さな窓(image_check.rs)。この窓は画面キャプチャ・
+  画面共有に映らない。「見せる」(ボタンかホットキー)を押した画像だけ、コメント一覧の暗幕が外れる。
+  押さなければ、設定の秒数(style.list.imageCheckSeconds)で次の画像へ進む(暗幕のまま)。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #1c1d22; color: #e6e7eb; font: 13px "Yu Gothic UI", "Meiryo", sans-serif; overflow: hidden; user-select: none; }
+  body { display: flex; flex-direction: column; border: 1px solid #3a3c45; box-sizing: border-box; }
+  #bar { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; background: #26272e; cursor: move; }
+  #title { font-weight: bold; }
+  #waiting { color: #9a9daa; font-size: 12px; margin-left: auto; }
+  #close { border: none; background: transparent; color: #c9cbd3; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+  #close:hover { background: #3a3c45; }
+  #pic { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  #pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  #timer { height: 3px; background: #3a3c45; }
+  #timer div { height: 100%; width: 100%; background: #5b8def; transform-origin: left; }
+  #foot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+  #show { border: none; background: #3b6df0; color: #fff; font-weight: bold; font-size: 13px; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+  #show:hover { background: #4d7cf5; }
+  #hide { border: 1px solid #4a4c56; background: transparent; color: #d6d8df; font-size: 13px; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  #hide:hover { background: #33353d; }
+  #key { color: #9a9daa; font-size: 11px; line-height: 1.35; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <span id="title">🖼 画像</span>
+    <span id="waiting"></span>
+    <button id="close" title="見せないで次へ">×</button>
+  </div>
+  <div id="pic"></div>
+  <div id="timer"><div></div></div>
+  <div id="foot">
+    <button id="show">見せる</button>
+    <button id="hide">見せない</button>
+    <span id="key"></span>
+  </div>
+<script src="shared/hotkey-forward.js"></script>
+<script>
+'use strict';
+(() => {
+  const tauri = window.__TAURI__;
+  const invoke = tauri.core.invoke;
+  // 何もしなければ、この時間で次の画像へ進む(暗幕のまま。コメント設定の「確認の待ち時間」。0=無制限)
+  let waitMs = 0;
+  const pic = document.getElementById('pic');
+  const bar = document.querySelector('#timer div');
+  let current = null;
+  let timer = null;
+
+  function decide(show) {
+    if (!current) return;
+    const id = current.id;
+    clearTimeout(timer);
+    invoke('image_check_decide', { id, show }).catch(() => {});
+  }
+
+  function render(state) {
+    const next = state && state.current;
+    if (state && state.seconds != null) waitMs = Math.max(0, Number(state.seconds) || 0) * 1000;
+    if (state && typeof state.hotkey === 'string') {
+      const fmt = (key) => String(key || '').split('+').filter(Boolean).map((t) => t.replace(/^Key/, '').replace(/^Digit/, '')).join('+');
+      const show = fmt(state.hotkey);
+      const hide = fmt(state.hotkeyHide);
+      const parts = [show && `見せる: ${show}`, hide && `見せない: ${hide}`].filter(Boolean);
+      document.getElementById('key').textContent = parts.length ? parts.join(' / ') : 'ホットキーは、コメント設定の「ホットキー」で割り当てられます';
+    }
+    document.getElementById('waiting').textContent = state && state.waiting ? `あと${state.waiting}枚` : '';
+    if (next && current && next.id === current.id) return;
+    current = next;
+    clearTimeout(timer);
+    pic.textContent = '';
+    if (!current) return;
+    document.getElementById('title').textContent = `🖼 画像 ${current.id}`;
+    const img = document.createElement('img');
+    img.src = current.src;
+    img.title = current.url;
+    pic.appendChild(img);
+    // 残り時間の帯(transformだけ動かす)。無制限の時は出さない
+    document.getElementById('timer').style.visibility = waitMs ? 'visible' : 'hidden';
+    if (!waitMs) return;
+    bar.style.transition = 'none';
+    bar.style.transform = 'scaleX(1)';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bar.style.transition = `transform ${waitMs}ms linear`;
+        bar.style.transform = 'scaleX(0)';
+      });
+    });
+    timer = setTimeout(() => decide(false), waitMs);
+  }
+
+  document.getElementById('show').addEventListener('click', () => decide(true));
+  document.getElementById('hide').addEventListener('click', () => decide(false));
+  document.getElementById('close').addEventListener('click', () => decide(false));
+  document.getElementById('bar').addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !e.target.closest('button')) tauri.window.getCurrentWindow().startDragging();
+  });
+  // 変わった時は、ホットキー・待ち時間の設定も読み直す(窓は隠すだけで開いたままなので)
+  tauri.event.listen('imagecheck:changed', () => invoke('image_check_state').then(render).catch(() => {}));
+  invoke('image_check_state').then(render).catch(() => {});
+})();
+</script>
+</body>
+</html>

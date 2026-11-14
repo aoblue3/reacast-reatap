@@ -116,6 +116,8 @@
       // 'none'=表示しない / 'chat'=レス一覧に画像のサムネイルを表示する
       thumbnails: 'none',
       hideImageUrl: false,
+      // 画像の確認の窓で、何もしなければ次の画像へ進むまでの秒数(image_check.html。0=無制限)
+      imageCheckSeconds: 0,
       showIcon: false,
       iconSize: 40,
       // 配信サイトのコメントに「YouTube」「Twitch」「ニコ生」の印を付ける

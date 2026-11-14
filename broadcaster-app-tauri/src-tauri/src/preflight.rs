@@ -150,6 +150,8 @@ pub async fn preflight_check(app: AppHandle) -> Vec<CheckItem> {
         s.hotkey_pause.trim(),
         s.hotkey_voice_mute.trim(),
         s.hotkey_voice_unmute.trim(),
+        s.hotkey_show_image.trim(),
+        s.hotkey_hide_image.trim(),
     ]
         .iter()
         .filter(|k| !k.is_empty())

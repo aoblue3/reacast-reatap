@@ -126,6 +126,8 @@ struct CommentBridgeState {
     thread_title: Option<String>,
     /// 視聴者数・コメント数(comments/audience.rs)
     audience: Option<serde_json::Value>,
+    /// コメント一覧の画像の、URLごとの暗幕の状態(image_check.rs)
+    images: Option<serde_json::Value>,
 }
 
 impl CommentBridgeState {
@@ -143,6 +145,9 @@ impl CommentBridgeState {
         }
         if let Some(a) = &self.audience {
             out.push(serde_json::json!({ "type": "audience", "state": a }).to_string());
+        }
+        if let Some(i) = &self.images {
+            out.push(serde_json::json!({ "type": "imageState", "items": i }).to_string());
         }
         let items: Vec<&serde_json::Value> = self.history.iter().collect();
         out.push(serde_json::json!({ "type": "commentHistory", "items": items }).to_string());
@@ -272,15 +277,24 @@ impl ObsBridge {
 
     /// コメント機能: コメント一覧に1件追加する。
     pub fn push_comment(&self, res: serde_json::Value) {
-        {
+        let style = {
             let mut c = self.comments.lock().unwrap();
             c.history.push_back(res.clone());
             while c.history.len() > COMMENT_HISTORY_MAX {
                 c.history.pop_front();
             }
             c.history_rev += 1;
-        }
+            c.style.clone()
+        };
+        // 画像のURLがあれば、配信者の確認待ちに並べる(一覧には暗幕で出る)
+        crate::image_check::on_comment(&res, style.as_ref());
         let _ = self.tx.send(serde_json::json!({ "type": "comment", "res": res }).to_string());
+    }
+
+    /// コメント一覧の画像の暗幕の状態を送る(image_check.rs)
+    pub fn set_image_state(&self, items: serde_json::Value) {
+        self.comments.lock().unwrap().images = Some(items.clone());
+        let _ = self.tx.send(serde_json::json!({ "type": "imageState", "items": items }).to_string());
     }
 
     /// コメント機能: 流れるコメントの「届いたらすぐ流す」用に、レスを流れるコメントの画面にだけ送る
@@ -298,6 +312,7 @@ impl ObsBridge {
             c.history_rev += 1;
         }
         let _ = self.tx.send(serde_json::json!({ "type": "commentClear" }).to_string());
+        crate::image_check::clear();
     }
 
     /// 今のコメント一覧(変わるたびに増える番号と、中身)
@@ -499,6 +514,26 @@ Connection: close
         let _ = socket.write_all(header.as_bytes()).await;
         if let Some(d) = data {
             let _ = socket.write_all(&d).await;
+        }
+        let _ = socket.shutdown().await;
+        return;
+    }
+
+    // コメント一覧の画像(image_check.rs。ReaCastが一度だけダウンロードしたもの)。
+    // SVGなどは入れていない(先頭のバイトで画像と確かめたものだけ)が、念のため何も実行させない
+    if let Some(id) = path.strip_prefix("/cimg/").and_then(|n| n.split('?').next()).and_then(|n| n.parse::<u32>().ok()) {
+        let found = crate::image_check::data(id);
+        let header = match &found {
+            Some(d) => format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nContent-Security-Policy: default-src 'none'\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                d.1,
+                d.0.len()
+            ),
+            None => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n".to_string(),
+        };
+        let _ = socket.write_all(header.as_bytes()).await;
+        if let Some(d) = found {
+            let _ = socket.write_all(&d.0).await;
         }
         let _ = socket.shutdown().await;
         return;
