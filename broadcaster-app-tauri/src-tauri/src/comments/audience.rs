@@ -47,7 +47,9 @@ fn digits(s: &str) -> Option<u64> {
 pub fn parse_youtube_viewers(v: &serde_json::Value) -> Option<u64> {
     let actions = v.get("actions")?.as_array()?;
     let r = actions.iter().find_map(|a| a.pointer("/updateViewershipAction/viewCount/videoViewCountRenderer"))?;
-    if r.get("isLive").and_then(|x| x.as_bool()) == Some(false) {
+    // 配信が終わると isLive が無くなり、数字は「〇回視聴」(今までに見た人の合計)になるので、
+    // isLive が true の時だけ使う
+    if r.get("isLive").and_then(|x| x.as_bool()) != Some(true) {
         return None;
     }
     r.get("originalViewCount")
@@ -228,6 +230,10 @@ mod tests {
         let v = serde_json::json!({ "actions": [{ "updateViewershipAction": { "viewCount": { "videoViewCountRenderer": {
             "viewCount": { "simpleText": "1,162 人が視聴中" }, "isLive": true } } } }] });
         assert_eq!(parse_youtube_viewers(&v), Some(1162));
+        // 配信が終わった後(isLiveが無く、数字は今までの視聴回数)
+        let v = serde_json::json!({ "actions": [{ "updateViewershipAction": { "viewCount": { "videoViewCountRenderer": {
+            "viewCount": { "simpleText": "1,837,228,897 回視聴" }, "originalViewCount": "1837228897" } } } }] });
+        assert_eq!(parse_youtube_viewers(&v), None);
         assert_eq!(parse_youtube_viewers(&serde_json::json!({ "actions": [] })), None);
     }
 
