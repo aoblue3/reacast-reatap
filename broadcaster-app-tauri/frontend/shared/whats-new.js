@@ -146,5 +146,17 @@
     if (sections.length) show(sections);
   }
 
-  window.WhatsNew = { maybeShow, parseChangelog };
+  /**
+   * 「新しくなったこと」のボタン: 今のバージョンまでの、最近の分をいつでも見る
+   * (開発版でバージョンが無い時は、更新履歴の新しい方から)
+   */
+  function showRecent(app, version, changelog) {
+    const now = parseVersion(version);
+    const sections = parseChangelog(changelog, app)
+      .filter((s) => !now || !newer(parseVersion(s.version), now))
+      .slice(0, MAX_VERSIONS);
+    if (sections.length) show(sections);
+  }
+
+  window.WhatsNew = { maybeShow, showRecent, parseChangelog };
 })();

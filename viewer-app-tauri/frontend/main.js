@@ -1513,6 +1513,17 @@ async function init() {
 
 /* ------------------------- 自動アップデート確認 ------------------------- */
 
+
+// 「新しくなったこと」のボタン: 最近のアップデートの分を、いつでも見返せる(shared/whats-new.js)
+document.getElementById('whatsNewBtn').addEventListener('click', async () => {
+  try {
+    const [version, changelog] = await Promise.all([invoke('get_app_version'), invoke('get_changelog')]);
+    window.WhatsNew.showRecent('ReaTap', version, changelog);
+  } catch (err) {
+    console.error('新しくなったことの表示に失敗しました', err);
+  }
+});
+
 /** ローカルビルドにはバージョンが埋め込まれないので「開発版」と出す。 */
 async function showAppVersion() {
   try {
