@@ -1288,7 +1288,7 @@
         <label>見せる　 <input type="text" style="width:260px" data-key="style.list.imageVoiceShow" placeholder="例: 画像オッケー、画像OK" /></label>
         <label>見せない <input type="text" style="width:260px" data-key="style.list.imageVoiceHide" placeholder="例: 画像ダメ、画像だめ" /></label>
       </div></div>
-      <div class="field"><label>動く画像(GIFなど)<span class="help" data-help="GIF・動くWebPの出し方です。動く画像は、途中のコマにだけ変な画像を仕込めるので、確認の窓には全部のコマを並べて出します。「動かす時間」がたつと、最初のコマに戻って止まります。「ループ」がOFFなら、1回だけ動いて最後のコマで止まります。URLが .jpg や .png なのに中身が動く画像(普通の画像に見せかけたもの)と、コマが多すぎる画像(300コマより多い)は、確認に出さずに捨てます。"></span></label><div class="inline">
+      <div class="field"><label>動く画像(GIFなど)<span class="help" data-help="GIF・動くWebPの出し方です。動く画像は、途中で変な画像に差し替えられる(最後にびっくり画像で止まる、など)ので、確認の窓には最初・中盤・最後の3コマを並べて出します(「全部のコマ」ボタンで全部のコマも見られます)。「動かす時間」がたつと、最初のコマに戻って止まります。「ループ」がOFFなら、1回だけ動いて最後のコマで止まります。URLが .jpg や .png なのに中身が動く画像(普通の画像に見せかけたもの)と、コマが多すぎる画像(300コマより多い)は、確認に出さずに捨てます。"></span></label><div class="inline">
         <select data-key="style.list.imageAnim"><option value="play">動かす</option><option value="still">動かさない(最初のコマだけ)</option></select>
         <label>動かす時間 <select data-key="style.list.imageAnimSeconds" data-int><option value="0">ずっと</option><option value="3">3秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option></select></label>
         <label><input type="checkbox" data-key="style.list.imageLoop" /> ループ</label>
