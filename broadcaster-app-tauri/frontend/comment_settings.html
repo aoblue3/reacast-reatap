@@ -1284,6 +1284,15 @@
       <div class="field"><label>確認の待ち時間<span class="help" data-help="画像の確認の窓で、「見せる」も「見せない」も押さなかった時に、暗幕のまま次の画像へ進むまでの時間です。「無制限」なら、押すまでずっと待ちます。"></span></label><div class="inline"><select data-key="style.list.imageCheckSeconds" data-int>
         <option value="0">無制限</option><option value="5">5秒</option><option value="8">8秒</option><option value="10">10秒</option><option value="15">15秒</option><option value="30">30秒</option>
       </select></div></div>
+      <div class="field"><label>声で見せる・見せない<span class="help" data-help="「自分の声の字幕」で聞き取った言葉に、ここに書いた合言葉が入っていたら、確認の窓の「見せる」「見せない」を押したことになります(確認の窓が出ている時だけ)。合言葉は「、」か改行で区切って何個でも書けます。聞き取りの揺れに備えて、いくつか書いておくと確実です(ひらがな・カタカナ、大文字・小文字、空白の違いは同じとみなします)。普段の会話で言わない言葉にしてください。空なら声では操作しません。「自分の声の字幕」がONの時だけ使えます。"></span></label><div style="display:flex;flex-direction:column;gap:4px">
+        <label>見せる　 <input type="text" style="width:260px" data-key="style.list.imageVoiceShow" placeholder="例: 画像オッケー、画像OK" /></label>
+        <label>見せない <input type="text" style="width:260px" data-key="style.list.imageVoiceHide" placeholder="例: 画像ダメ、画像だめ" /></label>
+      </div></div>
+      <div class="field"><label>動く画像(GIFなど)<span class="help" data-help="GIF・動くWebPの出し方です。動く画像は、途中のコマにだけ変な画像を仕込めるので、確認の窓には全部のコマを並べて出します。「動かす時間」がたつと、最初のコマに戻って止まります。「ループ」がOFFなら、1回だけ動いて最後のコマで止まります。URLが .jpg や .png なのに中身が動く画像(普通の画像に見せかけたもの)と、コマが多すぎる画像(300コマより多い)は、確認に出さずに捨てます。"></span></label><div class="inline">
+        <select data-key="style.list.imageAnim"><option value="play">動かす</option><option value="still">動かさない(最初のコマだけ)</option></select>
+        <label>動かす時間 <select data-key="style.list.imageAnimSeconds" data-int><option value="0">ずっと</option><option value="3">3秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option></select></label>
+        <label><input type="checkbox" data-key="style.list.imageLoop" /> ループ</label>
+      </div></div>
       <details class="adv">
         <summary>詳しい設定(フォント・見出し・色・背景・間隔)</summary>
         <div class="field"><label>フォント名</label><div><input type="text" list="fontList" data-key="style.list.fontFamily" /></div></div>

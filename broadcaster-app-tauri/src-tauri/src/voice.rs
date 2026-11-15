@@ -738,6 +738,8 @@ pub fn start_listener(app: AppHandle) {
             }
             let id = current_id;
             current_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+            // コメント一覧の画像の確認の窓を、合言葉で「見せる」「見せない」(image_check.rs)
+            crate::image_check::on_voice(&text, &settings.style);
             // 話した言葉がルールに当てはまったら、コメントと同じようにリアクションを飛ばす
             if settings.voice_reaction_link {
                 for rid in app.state::<Arc<CommentEngine>>().matched_reactions(&text) {

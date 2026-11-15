@@ -522,7 +522,9 @@ Connection: close
     // コメント一覧の画像(image_check.rs。ReaCastが一度だけダウンロードしたもの)。
     // SVGなどは入れていない(先頭のバイトで画像と確かめたものだけ)が、念のため何も実行させない
     if let Some(id) = path.strip_prefix("/cimg/").and_then(|n| n.split('?').next()).and_then(|n| n.parse::<u32>().ok()) {
-        let found = crate::image_check::data(id);
+        // ?once=1: 動く画像を1回だけ動かして、最後のコマで止める(ループOFF)
+        let once = path.split_once('?').is_some_and(|(_, q)| q.split('&').any(|kv| kv == "once=1"));
+        let found = crate::image_check::data(id).map(|d| if once { std::sync::Arc::new((crate::image_check::play_once(&d.0, d.1), d.1)) } else { d });
         let header = match &found {
             Some(d) => format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nContent-Security-Policy: default-src 'none'\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",

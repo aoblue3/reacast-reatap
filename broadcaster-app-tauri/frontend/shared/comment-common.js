@@ -118,6 +118,14 @@
       hideImageUrl: false,
       // 画像の確認の窓で、何もしなければ次の画像へ進むまでの秒数(image_check.html。0=無制限)
       imageCheckSeconds: 0,
+      // 動く画像(GIF・動くWebP)を配信でどう出すか(comments.html): 'play'=動かす / 'still'=最初のコマだけ。
+      // 動かす時間(秒。0=ずっと)と、ループ(falseなら1回だけ動いて止まる)
+      imageAnim: 'play',
+      imageAnimSeconds: 0,
+      imageLoop: true,
+      // 声で「見せる」「見せない」(自分の声の字幕で聞き取った言葉に入っていたら。改行か「、」区切りで複数。空なら使わない)
+      imageVoiceShow: '',
+      imageVoiceHide: '',
       showIcon: false,
       iconSize: 40,
       // 配信サイトのコメントに「YouTube」「Twitch」「ニコ生」の印を付ける

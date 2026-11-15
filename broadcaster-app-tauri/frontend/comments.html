@@ -67,7 +67,7 @@
   /* AAは一覧のフォントではなく「AAモード」のフォントで描く(文字幅が違うとずれる) */
   .item.aa .body { white-space: pre; font-size: 0.6em; line-height: 1.1; font-family: var(--aa-font, 'MS PGothic', 'ReaCast Emoji', sans-serif); }
   .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
-  .thumbs img { max-width: 100%; max-height: 6em; border-radius: 4px; }
+  .thumbs img, .thumbs canvas { max-width: 100%; max-height: 6em; border-radius: 4px; }
   /* 配信者が「見せる」を押すまでの暗幕(image_check.rs)。番号は確認の窓の番号と同じ */
   .thumbs .veil {
     display: inline-flex; align-items: center; justify-content: center;
@@ -343,6 +343,51 @@
     // 画像の暗幕の状態({ url: { id, status } }。image_check.rs)。配信者が「見せる」を押した画像
     // (shown)だけ、ReaCastがダウンロードしたものを出す。それ以外は暗幕(知らない画像も暗幕)
     let imageState = {};
+
+    // 動く画像(st.anim = 1回分のミリ秒)を、最初のコマに戻して止めるまでの時間(止めない時はnull、
+    // 最初から止める時は0)。style.list.imageAnim('play'/'still')・imageAnimSeconds(0=ずっと)。
+    // ループOFF(imageLoop=false)は、ReaCastが1回だけ動く形にした画像(?once=1)を出して、
+    // 最後のコマで止める(ブラウザはキャンバスに最初のコマしか写せないので、ここでは止めない)
+    function animStopMs(st) {
+      if (st.anim == null) return null;
+      const s = style.list;
+      if (s.imageAnim === 'still') return 0;
+      const sec = Number(s.imageAnimSeconds) || 0;
+      if (sec <= 0) return null;
+      if (s.imageLoop === false && sec * 1000 >= st.anim) return null;
+      return sec * 1000;
+    }
+    const animSrc = (st) => (st.anim != null && style.list.imageLoop === false ? `${st.src}&once=1` : st.src);
+    // 止めた画像(番号ごとに、止めた時のコマを覚えておく。描き直した時も同じコマで出す)
+    const frozen = new Map();
+    const playStart = new Map();
+    function freezeInto(t, st, img) {
+      const put = (src) => {
+        const c = document.createElement('canvas');
+        c.width = src.width || src.naturalWidth;
+        c.height = src.height || src.naturalHeight;
+        c.getContext('2d').drawImage(src, 0, 0);
+        t.replaceChildren(c);
+      };
+      const saved = frozen.get(st.id);
+      if (saved) return put(saved);
+      const take = (from) => {
+        // 今出ているコマを写し取る(写し取った物を覚えて、それを出す)
+        const c = document.createElement('canvas');
+        c.width = from.naturalWidth;
+        c.height = from.naturalHeight;
+        c.getContext('2d').drawImage(from, 0, 0);
+        frozen.set(st.id, c);
+        put(c);
+      };
+      // 動いている画像を写すと最初のコマになる(ブラウザの決まり)
+      if (img && img.complete && img.naturalWidth) return take(img);
+      const first = new Image();
+      first.onload = () => t.isConnected && take(first);
+      first.onerror = () => t.remove();
+      first.src = st.src;
+    }
+
     function paintThumb(t) {
       const st = imageState[t.dataset.url];
       if (st && st.status === 'failed') {
@@ -350,12 +395,23 @@
         return;
       }
       if (st && st.status === 'shown') {
-        if (t.querySelector('img')) return;
-        const img = document.createElement('img');
-        img.src = st.src;
-        img.onerror = () => t.remove();
+        if (t.querySelector('img, canvas')) return;
         t.className = 'thumb';
+        const stop = animStopMs(st);
+        if (frozen.has(st.id) || stop === 0) {
+          freezeInto(t, st, null);
+          return;
+        }
+        const img = document.createElement('img');
+        img.src = animSrc(st);
+        img.onerror = () => t.remove();
         t.replaceChildren(img);
+        if (stop != null) {
+          if (!playStart.has(st.id)) playStart.set(st.id, Date.now());
+          const left = stop - (Date.now() - playStart.get(st.id));
+          const freeze = () => t.isConnected && freezeInto(t, st, img);
+          img.addEventListener('load', () => setTimeout(freeze, Math.max(0, left)), { once: true });
+        }
         return;
       }
       t.className = 'thumb veil';
@@ -440,6 +496,9 @@
         render();
       } else if (msg.type === 'imageState') {
         imageState = msg.items || {};
+        // ReaCastが忘れた画像の、止めたコマも忘れる
+        const ids = new Set(Object.values(imageState).map((v) => v.id));
+        for (const m of [frozen, playStart]) for (const id of [...m.keys()]) if (!ids.has(id)) m.delete(id);
         for (const t of listEl.querySelectorAll('.thumb')) paintThumb(t);
       } else if (msg.type === 'commentClear') {
         items = [];

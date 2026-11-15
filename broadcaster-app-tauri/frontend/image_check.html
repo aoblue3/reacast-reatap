@@ -19,6 +19,16 @@
   #close:hover { background: #3a3c45; }
   #pic { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
   #pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  [hidden] { display: none !important; }
+  /* 動く画像: 全部のコマを並べる */
+  #pic.frames { display: block; overflow-y: auto; background: #111; }
+  #fhead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: #26272e; font-size: 12px; color: #c9cbd3; }
+  #fhead button { margin-left: auto; border: 1px solid #4a4c56; background: transparent; color: #d6d8df; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 3px; padding: 4px; }
+  #grid .f { position: relative; background: #000; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+  #grid canvas { max-width: 100%; max-height: 100%; }
+  #grid .n { position: absolute; left: 2px; bottom: 1px; font-size: 10px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+  #pic .play { width: 100%; height: calc(100% - 26px); display: flex; align-items: center; justify-content: center; }
   #timer { height: 3px; background: #3a3c45; }
   #timer div { height: 100%; width: 100%; background: #5b8def; transform-origin: left; }
   #foot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
@@ -79,10 +89,15 @@
     pic.textContent = '';
     if (!current) return;
     document.getElementById('title').textContent = `🖼 画像 ${current.id}`;
-    const img = document.createElement('img');
-    img.src = current.src;
-    img.title = current.url;
-    pic.appendChild(img);
+    pic.classList.remove('frames');
+    if (current.frames) {
+      showFrames(current);
+    } else {
+      const img = document.createElement('img');
+      img.src = current.src;
+      img.title = current.url;
+      pic.appendChild(img);
+    }
     // 残り時間の帯(transformだけ動かす)。無制限の時は出さない
     document.getElementById('timer').style.visibility = waitMs ? 'visible' : 'hidden';
     if (!waitMs) return;
@@ -95,6 +110,102 @@
       });
     });
     timer = setTimeout(() => decide(false), waitMs);
+  }
+
+  // 動く画像(GIF・動くWebP)は、途中のコマにだけ変な画像を仕込めるので、全部のコマを並べて見せる。
+  // ほとんど同じコマが続く所は1つにまとめる(右下に「×まとめた数」)。少しでも違うコマは残す
+  async function showFrames(cur) {
+    const head = document.createElement('div');
+    head.id = 'fhead';
+    const info = document.createElement('span');
+    info.textContent = `動く画像・${cur.frames}コマ: 読み込み中…`;
+    const toggle = document.createElement('button');
+    toggle.textContent = '動きで見る';
+    head.append(info, toggle);
+    const grid = document.createElement('div');
+    grid.id = 'grid';
+    const play = document.createElement('div');
+    play.className = 'play';
+    play.hidden = true;
+    const img = document.createElement('img');
+    img.src = cur.src;
+    img.title = cur.url;
+    play.appendChild(img);
+    pic.classList.add('frames');
+    pic.append(head, grid, play);
+    toggle.addEventListener('click', () => {
+      play.hidden = !play.hidden;
+      grid.hidden = !play.hidden;
+      toggle.textContent = play.hidden ? '動きで見る' : 'コマで見る';
+    });
+    const still = () => current && current.id === cur.id;
+    let dec;
+    try {
+      if (!('ImageDecoder' in window)) throw new Error('no ImageDecoder');
+      const buf = await invoke('image_check_bytes', { id: cur.id });
+      if (!still()) return;
+      dec = new ImageDecoder({ data: buf, type: cur.mime });
+      await dec.tracks.ready;
+      const count = dec.tracks.selectedTrack.frameCount;
+      const probe = document.createElement('canvas');
+      probe.width = probe.height = 32;
+      const pctx = probe.getContext('2d', { willReadFrequently: true });
+      let last = null;
+      let lastTile = null;
+      let kept = 0;
+      for (let i = 0; i < count; i++) {
+        const { image } = await dec.decode({ frameIndex: i, completeFramesOnly: true });
+        if (!still()) {
+          image.close();
+          return;
+        }
+        pctx.clearRect(0, 0, 32, 32);
+        pctx.drawImage(image, 0, 0, 32, 32);
+        const px = pctx.getImageData(0, 0, 32, 32).data;
+        let same = false;
+        if (last) {
+          let sum = 0;
+          let max = 0;
+          for (let k = 0; k < px.length; k++) {
+            const dlt = Math.abs(px[k] - last[k]);
+            sum += dlt;
+            if (dlt > max) max = dlt;
+          }
+          same = max < 40 && sum / px.length < 2;
+        }
+        if (same && lastTile) {
+          lastTile.merged++;
+          lastTile.label.textContent = `${lastTile.no} ×${lastTile.merged}`;
+        } else {
+          const scale = Math.min(1, 160 / Math.max(image.displayWidth, image.displayHeight));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(image.displayWidth * scale));
+          c.height = Math.max(1, Math.round(image.displayHeight * scale));
+          c.getContext('2d').drawImage(image, 0, 0, c.width, c.height);
+          const tile = document.createElement('div');
+          tile.className = 'f';
+          const label = document.createElement('span');
+          label.className = 'n';
+          label.textContent = String(i + 1);
+          tile.append(c, label);
+          grid.appendChild(tile);
+          lastTile = { no: i + 1, merged: 1, label };
+          kept++;
+          last = px;
+        }
+        image.close();
+      }
+      info.textContent = kept < count ? `動く画像・全${count}コマ(同じコマをまとめて${kept}枚)` : `動く画像・全${count}コマ`;
+    } catch (e) {
+      if (!still()) return;
+      // コマを取り出せない時は、動きのまま見せる
+      info.textContent = '動く画像: コマを並べられませんでした。動きを最後まで見てください';
+      toggle.hidden = true;
+      grid.hidden = true;
+      play.hidden = false;
+    } finally {
+      if (dec) dec.close();
+    }
   }
 
   document.getElementById('show').addEventListener('click', () => decide(true));

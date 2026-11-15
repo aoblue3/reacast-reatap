@@ -12,6 +12,12 @@
 //! 同じURLは1つにまとめる(1回決めれば、そのURLは全部同じ)。
 //! 画像はメモリの中だけに置いて、ディスクには保存しない(合計50MBまで。古いものから捨てる。
 //! コメント一覧を空にした時とReaCastを閉じた時に全部消える)。
+//!
+//! 動く画像(GIF・動くWebP): 途中のコマにだけ変な画像を仕込めるので、確認の窓には全部のコマを
+//! 並べて見せる(コマはWebView2のImageDecoderで取り出す)。URLは .jpg・.png なのに中身が動く
+//! 画像(APNGや、名前を変えたGIF)は、普通の画像に見せかけたものなので、確認に出さずに捨てる。
+//! コマが多すぎて確認しきれない画像も捨てる。配信の側でどう動かすか(動かさない・何秒だけ・
+//! ループしない)は comments.html が style.list.imageAnim* で決める。
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -28,6 +34,15 @@ const MAX_TOTAL_BYTES: usize = 50 * 1024 * 1024;
 const MAX_WAITING: usize = 10;
 /// 1件のレスから拾う画像の数(comments.htmlと同じ)
 const MAX_PER_RES: usize = 4;
+/// 動く画像のコマの数の上限(これより多いと、確認の窓に並べきれないので出さない)
+const MAX_FRAMES: u32 = 300;
+
+/// 動く画像のコマの数と、1回分の長さ(ミリ秒)
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Anim {
+    frames: u32,
+    ms: u32,
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Status {
@@ -46,6 +61,7 @@ struct Entry {
     url: String,
     status: Status,
     data: Option<Arc<(Vec<u8>, &'static str)>>,
+    anim: Option<Anim>,
 }
 
 #[derive(Default)]
@@ -136,7 +152,7 @@ pub fn on_comment(res: &serde_json::Value, style: Option<&serde_json::Value>) {
             }
             let id = st.next_id;
             st.next_id += 1;
-            st.entries.push_back(Entry { id, url: url.clone(), status: Status::Loading, data: None });
+            st.entries.push_back(Entry { id, url: url.clone(), status: Status::Loading, data: None, anim: None });
             new.push((id, url));
         }
         while st.entries.len() > MAX_ENTRIES {
@@ -156,8 +172,9 @@ pub fn on_comment(res: &serde_json::Value, style: Option<&serde_json::Value>) {
                 let mut st = state().lock().unwrap();
                 let Some(e) = st.entries.iter_mut().find(|e| e.id == id) else { return };
                 match got {
-                    Some(d) => {
-                        e.data = Some(Arc::new(d));
+                    Some((d, mime, anim)) => {
+                        e.data = Some(Arc::new((d, mime)));
+                        e.anim = anim;
                         e.status = Status::Waiting;
                         st.queue.push_back(id);
                         // 多すぎる時は、今出している1枚(先頭)の次の、一番古いものから暗幕のままにする
@@ -308,7 +325,142 @@ fn dimensions(d: &[u8]) -> Option<(u32, u32)> {
 const MAX_SIDE: u32 = 8192;
 const MAX_PIXELS: u64 = 4096 * 4096;
 
-async fn download(url: &str) -> Option<(Vec<u8>, &'static str)> {
+/// 動く画像なら、コマの数と長さ(動かない画像はNone)。ブラウザと同じく、0.01秒以下のコマは0.1秒として数える
+fn animation(d: &[u8], mime: &str) -> Option<Anim> {
+    let le16 = |i: usize| -> Option<u32> { Some(u16::from_le_bytes([*d.get(i)?, *d.get(i + 1)?]) as u32) };
+    let le24 = |i: usize| -> Option<u32> { Some(u32::from_le_bytes([*d.get(i)?, *d.get(i + 1)?, *d.get(i + 2)?, 0])) };
+    let le32 = |i: usize| -> Option<u32> { Some(u32::from_le_bytes(d.get(i..i + 4)?.try_into().ok()?)) };
+    let be32 = |i: usize| -> Option<u32> { Some(u32::from_be_bytes(d.get(i..i + 4)?.try_into().ok()?)) };
+    let ms = |m: u32| if m <= 10 { 100 } else { m };
+    let (mut frames, mut total) = (0u32, 0u32);
+    match mime {
+        "image/gif" => {
+            // 13バイトの頭と、全体の色の表の後に、ブロックが並ぶ
+            let packed = *d.get(10)?;
+            let mut i = 13 + if packed & 0x80 != 0 { 3usize << ((packed & 7) + 1) } else { 0 };
+            let mut delay = 0;
+            // データの小分けの並び(長さ1バイト+中身。長さ0で終わり)を飛ばす
+            let skip = |mut i: usize| -> Option<usize> {
+                loop {
+                    let n = *d.get(i)? as usize;
+                    i += 1 + n;
+                    if n == 0 {
+                        return Some(i);
+                    }
+                }
+            };
+            // 途中で切れているファイルは、そこまでのコマで数える
+            while let Some(&b) = d.get(i) {
+                match b {
+                    0x21 => {
+                        if d.get(i + 1) == Some(&0xf9) {
+                            delay = le16(i + 4).unwrap_or(0) * 10;
+                        }
+                        let Some(n) = skip(i + 2) else { break };
+                        i = n;
+                    }
+                    0x2c => {
+                        frames += 1;
+                        total = total.saturating_add(ms(delay));
+                        delay = 0;
+                        let Some(&p) = d.get(i + 9) else { break };
+                        i += 10 + if p & 0x80 != 0 { 3usize << ((p & 7) + 1) } else { 0 };
+                        let Some(n) = skip(i + 1) else { break };
+                        i = n;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        "image/webp" => {
+            let mut i = 12;
+            while let (Some(tag), Some(len)) = (d.get(i..i + 4), le32(i + 4)) {
+                if tag == b"ANMF" {
+                    frames += 1;
+                    total = total.saturating_add(ms(le24(i + 8 + 12).unwrap_or(0)));
+                }
+                i = i.saturating_add(8 + len as usize + (len as usize & 1));
+            }
+        }
+        "image/png" => {
+            // APNG: 絵のデータ(IDAT)より前に acTL があれば動く
+            let mut i = 8;
+            while let (Some(len), Some(tag)) = (be32(i), d.get(i + 4..i + 8)) {
+                match tag {
+                    b"acTL" => return Some(Anim { frames: be32(i + 8).unwrap_or(2).max(2), ms: 0 }),
+                    b"IDAT" => break,
+                    _ => {}
+                }
+                i = i.saturating_add(12 + len as usize);
+            }
+        }
+        _ => {}
+    }
+    (frames > 1).then_some(Anim { frames, ms: total })
+}
+
+/// 1回だけ動いて最後のコマで止まる形にした、動く画像の中身(ループOFF。/cimg/<番号>?once=1)。
+/// GIFは繰り返しの指定(NETSCAPE2.0)を外す、WebPは繰り返す回数(ANIM)を1にする
+pub fn play_once(d: &[u8], mime: &str) -> Vec<u8> {
+    let mut out = d.to_vec();
+    match mime {
+        "image/gif" => {
+            let Some(&packed) = d.get(10) else { return out };
+            let mut i = 13 + if packed & 0x80 != 0 { 3usize << ((packed & 7) + 1) } else { 0 };
+            let skip = |mut i: usize| -> Option<usize> {
+                loop {
+                    let n = *d.get(i)? as usize;
+                    i += 1 + n;
+                    if n == 0 {
+                        return Some(i);
+                    }
+                }
+            };
+            while let Some(&b) = d.get(i) {
+                match b {
+                    0x21 => {
+                        let Some(end) = skip(i + 2) else { break };
+                        if d.get(i + 1) == Some(&0xff) && d.get(i + 2) == Some(&11) && d.get(i + 3..i + 14) == Some(b"NETSCAPE2.0") {
+                            out.drain(i..end);
+                            break;
+                        }
+                        i = end;
+                    }
+                    0x2c => {
+                        let Some(&p) = d.get(i + 9) else { break };
+                        i += 10 + if p & 0x80 != 0 { 3usize << ((p & 7) + 1) } else { 0 };
+                        let Some(n) = skip(i + 1) else { break };
+                        i = n;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        "image/webp" => {
+            let mut i = 12;
+            while let (Some(tag), Some(len)) = (d.get(i..i + 4), d.get(i + 4..i + 8)) {
+                let len = u32::from_le_bytes(len.try_into().unwrap_or_default()) as usize;
+                if tag == b"ANIM" && len >= 6 && i + 14 <= out.len() {
+                    out[i + 12..i + 14].copy_from_slice(&1u16.to_le_bytes());
+                    break;
+                }
+                i = i.saturating_add(8 + len + (len & 1));
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// URLの拡張子と中身が合っている動く画像か。.jpg・.png のURLで中身が動く画像(APNG・名前を
+/// 変えたGIF)は、普通の画像に見せかけたものなので出さない
+fn honest_animation(url: &str, mime: &str) -> bool {
+    let path = url.split('?').next().unwrap_or(url).to_ascii_lowercase();
+    (mime == "image/gif" && path.ends_with(".gif")) || (mime == "image/webp" && path.ends_with(".webp"))
+}
+
+async fn download(url_text: &str) -> Option<(Vec<u8>, &'static str, Option<Anim>)> {
+    let url = url_text;
     // 連投された時に、たくさん同時に取りに行かない
     static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(3);
     let _slot = SLOTS.acquire().await.ok()?;
@@ -345,7 +497,18 @@ async fn download(url: &str) -> Option<(Vec<u8>, &'static str)> {
     if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE || w as u64 * h as u64 > MAX_PIXELS {
         return None;
     }
-    Some((data, mime))
+    let anim = animation(&data, mime);
+    if let Some(a) = anim {
+        if !honest_animation(url_text, mime) {
+            log::info!("普通の画像に見せかけた動く画像なので出しません: {url_text}");
+            return None;
+        }
+        if a.frames > MAX_FRAMES {
+            log::info!("コマが多すぎる動く画像なので出しません({}コマ): {url_text}", a.frames);
+            return None;
+        }
+    }
+    Some((data, mime, anim))
 }
 
 /// obs_bridgeのHTTP(/cimg/<番号>)が返す画像
@@ -363,7 +526,7 @@ fn list_state(st: &State) -> serde_json::Value {
             Status::Hidden => "hidden",
             Status::Failed => "failed",
         };
-        m.insert(e.url.clone(), serde_json::json!({ "id": e.id, "status": status, "src": src(e.id) }));
+        m.insert(e.url.clone(), serde_json::json!({ "id": e.id, "status": status, "src": src(e.id), "anim": e.anim.map(|a| a.ms) }));
     }
     serde_json::Value::Object(m)
 }
@@ -372,7 +535,7 @@ fn list_state(st: &State) -> serde_json::Value {
 fn window_state(st: &State) -> serde_json::Value {
     let current = st.queue.front().and_then(|id| st.entries.iter().find(|e| e.id == *id));
     serde_json::json!({
-        "current": current.map(|e| serde_json::json!({ "id": e.id, "url": e.url, "src": src(e.id) })),
+        "current": current.map(|e| serde_json::json!({ "id": e.id, "url": e.url, "src": src(e.id), "mime": e.data.as_ref().map(|d| d.1), "frames": e.anim.map(|a| a.frames) })),
         "waiting": st.queue.len().saturating_sub(1),
     })
 }
@@ -412,6 +575,42 @@ pub fn decide_current(show: bool) {
     let id = state().lock().unwrap().queue.front().copied();
     if let Some(id) = id {
         decide(id, show);
+    }
+}
+
+/// 合言葉と聞き取った言葉を比べる形(ひらがな・カタカナ、全角・半角、大文字・小文字、空白・句読点の違いをなくす)
+fn voice_form(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_whitespace() && !"。、，,.．!！?？・…「」『』\"'".contains(*c))
+        .map(|c| match c as u32 {
+            0xff01..=0xff5e => char::from_u32(c as u32 - 0xfee0).unwrap_or(c),
+            0x30a1..=0x30f6 => char::from_u32(c as u32 - 0x60).unwrap_or(c),
+            _ => c,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// 合言葉の一覧(「、」「,」・改行で区切る)のどれかが、聞き取った言葉に入っているか
+fn says_any(heard: &str, words: &str) -> bool {
+    words.split(|c| matches!(c, '、' | ',' | '，' | '\n' | '\r')).map(voice_form).any(|w| !w.is_empty() && heard.contains(&w))
+}
+
+/// 自分の声の字幕で聞き取った文(確定したもの)。確認の窓が出ている時に、合言葉
+/// (style.list.imageVoiceShow / imageVoiceHide)が入っていたら、見せる・見せないを押したことにする。
+/// 両方入っていたら、安全な方(見せない)にする
+pub fn on_voice(text: &str, style: &serde_json::Value) {
+    if state().lock().unwrap().queue.is_empty() {
+        return;
+    }
+    let words = |key: &str| style.pointer(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let heard = voice_form(text);
+    if says_any(&heard, &words("/list/imageVoiceHide")) {
+        log::info!("声で「見せない」: {text}");
+        decide_current(false);
+    } else if says_any(&heard, &words("/list/imageVoiceShow")) {
+        log::info!("声で「見せる」: {text}");
+        decide_current(true);
     }
 }
 
@@ -505,6 +704,13 @@ pub fn image_check_state(engine: tauri::State<Arc<crate::comments::CommentEngine
     v
 }
 
+/// 確認の窓が、動く画像のコマを取り出すための中身(窓はReaCastの画面なので、/cimg は読めない)
+#[tauri::command]
+pub fn image_check_bytes(id: u32) -> Result<tauri::ipc::Response, String> {
+    let d = data(id).ok_or("画像がありません")?;
+    Ok(tauri::ipc::Response::new(d.0.clone()))
+}
+
 /// 確認の窓のボタン(見せる / 見せない / ×)と、待ち時間がたった時
 #[tauri::command]
 pub fn image_check_decide(id: u32, show: bool) {
@@ -531,7 +737,7 @@ mod tests {
         let big = || Some(Arc::new((vec![0u8; 20 * 1024 * 1024], "image/png")));
         let mut st = State { next_id: 5, ..Default::default() };
         for (id, status) in [(1, Status::Shown), (2, Status::Waiting), (3, Status::Waiting), (4, Status::Waiting)] {
-            st.entries.push_back(Entry { id, url: format!("u{id}"), status, data: big() });
+            st.entries.push_back(Entry { id, url: format!("u{id}"), status, data: big(), anim: None });
         }
         st.queue.extend([2, 3, 4]);
         trim_memory(&mut st);
@@ -591,6 +797,68 @@ mod tests {
         let jpg = [0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 17, 8, 0x01, 0xe0, 0x02, 0x80, 3, 0, 0];
         assert_eq!(dimensions(&jpg), Some((640, 480)));
         assert_eq!(dimensions(b"<html>"), None);
+    }
+
+    /// 手元の動く画像のコマを数える(手で動かす時だけ: ANIM_DIR=フォルダ cargo test reads_real_animations -- --ignored --nocapture)
+    #[test]
+    #[ignore]
+    fn reads_real_animations() {
+        let dir = std::env::var("ANIM_DIR").unwrap();
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            let d = std::fs::read(&p).unwrap();
+            let mime = sniff(&d).unwrap_or("?");
+            println!("{}: {mime} {:?} {:?}", p.display(), dimensions(&d), animation(&d, mime));
+            // 1回だけ動く形も書き出す(ブラウザで最後のコマで止まるか見る)
+            let name = p.file_name().unwrap().to_string_lossy().to_string();
+            if !name.starts_with("once_") && (mime == "image/gif" || mime == "image/webp") {
+                let once = play_once(&d, mime);
+                println!("  once: {} -> {} bytes {:?}", d.len(), once.len(), animation(&once, mime));
+                std::fs::write(p.with_file_name(format!("once_{name}")), once).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn hears_the_pass_words() {
+        let heard = voice_form("じゃあ ガゾウ ＯＫ、です！");
+        assert!(says_any(&heard, "画像オッケー、がぞうok"));
+        assert!(says_any(&voice_form("画像オッケー"), "画像おっけー"));
+        assert!(!says_any(&heard, "画像ダメ\n"));
+        assert!(!says_any(&heard, "、 ,"));
+    }
+
+    #[test]
+    fn finds_animations_and_disguised_ones() {
+        // GIF: 色の表なし、コマ3つ(0.05秒・0秒(0.1秒として数える)・1秒)
+        let mut gif = b"GIF89a\x01\x00\x01\x00\x00\x00\x00".to_vec();
+        let mut one = gif.clone();
+        for cs in [5u16, 0, 100] {
+            let mut f = vec![0x21, 0xf9, 4, 0];
+            f.extend_from_slice(&cs.to_le_bytes());
+            f.extend_from_slice(&[0, 0]);
+            f.extend_from_slice(&[0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x4c, 0x01, 0]);
+            if cs == 5 {
+                one.extend_from_slice(&f);
+            }
+            gif.extend_from_slice(&f);
+        }
+        gif.push(0x3b);
+        one.push(0x3b);
+        assert_eq!(animation(&gif, "image/gif"), Some(Anim { frames: 3, ms: 1150 }));
+        // コマ1つのGIFは動かない
+        assert_eq!(animation(&one, "image/gif"), None);
+        // APNG(IHDRの後に acTL)
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.extend_from_slice(&[0; 13 + 4]);
+        png.extend_from_slice(b"\0\0\0\x08acTL\0\0\0\x05\0\0\0\0\0\0\0\0");
+        assert_eq!(animation(&png, "image/png").map(|a| a.frames), Some(5));
+        // 拡張子と中身
+        assert!(honest_animation("https://a.jp/x.GIF?w=1", "image/gif"));
+        assert!(honest_animation("https://a.jp/x.webp", "image/webp"));
+        assert!(!honest_animation("https://a.jp/x.jpg", "image/gif"));
+        assert!(!honest_animation("https://a.jp/x.png", "image/png"));
+        assert!(!honest_animation("https://a.jp/x.gif", "image/webp"));
     }
 
     #[test]

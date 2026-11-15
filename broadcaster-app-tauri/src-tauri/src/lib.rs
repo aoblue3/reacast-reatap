@@ -1491,6 +1491,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             image_check::image_check_state,
             image_check::image_check_decide,
+            image_check::image_check_bytes,
             get_credentials,
             get_relay_address,
             get_overlay_settings,
