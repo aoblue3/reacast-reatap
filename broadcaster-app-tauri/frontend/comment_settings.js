@@ -3608,7 +3608,8 @@ function initSimpleMode() {
 
 (async () => {
   settings = await invoke('comments_get_settings');
-  settings.style = C.mergeStyle(settings.style);
+  // mergeStyleは決まった見た目の項目だけを残すので、今使っているプリセットの記録(presets)は別に引き継ぐ
+  settings.style = { ...C.mergeStyle(settings.style), presets: (settings.style || {}).presets };
   await loadMonitors();
   renderFields();
   initSimpleMode();
@@ -3617,7 +3618,7 @@ function initSimpleMode() {
   // マウスで位置を決めた時など、Rust側で設定が変わった時に表示し直す
   listen('comments:settings', (e) => {
     settings = e.payload;
-    settings.style = C.mergeStyle(settings.style);
+    settings.style = { ...C.mergeStyle(settings.style), presets: (settings.style || {}).presets };
     renderFields();
   });
   adjusting.subtitle = await invoke('comments_desktop_adjusting', { target: 'subtitle' });
