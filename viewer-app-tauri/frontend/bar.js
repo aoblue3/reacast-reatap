@@ -64,6 +64,10 @@ let hotkeyMap = {};
 // 対象ウィンドウが見つかっていない間もバーを表示し続けるかどうか(既定OFF)。
 // OFFの場合、対象が見つかるまでウィンドウそのものを隠す(setBarVisible参照)。
 let manualShow = false;
+// 「隠す」にした時(配信を見ている間でも隠す。main.jsの「ボタン:」の欄)
+let manualHide = false;
+// バーの「ー」で小さくした時(「＋」のボタンだけになる)。配信者ごとに覚えておく
+let collapsed = false;
 
 // 現在のウィンドウ表示/非表示状態のキャッシュ(nullは未確定=初回)。同じ状態への
 // show()/hide()呼び出しを避けるための記録(cfg_set連発と同じ理由で、無駄な
@@ -185,9 +189,40 @@ function onClickEmoji(emojiId) {
   }
 }
 
+/** 「ー」(小さくする)・「＋」(元に戻す)のボタン。リアクションのボタンと同じ大きさの箱にする */
+function makeCollapseButton() {
+  const btn = document.createElement('button');
+  btn.className = 'emoji-btn collapse-btn';
+  btn.textContent = collapsed ? (poll ? '📊' : '＋') : 'ー';
+  btn.title = collapsed
+    ? poll
+      ? 'アンケートが始まっています。押すとリアクションのボタンを出します'
+      : 'リアクションのボタンを出す'
+    : '小さくする(「＋」のボタンだけになります)';
+  btn.addEventListener('click', () => setCollapsed(!collapsed));
+  return btn;
+}
+
+async function setCollapsed(next) {
+  collapsed = next;
+  document.body.classList.toggle('collapsed', collapsed);
+  renderButtons();
+  renderPoll();
+  try {
+    await invoke('cfg_set', { key: `profile:${profileId}:barCollapsed`, value: collapsed });
+  } catch {
+    // 無視(覚えておけないだけで、今の表示は変わる)
+  }
+  // 大きさをすぐに合わせ直す(次の検出を待たない)
+  await detectAndFollowOnce().catch(() => {});
+}
+
 function renderButtons() {
-  const emojiSet = getVisibleOrderedEmojiSet();
+  const emojiSet = collapsed ? [] : getVisibleOrderedEmojiSet();
   barEl.innerHTML = '';
+  // 「ー」はいつも先頭(左上)に置く。小さくした時もその場所に「＋」が残る
+  barEl.appendChild(makeCollapseButton());
+  if (collapsed) return;
   for (const emoji of emojiSet) {
     const btn = document.createElement('button');
     btn.className = 'emoji-btn';
@@ -235,7 +270,7 @@ function renderButtons() {
 }
 
 function applyMuteUI() {
-  const buttons = barEl.querySelectorAll('.emoji-btn');
+  const buttons = barEl.querySelectorAll('.emoji-btn:not(.collapse-btn)');
   const remainingMs = mutedUntil - Date.now();
   if (remainingMs <= 0) return;
   buttons.forEach((b) => b.classList.add('muted'));
@@ -278,9 +313,15 @@ let poll = null;
 const pollBox = document.getElementById('pollBox');
 
 function renderPoll() {
-  if (!poll) {
+  // 小さくしている間は、「＋」のボタンを「📊」にして知らせる
+  const collapseBtn = barEl.querySelector('.collapse-btn');
+  if (collapsed && collapseBtn && collapseBtn.textContent !== (poll ? '📊' : '＋')) renderButtons();
+  if (!poll || collapsed) {
     pollBox.style.display = 'none';
-    pollBox.textContent = '';
+    if (!poll) {
+      pollBox.textContent = '';
+      delete pollBox.dataset.pollId;
+    }
     return;
   }
   const total = poll.counts.reduce((a, b) => a + b, 0);
@@ -405,7 +446,8 @@ function applyRightModeColumnLayout() {
   const reactionPanel = document.getElementById('reactionPanel');
   const isRight = placementMode === 'right';
   reactionPanel.classList.toggle('placement-right', isRight);
-  if (!isRight) {
+  // 小さくしている時は「＋」だけなので、行を分けない(空の行の隙間でウィンドウが縦に伸びないように)
+  if (!isRight || collapsed) {
     barEl.style.gridTemplateRows = '';
     return;
   }
@@ -534,6 +576,10 @@ async function detectAndFollowOnce() {
     consecutiveMisses = 0;
     lastTargetRawHandle = target.raw_handle || 0;
     await reportStatus(true, target.title);
+    if (manualHide) {
+      await setBarVisible(false);
+      return;
+    }
     if (followTarget) {
       await positionOverWindow(target);
     }
@@ -553,7 +599,9 @@ async function detectAndFollowOnce() {
     // 隠すようにした。一覧側の「表示する」トグル(main.js)でmanualShowを
     // ONにした場合のみ、対象なしでもアイコン列を表示し続ける
     // (自由な位置にドラッグして単独運用したい場合向け)。
-    if (manualShow) {
+    if (manualHide) {
+      await setBarVisible(false);
+    } else if (manualShow) {
       await shrinkToIconSize();
       await setBarVisible(true);
     } else if (consecutiveMisses >= HIDE_AFTER_CONSECUTIVE_MISSES) {
@@ -598,6 +646,8 @@ async function reloadProfileSettings() {
     savedManualShow,
     savedIconScale,
     savedIconBgAlpha,
+    savedManualHide,
+    savedCollapsed,
   ] = await Promise.all([
     invoke('cfg_get', { key: `profile:${profileId}:manualOverridePath` }),
     invoke('cfg_get', { key: `profile:${profileId}:followTarget` }),
@@ -611,6 +661,8 @@ async function reloadProfileSettings() {
     invoke('cfg_get', { key: `profile:${profileId}:manualShow` }),
     invoke('cfg_get', { key: 'barIconScale' }),
     invoke('cfg_get', { key: 'barIconBgAlpha' }),
+    invoke('cfg_get', { key: `profile:${profileId}:manualHide` }),
+    invoke('cfg_get', { key: `profile:${profileId}:barCollapsed` }),
   ]);
 
   manualOverridePath = typeof savedManualOverride === 'string' ? savedManualOverride : null;
@@ -627,6 +679,9 @@ async function reloadProfileSettings() {
   reactionOrder = Array.isArray(savedOrder) ? savedOrder : null;
   hiddenReactionIds = Array.isArray(savedHidden) ? savedHidden : [];
   manualShow = savedManualShow === true;
+  manualHide = savedManualHide === true;
+  collapsed = savedCollapsed === true;
+  document.body.classList.toggle('collapsed', collapsed);
   applyBarAppearance(
     typeof savedIconScale === 'number' ? savedIconScale : 1,
     typeof savedIconBgAlpha === 'number' ? savedIconBgAlpha : 0.55
@@ -641,6 +696,7 @@ async function reloadProfileSettings() {
 
   await invoke('set_always_on_top', { enabled: alwaysOnTop, label: myLabel });
   renderButtons();
+  renderPoll();
   await detectAndFollowOnce();
 }
 

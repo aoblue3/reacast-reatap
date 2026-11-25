@@ -574,12 +574,12 @@ async function disconnectProfile(id) {
   renderProfileList();
 }
 
-/** 「対象が見つかるまでバーを隠す」既定動作の手動上書き。ONにすると、対象が
- * 見つかっていなくてもそのバーを常時表示する(自由な位置にドラッグして単独で
- * 使いたい場合向け)。バーが実際に開いていれば即座に反映する。 */
-async function toggleManualShow(id) {
-  const current = await getProfileSetting(id, 'manualShow', false);
-  await setProfileSetting(id, 'manualShow', !current);
+/** バーの出し方を変える。'auto'(対象が見つかるまで隠す。既定)・'always'(対象が
+ * 見つかっていなくても出す。自由な位置にドラッグして単独で使いたい場合向け)・
+ * 'hide'(配信を見ている間でも隠す)。バーが実際に開いていれば即座に反映する。 */
+async function setBarShowMode(id, mode) {
+  await setProfileSetting(id, 'manualShow', mode === 'always');
+  await setProfileSetting(id, 'manualHide', mode === 'hide');
   await notifyIfActive(id);
   renderProfileList();
 }
@@ -1339,17 +1339,26 @@ async function renderProfileListImpl() {
     });
     btnRow.appendChild(expandBtn);
 
-    // 「対象が見つかるまでバーを隠す」既定動作の手動上書きボタン。ONの間は
-    // 対象ウィンドウが見つかっていなくてもバーを表示し続ける(bar.js参照)。
+    // バーの出し方: 自動(対象が見つかったら出す。既定)・いつも出す(manualShow)・
+    // 隠す(manualHide。配信を見ている間でも隠す)。bar.js参照
     const manualShowValue = await getProfileSetting(profile.id, 'manualShow', false);
-    const showToggleBtn = document.createElement('button');
-    showToggleBtn.className = 'secondary';
-    showToggleBtn.textContent = manualShowValue ? 'ボタン非表示' : 'ボタン表示';
-    showToggleBtn.title = manualShowValue
-      ? '対象が見つかっていなくてもバーを表示し続けています。押すと既定動作(見つかるまで隠す)に戻します'
-      : '既定では対象が見つかるまでバーは隠れています。押すと対象が無くても常時表示します';
-    showToggleBtn.addEventListener('click', () => toggleManualShow(profile.id));
-    btnRow.appendChild(showToggleBtn);
+    const manualHideValue = await getProfileSetting(profile.id, 'manualHide', false);
+    const showSelect = document.createElement('select');
+    showSelect.className = 'bar-show-select';
+    showSelect.title = 'リアクションのボタン(バー)の出し方';
+    for (const [value, text] of [
+      ['auto', 'ボタン: 配信を見ている時だけ出す'],
+      ['always', 'ボタン: いつも出す'],
+      ['hide', 'ボタン: 隠す'],
+    ]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      showSelect.appendChild(o);
+    }
+    showSelect.value = manualHideValue ? 'hide' : manualShowValue ? 'always' : 'auto';
+    showSelect.addEventListener('change', () => setBarShowMode(profile.id, showSelect.value));
+    btnRow.appendChild(showSelect);
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'danger';

@@ -148,6 +148,16 @@
     font-weight: 900;
     /* ボタンの虹色は止めておく(流し続けると、何もしていない間も画面を描き直し続けて重くなる) */
   }
+  /* 「ー」(小さくする)・「＋」(元に戻す)。リアクションのボタンより控えめにする */
+  .emoji-btn.collapse-btn {
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: calc(14px * var(--icon-scale, 1));
+    font-weight: bold;
+    color: #bbb;
+    height: calc(34px * var(--icon-scale, 1));
+  }
+  body.collapsed .emoji-btn.collapse-btn { color: #eee; }
+  body.collapsed #muteNotice { display: none; }
   .emoji-btn:hover { background: rgba(40,40,46,0.7); }
   .emoji-btn:active { transform: scale(0.85); }
   .emoji-btn.muted {
